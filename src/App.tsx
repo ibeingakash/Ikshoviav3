@@ -22,6 +22,8 @@ import { GoalsView } from './components/goals/GoalsView.js';
 import { ProfileView } from './components/profile/ProfileView.js';
 import { SettingsView } from './components/settings/SettingsView.js';
 import { AdminView } from './components/admin/AdminView.js';
+import { OCRStudioView } from './components/admin/OCRStudioView.js';
+import { SuperAdminConsoleView } from './components/admin/SuperAdminConsoleView.js';
 
 const MainContent: React.FC = () => {
   const { activeSection, appTheme } = useLearner();
@@ -40,6 +42,10 @@ const MainContent: React.FC = () => {
   };
 
   const renderSection = () => {
+    if (activeSection.startsWith('super-admin-')) {
+      return <SuperAdminConsoleView />;
+    }
+
     switch (activeSection) {
       case 'dashboard':
         return <DashboardView />;
@@ -67,6 +73,8 @@ const MainContent: React.FC = () => {
         return <ProfileView />;
       case 'settings':
         return <SettingsView />;
+      case 'admin-ocr':
+        return <OCRStudioView />;
       case 'admin-dashboard':
       case 'admin-users':
       case 'admin-content':
@@ -83,7 +91,7 @@ const MainContent: React.FC = () => {
       {/* UPSC & BPSC Civil Services Top Accent Ribbon */}
       <div className="h-1 w-full upsc-tricolor-accent shadow-sm" />
       <Header />
-      <div className="flex flex-1 max-w-7xl w-full mx-auto">
+      <div className="flex flex-1 max-w-[1700px] w-full mx-auto">
         <Sidebar />
         <main id="app-main-content" className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {renderSection()}

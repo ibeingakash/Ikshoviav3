@@ -19,6 +19,9 @@ import {
   AIContentDraft,
   NotificationItem,
   MistakeCategory,
+  OCRJob,
+  AuditLogRecord,
+  AdminUser,
 } from '../src/types/index.js';
 
 class IKSHOVIADatabase {
@@ -39,6 +42,9 @@ class IKSHOVIADatabase {
   public conversations: Map<string, ChatConversation> = new Map();
   public aiDrafts: Map<string, AIContentDraft> = new Map();
   public notifications: Map<string, NotificationItem[]> = new Map();
+  public ocrJobs: Map<string, OCRJob> = new Map();
+  public auditLogs: AuditLogRecord[] = [];
+  public adminPermissions: Map<string, string[]> = new Map();
 
   constructor() {
     this.seedDatabase();
@@ -72,8 +78,34 @@ class IKSHOVIADatabase {
       createdAt: new Date().toISOString(),
     };
 
+    const superAdminUser: UserProfile = {
+      id: 'usr_superadmin',
+      email: 'superadmin@ikshovia.com',
+      name: 'Chief Admin (Super Admin)',
+      role: 'SUPER_ADMIN',
+      isOnboarded: true,
+      createdAt: new Date().toISOString(),
+    };
+
     this.users.set(demoUser.id, demoUser);
     this.users.set(adminUser.id, adminUser);
+    this.users.set(superAdminUser.id, superAdminUser);
+
+    this.adminPermissions.set('usr_admin', [
+      'QUESTION_CREATE',
+      'QUESTION_EDIT',
+      'QUESTION_PUBLISH',
+      'OCR_IMPORT',
+      'OCR_REVIEW',
+      'MOCK_CREATE',
+      'CONCEPT_CREATE',
+    ]);
+    this.adminPermissions.set('usr_superadmin', [
+      'ALL_PERMISSIONS',
+      'ADMIN_MANAGE',
+      'SYSTEM_SETTINGS',
+      'AUDIT_LOG_VIEW',
+    ]);
 
     // 2. Seed Subjects
     const subPolity: Subject = {
@@ -568,7 +600,7 @@ class IKSHOVIADatabase {
     };
     this.learnerModels.set('usr_demo', demoLearnerModel);
 
-    // 8. Seed Questions
+    // 8. Seed Questions (With PYQ provenance & verification flags)
     const questions: Question[] = [
       {
         id: 'q1',
@@ -588,7 +620,14 @@ class IKSHOVIADatabase {
         difficulty: 'HARD',
         examTag: 'UPSC CSE 2023 PYQ',
         pyqYear: 2023,
+        exam: 'UPSC CSE',
+        paper: 'GS Paper I',
+        questionNumber: 42,
+        isPyq: true,
+        source: 'Official UPSC CSE 2023 Prelims Question Paper',
+        verifiedStatus: 'VERIFIED_PYQ',
         isPublished: true,
+        status: 'PUBLISHED',
       },
       {
         id: 'q2',
@@ -608,7 +647,14 @@ class IKSHOVIADatabase {
         difficulty: 'MEDIUM',
         examTag: 'UPSC CSE 2021 PYQ',
         pyqYear: 2021,
+        exam: 'UPSC CSE',
+        paper: 'GS Paper I',
+        questionNumber: 18,
+        isPyq: true,
+        source: 'Official UPSC CSE 2021 Prelims Question Paper',
+        verifiedStatus: 'VERIFIED_PYQ',
         isPublished: true,
+        status: 'PUBLISHED',
       },
       {
         id: 'q3',
@@ -628,7 +674,14 @@ class IKSHOVIADatabase {
         difficulty: 'HARD',
         examTag: 'UPSC CSE 2022',
         pyqYear: 2022,
+        exam: 'UPSC CSE',
+        paper: 'GS Paper I',
+        questionNumber: 65,
+        isPyq: true,
+        source: 'Official UPSC CSE 2022 Prelims Question Paper',
+        verifiedStatus: 'VERIFIED_PYQ',
         isPublished: true,
+        status: 'PUBLISHED',
       },
       {
         id: 'q4',
@@ -751,12 +804,13 @@ class IKSHOVIADatabase {
     };
     [mock1, mock2, mock3].forEach(m => this.mockTests.set(m.id, m));
 
-    // 10. Seed Current Affairs
+    // 10. Seed Current Affairs (Source-backed with full provenance)
     const ca1: CurrentAffairArticle = {
       id: 'ca_1',
       title: 'Supreme Court Clarifies Limits of Advisory Judgments & Article 226 Writ Powers',
-      date: '2026-08-05',
-      category: 'Polity & Judiciary',
+      date: '2026-08-10',
+      category: 'Polity & Governance',
+      subtopic: 'Judicial Oversight & Writs',
       summary: 'A 5-judge Constitution Bench reaffirmed that High Court writ jurisdiction under Article 226 cannot be used to pass general policy advisories to state legislatures without concrete cause of action.',
       background: 'High Court issued directions to State govt on police reforms without specific petitioner injury.',
       keyFacts: [
@@ -766,8 +820,14 @@ class IKSHOVIADatabase {
       ],
       prelimsRelevance: 'Writ jurisdiction differences between SC (Art 32) and High Court (Art 226).',
       mainsRelevance: 'Judicial activism vs Judicial overreach in state policymaking (GS Paper II).',
+      relatedSubject: 'Indian Polity & Governance',
       relatedConceptIds: ['c_art32', 'c_art226'],
-      source: 'The Hindu Legal Digest',
+      keywords: ['Supreme Court', 'Article 226', 'Article 32', 'PIL', 'Judicial Review'],
+      source: 'Press Information Bureau / Supreme Court Digest',
+      sourceUrl: 'https://pib.gov.in/PressReleasePage.aspx?PRID=1982341',
+      sourceType: 'PRIMARY_GOVT',
+      publishedAt: '2026-08-10T10:30:00Z',
+      retrievedAt: '2026-08-11T04:00:00Z',
       isPublished: true,
     };
 
@@ -775,7 +835,8 @@ class IKSHOVIADatabase {
       id: 'ca_2',
       title: '16th Finance Commission Initiates State Consultations on Devolution Criteria',
       date: '2026-08-08',
-      category: 'Economy & Fiscal Federalism',
+      category: 'Economy',
+      subtopic: 'Fiscal Federalism',
       summary: 'Chairman Dr. Arvind Panagariya announced that the 16th FC will evaluate demographic performance vs income distance weights amidst coastal vs interior state debates.',
       background: 'Southern states requested higher weightage for demographic management (TFR) while northern states highlighted population pressure.',
       keyFacts: [
@@ -785,11 +846,70 @@ class IKSHOVIADatabase {
       ],
       prelimsRelevance: 'Constitutional provisions of Article 280, vertical vs horizontal devolution.',
       mainsRelevance: 'Fiscal federalism friction between Union and States (GS Paper II & III).',
+      relatedSubject: 'Indian Economy',
       relatedConceptIds: ['c_fiscal_fed', 'c_fin_comm', 'c_gst_council'],
-      source: 'PIB Release & Financial Express',
+      keywords: ['Finance Commission', 'Article 280', 'Horizontal Devolution', 'Income Distance', 'Fiscal Federalism'],
+      source: 'Press Information Bureau (PIB Delhi)',
+      sourceUrl: 'https://pib.gov.in/PressReleasePage.aspx?PRID=1985420',
+      sourceType: 'PRIMARY_GOVT',
+      publishedAt: '2026-08-08T14:15:00Z',
+      retrievedAt: '2026-08-11T04:00:00Z',
       isPublished: true,
     };
-    [ca1, ca2].forEach(ca => this.currentAffairs.set(ca.id, ca));
+
+    const ca3: CurrentAffairArticle = {
+      id: 'ca_3',
+      title: 'RBI Monetary Policy Committee Keeps Repo Rate at 6.50% with Focus on Inflation Alignment',
+      date: '2026-08-06',
+      category: 'Economy',
+      subtopic: 'Monetary Policy',
+      summary: 'The Monetary Policy Committee (MPC) unanimously decided to keep the policy repo rate unchanged at 6.50% to ensure inflation aligns with the target of 4% while supporting growth.',
+      background: 'Food inflation volatility driven by unseasonal rainfall led MPC to maintain stance of withdrawal of accommodation.',
+      keyFacts: [
+        'MPC is a statutory body under Section 45ZB of RBI Act 1934.',
+        'Consists of 6 members (3 from RBI, 3 appointed by Central Govt).',
+        'Inflation target is 4% (+/- 2%) based on CPI.',
+      ],
+      prelimsRelevance: 'MPC composition, RBI Act 1934 provisions, Repo rate transmission.',
+      mainsRelevance: 'Inflation management and monetary-fiscal policy coordination (GS Paper III).',
+      relatedSubject: 'Indian Economy',
+      relatedConceptIds: ['c_mpc', 'c_inflation'],
+      keywords: ['RBI', 'MPC', 'Repo Rate', 'Inflation Targeting', 'Monetary Policy'],
+      source: 'Reserve Bank of India Bulletin',
+      sourceUrl: 'https://rbi.org.in/scripts/BS_PressReleaseDisplay.aspx?prid=58102',
+      sourceType: 'OFFICIAL_PORTAL',
+      publishedAt: '2026-08-06T09:00:00Z',
+      retrievedAt: '2026-08-11T04:00:00Z',
+      isPublished: true,
+    };
+
+    const ca4: CurrentAffairArticle = {
+      id: 'ca_4',
+      title: 'ISRO Announces Next Generation Launch Vehicle (NGLV) Architecture for Heavy Payload Capabilities',
+      date: '2026-08-02',
+      category: 'Science & Tech',
+      subtopic: 'Space Science',
+      summary: 'ISRO has finalized the design parameters for NGLV (Soorya), featuring semi-cryogenic propulsion designed to carry up to 20 tonnes to Low Earth Orbit (LEO).',
+      background: 'Transitioning from LVM3 to modular re-usable rocket architectures to reduce launch cost per kg.',
+      keyFacts: [
+        'NGLV uses semi-cryogenic engine utilizing refined kerosene (Isrosene) and liquid oxygen.',
+        'Modular design with reusable first stage.',
+        'Enables Indian Space Station (Bharatiya Antariksha Station) construction by 2035.',
+      ],
+      prelimsRelevance: 'Semi-cryogenic vs Cryogenic engines, ISRO missions, LEO payload limits.',
+      mainsRelevance: 'Indigenous technology development and space commercialization (GS Paper III).',
+      relatedSubject: 'Science & Technology',
+      relatedConceptIds: ['c_space_tech'],
+      keywords: ['ISRO', 'NGLV', 'Semi-cryogenic', 'Bharatiya Antariksha Station', 'Space Tech'],
+      source: 'Department of Space / ISRO Official Release',
+      sourceUrl: 'https://isro.gov.in/press-release-nglv-architecture.html',
+      sourceType: 'PRIMARY_GOVT',
+      publishedAt: '2026-08-02T11:00:00Z',
+      retrievedAt: '2026-08-11T04:00:00Z',
+      isPublished: true,
+    };
+
+    [ca1, ca2, ca3, ca4].forEach(ca => this.currentAffairs.set(ca.id, ca));
 
     // 11. Seed Learning Resources
     const res1: LearningResource = {

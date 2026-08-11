@@ -76,6 +76,15 @@ export const api = {
     return res.json();
   },
 
+  updateUserPreferences: async (preferredLanguage: 'en' | 'hi') => {
+    const res = await fetch('/api/auth/preferences', {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ preferredLanguage }),
+    });
+    return res.json();
+  },
+
   // Subjects & Content
   getSubjects: async (): Promise<Subject[]> => {
     const res = await fetch('/api/subjects');
@@ -84,6 +93,11 @@ export const api = {
 
   getSubjectDetail: async (id: string) => {
     const res = await fetch(`/api/subjects/${id}`);
+    return res.json();
+  },
+
+  getTopics: async (subjectId: string): Promise<Topic[]> => {
+    const res = await fetch(`/api/subjects/${subjectId}/topics`);
     return res.json();
   },
 
@@ -183,11 +197,11 @@ export const api = {
   },
 
   // AI Tutor
-  askAITutor: async (userPrompt: string, conceptId?: string, quickAction?: string, userId?: string) => {
+  askAITutor: async (userPrompt: string, conceptId?: string, quickAction?: string, userId?: string, context?: any) => {
     const res = await fetch('/api/ai/tutor', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ userId, userPrompt, conceptId, quickAction }),
+      body: JSON.stringify({ userId, userPrompt, conceptId, quickAction, context }),
     });
     return res.json();
   },
@@ -198,11 +212,11 @@ export const api = {
     return res.json();
   },
 
-  sendChatMessage: async (conversationId: string, userText: string, conceptId?: string, quickAction?: string) => {
+  sendChatMessage: async (conversationId: string, userText: string, conceptId?: string, quickAction?: string, context?: any) => {
     const res = await fetch(`/api/ai/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ userText, conceptId, quickAction }),
+      body: JSON.stringify({ userText, conceptId, quickAction, context }),
     });
     return res.json();
   },
@@ -223,8 +237,27 @@ export const api = {
   },
 
   // Current Affairs & Resources
-  getCurrentAffairs: async (): Promise<CurrentAffairArticle[]> => {
-    const res = await fetch('/api/current-affairs');
+  getCurrentAffairs: async (filters?: { category?: string; dateRange?: string; search?: string; subjectId?: string }): Promise<CurrentAffairArticle[]> => {
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category);
+    if (filters?.dateRange) params.append('dateRange', filters.dateRange);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+
+    const res = await fetch(`/api/current-affairs?${params.toString()}`);
+    return res.json();
+  },
+
+  getPYQs: async (filters?: { exam?: string; year?: number; paper?: string; subjectId?: string; topicId?: string; search?: string }): Promise<Question[]> => {
+    const params = new URLSearchParams();
+    if (filters?.exam) params.append('exam', filters.exam);
+    if (filters?.year) params.append('year', String(filters.year));
+    if (filters?.paper) params.append('paper', filters.paper);
+    if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+    if (filters?.topicId) params.append('topicId', filters.topicId);
+    if (filters?.search) params.append('search', filters.search);
+
+    const res = await fetch(`/api/pyqs?${params.toString()}`);
     return res.json();
   },
 
@@ -263,6 +296,12 @@ export const api = {
   },
 
   // Admin API
+  getConcepts: async (topicId?: string): Promise<Concept[]> => {
+    const url = topicId ? `/api/topics/${topicId}/concepts` : '/api/concepts';
+    const res = await fetch(url, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
   getAdminMetrics: async () => {
     const res = await fetch('/api/admin/metrics', { headers: getAuthHeaders() });
     return res.json();
@@ -285,6 +324,15 @@ export const api = {
   createQuestion: async (questionData: any) => {
     const res = await fetch('/api/admin/questions', {
       method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(questionData),
+    });
+    return res.json();
+  },
+
+  updateQuestion: async (id: string, questionData: any) => {
+    const res = await fetch(`/api/admin/questions/${id}`, {
+      method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(questionData),
     });
@@ -332,6 +380,63 @@ export const api = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
+    return res.json();
+  },
+
+  // OCR Studio API
+  processOcrImport: async (data: any) => {
+    const res = await fetch('/api/admin/ocr/process', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  getOcrJobs: async () => {
+    const res = await fetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  bulkActionOcrQuestions: async (data: any) => {
+    const res = await fetch('/api/admin/ocr/questions/bulk-action', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  // Super Admin API
+  getSuperAdminOverview: async () => {
+    const res = await fetch('/api/superadmin/overview', { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  getSuperAdminAdmins: async () => {
+    const res = await fetch('/api/superadmin/admins', { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  createSuperAdminAdmin: async (data: any) => {
+    const res = await fetch('/api/superadmin/admins', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  toggleSuperAdminAdminStatus: async (adminId: string) => {
+    const res = await fetch(`/api/superadmin/admins/${adminId}/toggle-status`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  getSuperAdminAuditLogs: async () => {
+    const res = await fetch('/api/superadmin/audit-logs', { headers: getAuthHeaders() });
     return res.json();
   },
 };

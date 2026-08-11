@@ -14,6 +14,7 @@ import {
   FileText,
   Award,
   Send,
+  Bot,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
@@ -21,7 +22,7 @@ import { Question, MistakeCategory } from '../../types/index.js';
 import confetti from 'canvas-confetti';
 
 export const PracticeView: React.FC = () => {
-  const { selectedSubjectId, selectedConceptId, refreshLearnerData, setActiveSection } = useLearner();
+  const { selectedSubjectId, selectedConceptId, refreshLearnerData, setActiveSection, askTutorWithContext } = useLearner();
   const [practiceMode, setPracticeMode] = useState<'prelims' | 'mains'>('prelims');
   
   // Prelims state
@@ -34,6 +35,7 @@ export const PracticeView: React.FC = () => {
   const [attemptResult, setAttemptResult] = useState<any>(null);
   const [startTime, setStartTime] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
+  const [displayLanguage, setDisplayLanguage] = useState<'en' | 'hi'>('en');
 
   // Mains state
   const [mainsQuestion, setMainsQuestion] = useState(
@@ -200,22 +202,51 @@ export const PracticeView: React.FC = () => {
                   </span>
                 </div>
 
-                {currentQ.examTag && (
-                  <span className="text-[10px] text-amber-300 font-semibold bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
-                    {currentQ.examTag}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {/* Language Toggle for Learners */}
+                  {(currentQ.question_hi || (currentQ.availableLanguages && currentQ.availableLanguages.includes('hi'))) && (
+                    <div className="flex items-center bg-slate-950 border border-slate-700 rounded-lg p-0.5 text-xs font-bold">
+                      <button
+                        onClick={() => setDisplayLanguage('en')}
+                        className={`px-2.5 py-0.5 rounded-md ${
+                          displayLanguage === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        English
+                      </button>
+                      <button
+                        onClick={() => setDisplayLanguage('hi')}
+                        className={`px-2.5 py-0.5 rounded-md ${
+                          displayLanguage === 'hi' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        हिंदी
+                      </button>
+                    </div>
+                  )}
+
+                  {currentQ.examTag && (
+                    <span className="text-[10px] text-amber-300 font-semibold bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
+                      {currentQ.examTag}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Question Text */}
               <div className="text-sm sm:text-base font-bold text-slate-100 leading-relaxed whitespace-pre-line bg-slate-950/60 p-4 rounded-xl border border-slate-800">
-                {currentQ.question}
+                {displayLanguage === 'hi'
+                  ? currentQ.question_hi || currentQ.question
+                  : currentQ.question_en || currentQ.question}
               </div>
 
               {/* Options */}
               {currentQ.options && (
                 <div className="space-y-2.5">
-                  {currentQ.options.map(opt => {
+                  {(displayLanguage === 'hi' && currentQ.options_hi && currentQ.options_hi.length > 0
+                    ? currentQ.options_hi
+                    : currentQ.options
+                  ).map((opt, oIdx) => {
                     const isSelected = selectedOption === opt.id;
                     let optStyle = 'bg-slate-800/60 border-slate-700 text-slate-200 hover:bg-slate-800';
 
@@ -310,7 +341,37 @@ export const PracticeView: React.FC = () => {
                         {attemptResult?.isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}
                       </div>
                       <div className="text-xs opacity-90 leading-relaxed whitespace-pre-line">
-                        {currentQ.explanation}
+                        {displayLanguage === 'hi'
+                          ? currentQ.explanation_hi || currentQ.explanation
+                          : currentQ.explanation_en || currentQ.explanation}
+                      </div>
+
+                      {/* AI Tutor Context Button */}
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            const userOptText = currentQ.options?.find(o => o.id === selectedOption)?.text || selectedOption;
+                            const correctOptText = currentQ.options?.find(o => o.id === currentQ.correctAnswer)?.text || currentQ.correctAnswer;
+                            askTutorWithContext(
+                              attemptResult?.isCorrect
+                                ? `Explain the core principles of this question in depth: "${currentQ.question}"`
+                                : `Why was my answer wrong for this question? I selected "${userOptText}", but the correct answer is "${correctOptText}".`,
+                              {
+                                questionText: currentQ.question,
+                                options: currentQ.options,
+                                userAnswer: userOptText,
+                                correctAnswer: correctOptText,
+                                explanation: currentQ.explanation,
+                                mistakeType: selectedMistakeCategory || 'CONCEPT_GAP',
+                              },
+                              attemptResult?.isCorrect ? 'EXPLAIN' : 'WHY_WRONG'
+                            );
+                          }}
+                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all"
+                        >
+                          <Bot className="w-4 h-4 text-white" />
+                          <span>{attemptResult?.isCorrect ? 'Ask AI Tutor to Deepen Concept' : 'Ask AI Tutor: Why Was I Wrong?'}</span>
+                        </button>
                       </div>
                     </div>
                   </div>

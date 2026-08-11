@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { LearnerModel, NextBestAction, NotificationItem } from '../types/index.js';
+import { LearnerModel, NextBestAction, NotificationItem, AiContextData } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { useAuth } from './AuthContext.js';
 
@@ -21,7 +21,13 @@ export type NavigationSection =
   | 'admin-users'
   | 'admin-content'
   | 'admin-questions'
-  | 'admin-ai';
+  | 'admin-ai'
+  | 'admin-ocr'
+  | 'super-admin-dashboard'
+  | 'super-admin-users'
+  | 'super-admin-admins'
+  | 'super-admin-audit'
+  | 'super-admin-settings';
 
 export type AppTheme = 'futuristic-glass' | 'upsc-parchment' | 'bpsc-navy';
 
@@ -40,6 +46,11 @@ interface LearnerContextType {
   setSelectedConceptId: (id: string | null) => void;
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
+  aiContext: AiContextData | null;
+  setAiContext: (ctx: AiContextData | null) => void;
+  pendingAiPrompt: { prompt: string; quickAction?: string } | null;
+  setPendingAiPrompt: (p: { prompt: string; quickAction?: string } | null) => void;
+  askTutorWithContext: (userText: string, ctx?: AiContextData, quickAction?: string) => void;
   refreshLearnerData: () => Promise<void>;
   navigateToConcept: (conceptId: string) => void;
 }
@@ -57,6 +68,8 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>('sub_polity');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>('c_art21');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [aiContext, setAiContext] = useState<AiContextData | null>(null);
+  const [pendingAiPrompt, setPendingAiPrompt] = useState<{ prompt: string; quickAction?: string } | null>(null);
 
   const refreshLearnerData = async () => {
     try {
@@ -93,6 +106,14 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveSection('learn');
   };
 
+  const askTutorWithContext = (userText: string, ctx?: AiContextData, quickAction?: string) => {
+    if (ctx) {
+      setAiContext(ctx);
+    }
+    setPendingAiPrompt({ prompt: userText, quickAction });
+    setActiveSection('ai-tutor');
+  };
+
   return (
     <LearnerContext.Provider
       value={{
@@ -110,6 +131,11 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSelectedConceptId,
         isSearchOpen,
         setIsSearchOpen,
+        aiContext,
+        setAiContext,
+        pendingAiPrompt,
+        setPendingAiPrompt,
+        askTutorWithContext,
         refreshLearnerData,
         navigateToConcept,
       }}

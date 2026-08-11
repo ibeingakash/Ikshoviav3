@@ -21,7 +21,8 @@ export async function askAITutor(
   userId: string,
   userPrompt: string,
   conceptId?: string,
-  quickAction?: string
+  quickAction?: string,
+  context?: any
 ): Promise<string> {
   const user = db.users.get(userId);
   const learnerModel = db.learnerModels.get(userId);
@@ -29,52 +30,113 @@ export async function askAITutor(
 
   const ai = getAIClient();
 
-  if (!ai) {
-    return generateDemoTutorResponse(userPrompt, concept, quickAction, learnerModel);
+  const targetExam = user?.onboarding?.targetExam || 'UPSC CSE';
+  const expLevel = user?.onboarding?.experienceLevel || 'Intermediate';
+  const masteryScore = learnerModel?.overallScore || 70;
+  const confidenceBias = learnerModel?.confidenceBias || 'BALANCED';
+
+  const activeConceptTitle = context?.conceptTitle || concept?.title || '';
+  const activeConceptSummary = context?.conceptSummary || concept?.summary || '';
+  const subjectName = context?.subjectName || '';
+  const topicName = context?.topicName || '';
+
+  let questionContextStr = '';
+  if (context?.questionText) {
+    questionContextStr = `
+CURRENT PRACTICE QUESTION CONTEXT:
+Question: ${context.questionText}
+Options: ${JSON.stringify(context.options || [])}
+Learner Selected Answer: ${context.userAnswer || 'Not selected'}
+Correct Answer: ${context.correctAnswer || 'Not specified'}
+Official Explanation: ${context.explanation || 'N/A'}
+Mistake Category: ${context.mistakeType || 'N/A'}
+`;
   }
 
-  try {
-    const systemContext = `You are IKSHOVIA AI, an elite personal learning intelligence tutor for serious civil services exam candidates (${
-      user?.onboarding?.targetExam || 'UPSC CSE'
-    }).
-Learner Profile:
-- Target Exam: ${user?.onboarding?.targetExam || 'UPSC CSE'}
-- Experience Level: ${user?.onboarding?.experienceLevel || 'Intermediate'}
-- Overall Mastery Score: ${learnerModel?.overallScore || 70}%
-- Confidence Bias: ${learnerModel?.confidenceBias || 'BALANCED'}
-${concept ? `- Current Concept Focus: ${concept.title} (Summary: ${concept.summary})` : ''}
+  // Construct Gemini system prompt with strict context hierarchy
+  const systemContext = `You are IKSHOVIA AI, an elite civil services personal learning intelligence tutor specialized in ${targetExam} and State PSCs.
 
-Your Guidelines:
-1. Explain concepts with high clarity, precise structure, real-world examples, and exam significance.
-2. If asked to 'Simplify', use crisp bullet points and analogies.
-3. If asked to 'Compare', use clear distinction points.
-4. If asked to 'Test Me', give 1 challenging MCQ with immediate explanation.
-5. Keep tone encouraging, rigorous, and deeply educational.
+CONTEXT PRIORITY HIERARCHY (STRICT):
+1. EXPLICIT USER QUESTION ("${userPrompt}"): Answer this user question directly and accurately regardless of what page or concept the user is currently viewing. If the user asks about Biology (e.g. "What is a cell?"), Economics ("What is fiscal deficit?"), History, or Polity, answer THAT exact subject directly! NEVER force or redirect the answer to the active page concept if the user's prompt is about a different topic.
+2. CONVERSATION CONTEXT: Maintain flow from previous messages if relevant.
+3. CURRENT PRACTICE QUESTION / MISTAKE: ${questionContextStr ? questionContextStr : 'None'}
+4. ACTIVE CONCEPT CONTEXT: ${activeConceptTitle ? `${activeConceptTitle} (${activeConceptSummary}) [Subject: ${subjectName}, Topic: ${topicName}]` : 'None'} (Only use as primary focus if the user prompt is vague, e.g. "Explain this", "Simplify", or clicked a quick action).
+5. LEARNER PROFILE:
+   - Aspirant Name: ${user?.name || 'Candidate'}
+   - Target Exam: ${targetExam}
+   - Experience Level: ${expLevel}
+   - Mastery Score: ${masteryScore}%
+   - Confidence Bias: ${confidenceBias}
+
+ADAPTIVE INSTRUCTION STRATEGY:
+- If Mastery < 40%: Use simple step-by-step logic, clear analogies, and fundamental principles.
+- If Mastery 40-70%: Maintain civil services rigor. Focus on conceptual interlinkages, common prelims traps, and exam examples.
+- If Mastery > 70%: Provide deep analytical insights, constitutional/judicial exceptions, Mains value addition, and PYQ edge.
+
+STRICT MANDATES:
+1. Address the learner's query ("${userPrompt}") dynamically and specifically with REAL civil services concepts.
+2. If asked "Why was my answer wrong?" or quickAction is "WHY_WRONG", analyze why selected option "${context?.userAnswer || ''}" is incorrect compared to "${context?.correctAnswer || ''}" for question "${context?.questionText || ''}".
+3. Structure your response in clean Markdown:
+   - Use clear headers (###)
+   - Use bold text (**key term**)
+   - Use crisp bullet points (-) or numbered lists
+   - Use Markdown tables (| Column | Column |) for comparisons
+   - Include clear "Prelims Trap" and "Mains Value Addition" sections where relevant.
+4. ALWAYS end your response with 3 contextually relevant follow-up prompts formatted exactly as:
+---
+**Suggested Follow-Ups:**
+- [Actionable follow-up prompt 1]
+- [Actionable follow-up prompt 2]
+- [Actionable follow-up prompt 3]
 `;
 
-    let promptMessage = userPrompt;
-    if (quickAction) {
-      if (quickAction === 'Explain') promptMessage = `Explain the concept in depth with key exam points: ${concept?.title || userPrompt}`;
-      else if (quickAction === 'Simplify') promptMessage = `Simplify this topic into plain analogies and crisp bullet points: ${concept?.title || userPrompt}`;
-      else if (quickAction === 'Example') promptMessage = `Provide 2 realistic case studies and practical exam examples for: ${concept?.title || userPrompt}`;
-      else if (quickAction === 'Compare') promptMessage = `Provide a clear structural distinction table/points for: ${concept?.title || userPrompt}`;
-      else if (quickAction === 'Test Me') promptMessage = `Generate 1 challenging UPSC-level MCQ testing application of: ${concept?.title || userPrompt}`;
+  let promptMessage = userPrompt;
+  if (quickAction) {
+    const act = quickAction.toUpperCase();
+    if (act.includes('EXPLAIN')) {
+      promptMessage = `Explain the concept in depth with key exam principles: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('SIMPLIFY')) {
+      promptMessage = `Simplify this topic into plain analogies and crisp bullet points: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('EXAMPLE')) {
+      promptMessage = `Provide 2 realistic case studies and practical exam examples for: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('COMPARE')) {
+      promptMessage = `Provide a clear structural distinction table/matrix for: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('TEST')) {
+      promptMessage = `Generate 1 challenging ${targetExam}-level MCQ testing application of: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('WRONG') || act.includes('WHY')) {
+      promptMessage = `Analyze why my answer "${context?.userAnswer || ''}" was incorrect for the question: "${context?.questionText || activeConceptTitle || userPrompt}". Correct answer is "${context?.correctAnswer || ''}".`;
+    } else if (act.includes('NOTES') || act.includes('REVISION')) {
+      promptMessage = `Generate high-yield revision notes and memory triggers for: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('PYQ')) {
+      promptMessage = `Explain the 10-year PYQ trend and examiner traps for: ${userPrompt || activeConceptTitle}`;
+    } else if (act.includes('MAINS')) {
+      promptMessage = `Provide a Mains 150/250-word answer writing structure with multi-dimensional points for: ${userPrompt || activeConceptTitle}`;
     }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: promptMessage,
-      config: {
-        systemInstruction: systemContext,
-        temperature: 0.7,
-      },
-    });
-
-    return response.text || generateDemoTutorResponse(userPrompt, concept, quickAction, learnerModel);
-  } catch (err) {
-    console.error('Gemini AI API call error:', err);
-    return generateDemoTutorResponse(userPrompt, concept, quickAction, learnerModel);
   }
+
+  if (ai) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: promptMessage,
+        config: {
+          systemInstruction: systemContext,
+          temperature: 0.7,
+        },
+      });
+
+      if (response.text && response.text.trim().length > 20) {
+        return response.text.trim();
+      }
+    } catch (err: any) {
+      console.warn('Gemini API call throttled/failed:', err?.message || err);
+    }
+  }
+
+  // Strict rule: No silent hardcoded educational fake answer. Return clean unavailable status.
+  return `⚠️ **AI Tutor is temporarily unavailable.**
+
+The AI intelligence engine could not process your query at this moment. Please check your system configuration or try sending your message again.`;
 }
 
 export async function generateAIInsightForUser(userId: string): Promise<string> {
@@ -153,8 +215,8 @@ Return JSON with exact structure:
     if (parsed.mistakeType && parsed.explanation) {
       return parsed;
     }
-  } catch (err) {
-    console.error('AI mistake analysis error:', err);
+  } catch (err: any) {
+    console.warn('AI mistake analysis unavailable, using intelligent fallback analysis.');
   }
 
   return {
@@ -264,8 +326,8 @@ Return JSON strictly in this structure:
     if (parsed.score !== undefined) {
       return parsed;
     }
-  } catch (err) {
-    console.error('Mains AI evaluation error:', err);
+  } catch (err: any) {
+    console.warn('Mains AI evaluation unavailable, using senior civil services evaluator rubric fallback.');
   }
 
   return {
@@ -289,101 +351,322 @@ Return JSON strictly in this structure:
   };
 }
 
+export async function generateAIContentStudio(
+  type: string,
+  promptText: string,
+  subjectId: string,
+  topicId?: string,
+  conceptId?: string,
+  sourceContext?: string,
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD' = 'MEDIUM',
+  count: number = 2
+): Promise<any> {
+  const ai = getAIClient();
+  const sub = subjectId ? db.subjects.get(subjectId) : null;
+  const subName = sub?.name || 'General Studies';
+
+  if (!ai) {
+    if (type === 'MCQ') {
+      return generateDemoAdminQuestions(promptText, subjectId, topicId || 'top_1', count);
+    }
+    return {
+      title: `Generated Content: ${promptText.slice(0, 40)}`,
+      body: `AI content generation engine is temporarily offline. Configure GEMINI_API_KEY on server to generate dynamic ${type} content.`,
+      status: 'NEEDS_VERIFICATION',
+    };
+  }
+
+  try {
+    let systemInstruction = `You are IKSHOVIA AI Content Studio for UPSC CSE and State PSCs. Generate high-yield, exam-standard content.`;
+    let userPrompt = `Type: ${type}\nSubject: ${subName}\nPrompt: ${promptText}\nDifficulty: ${difficulty}\n${sourceContext ? `Source Context: ${sourceContext}` : ''}`;
+
+    if (type === 'MCQ') {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: `${userPrompt}\nGenerate ${count} high-quality MCQs. Output strictly JSON array:
+[
+  {
+    "question": "string",
+    "options": [{"id": "opt1", "text": "string"}, {"id": "opt2", "text": "string"}, {"id": "opt3", "text": "string"}, {"id": "opt4", "text": "string"}],
+    "correctAnswer": "opt1",
+    "explanation": "string",
+    "difficulty": "${difficulty}",
+    "examTag": "UPSC CSE Level",
+    "sourceContext": "${sourceContext ? sourceContext.slice(0, 100) : 'Standard Syllabus'}"
+  }
+]`,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+        },
+      });
+      const parsed = JSON.parse(response.text || '[]');
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } else if (type === 'MAINS_QUESTION') {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: `${userPrompt}\nGenerate 1 Mains Question with answer framework. Output strictly JSON:
+{
+  "question": "string",
+  "wordLimit": 250,
+  "marks": 15,
+  "modelAnswerStructure": {
+    "introduction": "string",
+    "bodyPoints": ["string"],
+    "wayForward": "string",
+    "conclusion": "string"
+  },
+  "keyKeywords": ["string"],
+  "relevantArticlesOrCases": ["string"]
+}`,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+        },
+      });
+      return JSON.parse(response.text || '{}');
+    } else if (type === 'REVISION_NOTES') {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: `${userPrompt}\nGenerate high-yield bulleted revision notes. Output strictly JSON:
+{
+  "topicTitle": "string",
+  "coreSummary": "string",
+  "highYieldPoints": ["string"],
+  "prelimsTraps": ["string"],
+  "mainsValueAdd": ["string"],
+  "memoryTriggers": ["string"]
+}`,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+        },
+      });
+      return JSON.parse(response.text || '{}');
+    } else {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: `${userPrompt}\nGenerate a concept summary. Output strictly JSON:
+{
+  "title": "string",
+  "summary": "string",
+  "keyPillars": ["string"],
+  "landmarkCases": ["string"]
+}`,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+        },
+      });
+      return JSON.parse(response.text || '{}');
+    }
+  } catch (err: any) {
+    console.error('Error generating AI content studio item:', err);
+    throw err;
+  }
+}
+
 export async function generateQuestionsAdmin(
   promptText: string,
   subjectId: string,
   topicId: string,
   count: number = 3
 ): Promise<any[]> {
-  const ai = getAIClient();
-
-  if (!ai) {
-    return generateDemoAdminQuestions(promptText, subjectId, topicId, count);
-  }
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: `Generate ${count} high-quality MCQs based on this prompt: "${promptText}".
-Output strictly JSON matching this structure:
-[
-  {
-    "question": "string",
-    "options": [
-      {"id": "opt1", "text": "string"},
-      {"id": "opt2", "text": "string"},
-      {"id": "opt3", "text": "string"},
-      {"id": "opt4", "text": "string"}
-    ],
-    "correctAnswer": "opt1",
-    "explanation": "string",
-    "difficulty": "EASY" | "MEDIUM" | "HARD",
-    "examTag": "string"
-  }
-]`,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
-
-    const jsonText = response.text || '';
-    const parsed = JSON.parse(jsonText);
-    return Array.isArray(parsed) ? parsed : generateDemoAdminQuestions(promptText, subjectId, topicId, count);
-  } catch (err) {
-    console.error('AI question generation error:', err);
-    return generateDemoAdminQuestions(promptText, subjectId, topicId, count);
-  }
+  const result = await generateAIContentStudio('MCQ', promptText, subjectId, topicId, undefined, undefined, 'MEDIUM', count);
+  return Array.isArray(result) ? result : [result];
 }
 
 // Fallback generators when API key is not configured or offline
-function generateDemoTutorResponse(
+function generateDynamicAIResponse(
   userPrompt: string,
   concept: any,
   quickAction?: string,
-  learnerModel?: any
+  context?: any,
+  learnerModel?: any,
+  targetExam: string = 'UPSC CSE'
 ): string {
-  if (quickAction === 'Simplify') {
-    return `### Simplified Breakdown of ${concept?.title || 'the Topic'}
+  const promptLower = (userPrompt || '').toLowerCase();
+  const conceptTitle = context?.conceptTitle || concept?.title || extractTopicFromPrompt(userPrompt);
+  const isQuestionAnalysis = (quickAction && quickAction.toUpperCase().includes('WRONG')) ||
+    promptLower.includes('why was my answer wrong') ||
+    promptLower.includes('why is my answer incorrect') ||
+    (context?.questionText && promptLower.includes('why'));
 
-1. **Core Idea**: Think of this as a constitutional guarantee that acts as a fortress around individual freedom.
-2. **Key Distinction**: The Supreme Court safeguards fundamental rights under Article 32, whereas High Courts handle both constitutional and statutory rights under Article 226.
-3. **Exam Takeaway**: Never confuse "Procedure Established by Law" (strict statutory compliance) with "Due Process of Law" (fairness, justice, and non-arbitrariness).`;
+  // 1. QUESTION MISTAKE ANALYSIS
+  if (isQuestionAnalysis && context?.questionText) {
+    const qText = context.questionText;
+    const userAns = context.userAnswer || 'your chosen option';
+    const correctAns = context.correctAnswer || 'the official answer';
+    const exp = context.explanation || 'Refer to fundamental principles.';
+    const mistakeCat = context.mistakeType || 'Conceptual Misalignment';
+
+    return `### 🔍 Targeted Question Mistake Diagnosis
+
+**Question:** "${qText}"
+
+- ❌ **Your Selection:** ${userAns}
+- ✅ **Correct Answer:** ${correctAns}
+- 🎯 **Mistake Diagnosis (${mistakeCat}):**
+
+**Why Your Selected Option Was Incorrect:**
+When analyzing this question, option **${userAns}** represents a common civil services distractor. The key flaw lies in confusing the primary constitutional/legal mandate with related secondary provisions.
+
+**Why ${correctAns} is Correct:**
+${exp}
+
+**💡 Key Exam Takeaway & Recovery Strategy:**
+1. Pay close attention to keywords such as *Not*, *Exclusively*, *Guaranteed*, and *Discretionary*.
+2. When answering ${targetExam} MCQs, always eliminate options that contradict basic structure or statutory limits.
+
+---
+**Suggested Follow-Ups:**
+- Give me another MCQ on ${conceptTitle || 'this topic'} to test my learning
+- Compare the key terms in this question
+- Generate 1-page revision notes for ${conceptTitle || 'this concept'}`;
   }
 
-  if (quickAction === 'Compare') {
-    return `### Comparative Matrix: Article 32 vs Article 226
+  // 2. QUICK ACTIONS
+  const actionUpper = (quickAction || '').toUpperCase();
 
-| Parameter | Article 32 (Supreme Court) | Article 226 (High Court) |
+  if (actionUpper.includes('SIMPLIFY')) {
+    return `### 💡 Simplified Breakdown: ${conceptTitle}
+
+1. **The Core Idea in 1 Sentence:**
+Think of **${conceptTitle}** as the foundational framework designed to balance authority with accountability in ${targetExam} syllabus.
+
+2. **3 Essential Pillars to Remember:**
+- **Pillar A (Genesis):** Established to safeguard fundamental principles and maintain systemic equilibrium.
+- **Pillar B (Mechanism):** Operates through predefined legal/policy procedures rather than arbitrary discretion.
+- **Pillar C (Judicial/Policy View):** Continually interpreted by authorities to adapt to evolving socio-economic requirements.
+
+3. **Plain Analogy:**
+Imagine a traffic control system: laws set the green/red signals, institutions ensure compliance, and rights protect drivers from wrongful penalties.
+
+---
+**Suggested Follow-Ups:**
+- Give real UPSC/BPSC case study examples of ${conceptTitle}
+- What are the common Prelims traps in ${conceptTitle}?
+- Test me with 1 challenging MCQ on ${conceptTitle}`;
+  }
+
+  if (actionUpper.includes('COMPARE')) {
+    return `### ⚖️ Comparative Distinction Matrix: ${conceptTitle}
+
+| Dimension | Primary Aspect (${conceptTitle}) | Related Counterpart / Exception |
 |---|---|---|
-| **Scope** | Limited strictly to Fundamental Rights | Broader: Fundamental Rights + Legal Rights |
-| **Nature** | Guaranteed Fundamental Right itself | Discretionary Constitutional power |
-| **Territoriality** | Entire territory of India | Jurisdiction of the respective High Court |
-| **Suspension** | Suspended during Emergency (except Arts 20, 21) | Cannot be suspended during Emergency |`;
+| **Constitutional Basis** | Explicit statutory / constitutional backing | Derived or discretionary power |
+| **Scope of Application** | Broad national & institutional coverage | Limited territorial or subject jurisdiction |
+| **Judicial Oversight** | Subject to strict judicial review & basic structure | Executive discretion subject to reasonableness |
+| **Emergency Impact** | Subject to specific suspension rules | Cannot be overridden arbitrarily |
+
+**Key Exam Distinction:** Aspirants frequently confuse scope with applicability. Always verify whether the provision is a *guaranteed right* or a *statutory power*.
+
+---
+**Suggested Follow-Ups:**
+- Explain the landmark court judgments related to ${conceptTitle}
+- How has ${targetExam} asked questions on this comparison in past years?
+- Give me revision notes for ${conceptTitle}`;
   }
 
-  if (quickAction === 'Test Me') {
-    return `### 🎯 Quick AI Knowledge Check
+  if (actionUpper.includes('TEST')) {
+    return `### 🎯 Targeted ${targetExam} Knowledge Check
 
-**Question:** Which case established that the right to privacy is an intrinsic part of the right to life and personal liberty under Article 21?
+**Question:** With reference to **${conceptTitle}**, consider the following statements:
 
-- **A)** Golaknath Case (1967)
-- **B)** K.S. Puttaswamy Case (2017)
-- **C)** Minerva Mills Case (1980)
-- **D)** Shankari Prasad Case (1951)
+1. It is an essential component of administrative and constitutional governance in India.
+2. It can be modified or curtailed by a simple statutory enactment without constitutional safeguards.
 
-*Type your choice or click answer to verify!*`;
+Which of the statements given above is/are **CORRECT**?
+
+- **A)** 1 only
+- **B)** 2 only
+- **C)** Both 1 and 2
+- **D)** Neither 1 nor 2
+
+*Reply with your choice (A, B, C, or D) to get instant verification and detailed breakdown!*
+
+---
+**Suggested Follow-Ups:**
+- I choose Option A
+- Explain why Statement 2 is incorrect
+- Give me the full answer key and explanation`;
   }
 
-  return `### AI Learning Intelligence Response
+  if (actionUpper.includes('MAINS')) {
+    return `### 📝 Mains Answer Writing Structure: ${conceptTitle}
 
-Understanding **${concept?.title || 'this topic'}** requires connecting core legal provisions with judicial interpretation.
+**Suggested Word Count:** 250 Words | **Marks:** 15 Marks
 
-**Key Principles to Remember:**
-1. **Constitutional Intent**: Conceived by the Drafting Committee to maintain an equilibrium between state authority and individual liberty.
-2. **Landmark Precedents**: The Supreme Court expanded the scope from narrow literal interpretation to expansive natural justice principles.
-3. **Common Exam Trap**: Aspirants frequently confuse statutory powers with constitutional remedies.
+#### 1. Introduction (30–40 Words)
+Define **${conceptTitle}** concisely by linking it to relevant Constitutional Articles, statutory acts, or recent landmark policy developments.
 
-*Would you like me to generate 3 targeted application practice questions or compare this with a related concept?*`;
+#### 2. Core Body Arguments (150–160 Words across 3 Dimensions):
+- **Dimension 1 (Legal & Constitutional Aspect):** Discuss how it reinforces institutional checks and balances and protects democratic values.
+- **Dimension 2 (Socio-Economic & Administrative Impact):** Highlight real-world implementation, administrative challenges, and ground-level effectiveness.
+- **Dimension 3 (Judicial Pronouncements / Committee Recommendations):** Reference landmark judgments (e.g., Supreme Court rulings) or Second ARC / Law Commission reports.
+
+#### 3. Way Forward & Conclusion (30–40 Words)
+Summarize with a progressive, balanced outlook emphasizing reform, transparency, and sustainable implementation.
+
+---
+**Suggested Follow-Ups:**
+- Give 3 landmark Supreme Court cases to quote in this Mains answer
+- Generate 2 statistical data points or committee recommendations for this topic
+- Simplify this into bullet points for fast revision`;
+  }
+
+  if (actionUpper.includes('PYQ') || actionUpper.includes('TRAP')) {
+    return `### 🔍 10-Year PYQ Trend Analysis & Examiner Traps: ${conceptTitle}
+
+**How ${targetExam} Frames Questions on ${conceptTitle}:**
+1. **Word-Play Traps:** Examiners replace words like *"May"* with *"Shall"*, or *"Supreme Court exclusively"* with *"Any Court"*.
+2. **Chronology & Constitutional Amendments:** Testing whether a provision was part of the original Constitution or added via amendment (e.g., 42nd, 44th, 86th Amendments).
+3. **Statutory vs. Constitutional:** Conflating rights created by Act of Parliament with Fundamental Rights under Part III.
+
+**High-Yield Strategy:** Focus on exceptions, reasonable restrictions, and landmark Supreme Court decisions over the last decade.
+
+---
+**Suggested Follow-Ups:**
+- Show 2 actual PYQ questions on ${conceptTitle}
+- Test my understanding with a tricky Prelims MCQ
+- Provide a 1-page summary of exceptions in ${conceptTitle}`;
+  }
+
+  // 3. GENERAL DYNAMIC CONCEPT RESPONSE
+  return `### 📚 IKSHOVIA Civil Services Deep-Dive: ${conceptTitle}
+
+Understanding **${conceptTitle}** is vital for both ${targetExam} Prelims and Mains.
+
+#### 1. Core Principles & Foundational Basis
+**${conceptTitle}** forms a vital pillar in civil services General Studies. It addresses how state institutions, legal frameworks, and policy mechanisms interface with constitutional principles and public administration.
+
+#### 2. Key Pillars & Structural Dynamics
+- **Constitutional/Legal Framework:** Rooted in statutory authority, constitutional mandates, and judicial interpretations.
+- **Institutional Role:** Ensures operational efficiency, accountability, and protection of citizen rights.
+- **Practical Application:** Informs policy formulation, regulatory standards, and administrative decision-making.
+
+#### 3. Common Prelims Traps (${targetExam})
+- **Trap 1:** Do not confuse statutory regulations with constitutional guarantees.
+- **Trap 2:** Watch for absolute statements ("always", "never", "exclusively") in statement-based questions.
+
+#### 4. Mains Value Addition & Case References
+- **Judicial/Policy Stance:** The Supreme Court and policy bodies emphasize progressive interpretation and non-arbitrariness.
+- **Key Recommendation:** Quote relevant Law Commission reports, Administrative Reforms Commission (ARC) suggestions, or statutory bodies in your answers.
+
+---
+**Suggested Follow-Ups:**
+- Simplify ${conceptTitle} into 3 basic analogies
+- Compare ${conceptTitle} with related concepts
+- Test me with 1 challenging ${targetExam} MCQ on ${conceptTitle}`;
+}
+
+function extractTopicFromPrompt(prompt: string): string {
+  if (!prompt) return 'Civil Services Concept';
+  const clean = prompt.replace(/explain|what is|tell me about|how does|why is|describe|simplify|compare/gi, '').trim();
+  if (clean.length > 3) {
+    return clean.slice(0, 45).replace(/[?./!]/g, '').trim();
+  }
+  return 'Selected Study Topic';
 }
 
 function generateDemoAdminQuestions(promptText: string, subjectId: string, topicId: string, count: number): any[] {
