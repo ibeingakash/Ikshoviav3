@@ -44,6 +44,24 @@ export const api = {
     return res.json();
   },
 
+  forgotPassword: async (email: string) => {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return res.json();
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword }),
+    });
+    return res.json();
+  },
+
   getMe: async () => {
     const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
     return res.json();
@@ -121,6 +139,24 @@ export const api = {
         confidenceRating,
         mistakeCategory,
       }),
+    });
+    return res.json();
+  },
+
+  analyzeMistakeWithAI: async (questionId: string, userAnswer: string, correctAnswer?: string, explanation?: string, conceptTitle?: string) => {
+    const res = await fetch('/api/ai/analyze-mistake', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ questionId, userAnswer, correctAnswer, explanation, conceptTitle }),
+    });
+    return res.json();
+  },
+
+  evaluateMainsAnswer: async (question: string, userAnswer: string, conceptTitle?: string) => {
+    const res = await fetch('/api/mains/evaluate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ question, userAnswer, conceptTitle }),
     });
     return res.json();
   },

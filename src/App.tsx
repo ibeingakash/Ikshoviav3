@@ -6,6 +6,7 @@ import { Sidebar } from './components/layout/Sidebar.js';
 import { MobileNav } from './components/layout/MobileNav.js';
 import { GlobalSearchModal } from './components/layout/GlobalSearchModal.js';
 import { OnboardingModal } from './components/auth/OnboardingModal.js';
+import { AuthModal } from './components/auth/AuthModal.js';
 
 import { DashboardView } from './components/dashboard/DashboardView.js';
 import { LearnView } from './components/learn/LearnView.js';
@@ -91,6 +92,7 @@ const MainContent: React.FC = () => {
       <MobileNav />
       <GlobalSearchModal />
       <OnboardingModal />
+      <AuthModal />
     </div>
   );
 };

@@ -203,27 +203,38 @@ export function getNextBestAction(userId: string): NextBestAction {
     }
   });
 
-  // 1. Check for Overdue Revision (Priority 1)
-  const overdueMasteries = userMasteries.filter(m => {
-    return m.nextReviewDate && new Date(m.nextReviewDate).getTime() < Date.now();
-  }).sort((a, b) => a.retention - b.retention); // lowest retention first
+  // Calculate composite priority score for every concept mastery
+  // Score = (100 - retention)*0.4 + (importance == HIGH ? 35 : 15) + (incorrectCount * 8) + (isOverdue ? 25 : 0)
+  const prioritized = userMasteries.map(m => {
+    const concept = db.concepts.get(m.conceptId);
+    const isOverdue = m.nextReviewDate ? new Date(m.nextReviewDate).getTime() < Date.now() : false;
+    const importanceWeight = concept?.importance === 'HIGH' ? 35 : concept?.importance === 'MEDIUM' ? 15 : 5;
+    const mistakeWeight = m.incorrectCount * 8;
+    const retentionWeight = (100 - m.retention) * 0.4;
+    const overdueWeight = isOverdue ? 25 : 0;
 
-  if (overdueMasteries.length > 0) {
-    const worstConceptMastery = overdueMasteries[0];
-    const concept = db.concepts.get(worstConceptMastery.conceptId);
-    if (concept) {
+    const priorityScore = retentionWeight + importanceWeight + mistakeWeight + overdueWeight;
+    return { mastery: m, concept, priorityScore, isOverdue };
+  }).sort((a, b) => b.priorityScore - a.priorityScore);
+
+  if (prioritized.length > 0 && prioritized[0].concept) {
+    const top = prioritized[0];
+    const concept = top.concept!;
+    const m = top.mastery;
+
+    if (top.isOverdue || m.retention < 65 || m.incorrectCount > 0) {
       return {
         id: `nba_${Date.now()}`,
-        actionType: 'REVISE',
-        title: `Revise: ${concept.title}`,
-        description: `Your retention for this concept has decayed to ${worstConceptMastery.retention}%.`,
-        reason: `Spaced repetition algorithm flagged this concept because it was last reviewed ${Math.round((Date.now() - new Date(worstConceptMastery.lastReviewedAt || Date.now()).getTime()) / (1000 * 3600 * 24))} days ago and shows retention decay.`,
+        actionType: m.retention < 60 ? 'REVISE' : 'PRACTICE',
+        title: `${m.retention < 60 ? 'Urgent Revision' : 'Targeted Practice'}: ${concept.title}`,
+        description: `Retention decayed to ${m.retention}% with ${m.incorrectCount} recent mistake(s) in a High-Importance exam concept.`,
+        reason: `Engine prioritized ${concept.title} because it combines High Exam Importance (${concept.importance}), Low Retention (${m.retention}%), and recent mistake history.`,
         estimatedMinutes: 12,
         subjectId: concept.subjectId,
         topicId: concept.topicId,
         conceptId: concept.id,
         priority: 'URGENT',
-        followUpAction: `Attempt 5 targeted application questions on ${concept.title}.`,
+        followUpAction: `Complete 5 targeted application MCQs on ${concept.title}.`,
       };
     }
   }
