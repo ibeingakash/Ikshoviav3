@@ -38,12 +38,12 @@ export const Header: React.FC = () => {
                 <span className="text-xl font-extrabold tracking-tight text-white font-serif">
                   IKSHOVIA
                 </span>
-                <span className="text-[10px] uppercase font-bold tracking-wider text-amber-300 bg-amber-950/80 border border-amber-500/40 px-2 py-0.5 rounded-md">
-                  UPSC • BPSC
+                <span className="text-[10px] uppercase font-mono tracking-widest text-rose-300 bg-rose-950/80 border border-rose-800/80 px-2 py-0.5 rounded-md">
+                  Intelligence
                 </span>
               </div>
-              <div className="text-[10px] text-amber-200/80 font-medium tracking-wide hidden md:block">
-                Civil Services AI Learning Platform
+              <div className="text-[10px] text-slate-300 font-medium tracking-wide hidden md:block">
+                Personal Learning Intelligence Platform
               </div>
             </div>
           </div>
@@ -176,7 +176,7 @@ export const Header: React.FC = () => {
                 </div>
               )}
               <div className="hidden xl:block text-left">
-                <div className="text-xs font-semibold text-slate-100 leading-none">{user?.name}</div>
+                <div className="text-xs font-semibold text-slate-100 leading-none">{user?.name || 'IKSHOVIA User'}</div>
                 <div className="text-[10px] text-amber-300/80 mt-0.5">{user?.onboarding?.targetExam || 'UPSC 2026'}</div>
               </div>
             </div>

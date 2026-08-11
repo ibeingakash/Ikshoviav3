@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { LearnerProvider, useLearner } from './context/LearnerContext.js';
 import { Header } from './components/layout/Header.js';
@@ -7,6 +7,7 @@ import { MobileNav } from './components/layout/MobileNav.js';
 import { GlobalSearchModal } from './components/layout/GlobalSearchModal.js';
 import { OnboardingModal } from './components/auth/OnboardingModal.js';
 import { AuthModal } from './components/auth/AuthModal.js';
+import { LandingPage } from './components/landing/LandingPage.js';
 
 import { DashboardView } from './components/dashboard/DashboardView.js';
 import { LearnView } from './components/learn/LearnView.js';
@@ -26,7 +27,42 @@ import { OCRStudioView } from './components/admin/OCRStudioView.js';
 import { SuperAdminConsoleView } from './components/admin/SuperAdminConsoleView.js';
 
 const MainContent: React.FC = () => {
+  const { user, loading } = useAuth();
   const { activeSection, appTheme } = useLearner();
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white font-sans">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="text-sm font-bold tracking-wide text-slate-300 font-serif">
+            Initializing IKSHOVIA...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unauthenticated visitors ALWAYS see the Public Landing Page
+  if (!user) {
+    return (
+      <>
+        <LandingPage
+          onOpenAuth={(mode) => {
+            setAuthMode(mode);
+            setIsAuthModalOpen(true);
+          }}
+        />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          initialMode={authMode}
+          onClose={() => setIsAuthModalOpen(false)}
+        />
+      </>
+    );
+  }
 
   const getThemeClass = () => {
     switch (appTheme) {
@@ -87,9 +123,9 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-amber-500 selection:text-white transition-colors duration-300 upsc-watermark-bg`}>
-      {/* UPSC & BPSC Civil Services Top Accent Ribbon */}
-      <div className="h-1 w-full upsc-tricolor-accent shadow-sm" />
+    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-rose-500 selection:text-white transition-colors duration-300 upsc-watermark-bg`}>
+      {/* Accent Ribbon */}
+      <div className="h-1 w-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500 shadow-sm" />
       <Header />
       <div className="flex flex-1 max-w-[1700px] w-full mx-auto">
         <Sidebar />
@@ -100,7 +136,6 @@ const MainContent: React.FC = () => {
       <MobileNav />
       <GlobalSearchModal />
       <OnboardingModal />
-      <AuthModal />
     </div>
   );
 };

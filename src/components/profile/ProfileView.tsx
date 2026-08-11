@@ -66,7 +66,7 @@ export const ProfileView: React.FC = () => {
 
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-white">{user?.name}</h1>
+              <h1 className="text-2xl font-bold text-white">{user?.name || 'IKSHOVIA User'}</h1>
               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
                 user?.role === 'ADMIN' ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-indigo-950 text-indigo-300 border-indigo-800'
               }`}>

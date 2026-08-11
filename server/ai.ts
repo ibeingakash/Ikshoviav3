@@ -62,7 +62,7 @@ CONTEXT PRIORITY HIERARCHY (STRICT):
 3. CURRENT PRACTICE QUESTION / MISTAKE: ${questionContextStr ? questionContextStr : 'None'}
 4. ACTIVE CONCEPT CONTEXT: ${activeConceptTitle ? `${activeConceptTitle} (${activeConceptSummary}) [Subject: ${subjectName}, Topic: ${topicName}]` : 'None'} (Only use as primary focus if the user prompt is vague, e.g. "Explain this", "Simplify", or clicked a quick action).
 5. LEARNER PROFILE:
-   - Aspirant Name: ${user?.name || 'Candidate'}
+   - Aspirant Name: ${user?.name || 'IKSHOVIA User'}
    - Target Exam: ${targetExam}
    - Experience Level: ${expLevel}
    - Mastery Score: ${masteryScore}%

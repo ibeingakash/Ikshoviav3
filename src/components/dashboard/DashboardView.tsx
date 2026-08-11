@@ -65,7 +65,7 @@ export const DashboardView: React.FC = () => {
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-serif tracking-tight">
-              Welcome, {user?.name || 'Aspirant'}
+              Welcome, {user?.name || 'IKSHOVIA User'}
             </h1>
             <p className="text-slate-300 text-xs sm:text-sm max-w-xl leading-relaxed">
               IKSHOVIA AI actively predicts retention decay and optimizes your exam preparation roadmap.
