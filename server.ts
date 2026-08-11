@@ -36,12 +36,21 @@ dotenv.config();
 // Helper middleware for auth & admin authorization
 function getAuthenticatedUser(req: express.Request) {
   const authHeader = req.headers.authorization;
-  let userId = 'usr_demo';
   if (authHeader && authHeader.startsWith('Bearer token_')) {
-    userId = authHeader.replace('Bearer token_', '');
+    const userId = authHeader.replace('Bearer token_', '').trim();
+    const foundUser = db.users.get(userId);
+    if (foundUser) return foundUser;
   }
+  return null;
+}
 
-  return db.users.get(userId) || db.users.get('usr_demo')!;
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required. Please log in to access this feature.' });
+  }
+  (req as any).user = user;
+  next();
 }
 
 function logAudit(actorUserId: string, actorRole: any, action: string, targetType: string, targetId: string, metadata?: any) {
@@ -59,6 +68,9 @@ function logAudit(actorUserId: string, actorRole: any, action: string, targetTyp
 
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+  }
   if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
     return res.status(403).json({ error: 'Access denied. Admin or Super Admin role required.' });
   }
@@ -68,6 +80,9 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 
 function requireSuperAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+  }
   if (user.role !== 'SUPER_ADMIN') {
     return res.status(403).json({ error: 'Access denied. Super Admin role required.' });
   }
@@ -116,7 +131,7 @@ async function startServer() {
     const newUser = {
       id: userId,
       email: email || `user_${Date.now()}@ikshovia.com`,
-      name: name || 'New Aspirant',
+      name: name || 'IKSHOVIA User',
       role: (role === 'ADMIN' ? 'ADMIN' : 'USER') as any, // Only server decides role
       isOnboarded: false,
       createdAt: new Date().toISOString(),
@@ -222,8 +237,9 @@ async function startServer() {
   });
 
   // Learner & Intelligence Endpoints
-  app.get('/api/learner/model', async (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+  app.get('/api/learner/model', requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const userId = user.id;
     const model = updateLearnerModel(userId);
     const nextBestAction = getNextBestAction(userId);
     const aiInsight = await generateAIInsightForUser(userId);
@@ -231,9 +247,10 @@ async function startServer() {
     res.json({ model, nextBestAction, aiInsight });
   });
 
-  app.post('/api/learner/mastery/rate', (req, res) => {
-    const { userId, conceptId, confidenceRating } = req.body;
-    const uid = userId || 'usr_demo';
+  app.post('/api/learner/mastery/rate', requireAuth, (req, res) => {
+    const user = (req as any).user;
+    const { conceptId, confidenceRating } = req.body;
+    const uid = user.id;
 
     const updatedMastery = recordQuestionAttempt(
       uid,
@@ -314,7 +331,7 @@ async function startServer() {
   });
 
   // AI Mistake Analysis Endpoint
-  app.post('/api/ai/analyze-mistake', async (req, res) => {
+  app.post('/api/ai/analyze-mistake', requireAuth, async (req, res) => {
     const { questionId, userAnswer, correctAnswer, explanation, conceptTitle } = req.body;
     const question = questionId ? db.questions.get(questionId) : null;
 
@@ -330,13 +347,13 @@ async function startServer() {
   });
 
   // Mains Answer Evaluator Endpoint
-  app.post('/api/mains/evaluate', async (req, res) => {
+  app.post('/api/mains/evaluate', requireAuth, async (req, res) => {
     const { question, userAnswer, conceptTitle } = req.body;
     if (!userAnswer || !userAnswer.trim()) {
       return res.status(400).json({ error: 'Answer text cannot be empty' });
     }
 
-    const user = getAuthenticatedUser(req);
+    const user = (req as any).user;
 
     const evaluation = await evaluateMainsAnswerWithAI(
       question || 'General Civil Services Mains Question',
@@ -459,20 +476,23 @@ async function startServer() {
   });
 
   // AI Tutor Endpoints
-  app.post('/api/ai/tutor', async (req, res) => {
-    const { userId, userPrompt, conceptId, quickAction, context } = req.body;
-    const uid = userId || 'usr_demo';
+  app.post('/api/ai/tutor', requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const { userPrompt, conceptId, quickAction, context } = req.body;
+    const uid = user.id;
 
     const aiResponse = await askAITutor(uid, userPrompt, conceptId, quickAction, context);
     res.json({ success: true, text: aiResponse });
   });
 
-  app.get('/api/ai/conversations', (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+  app.get('/api/ai/conversations', requireAuth, (req, res) => {
+    const user = (req as any).user;
+    const userId = user.id;
     const list = Array.from(db.conversations.values()).filter(c => c.userId === userId);
     if (list.length === 0) {
+      const userName = user.name || 'IKSHOVIA User';
       const defaultConv: ChatConversation = {
-        id: 'conv_1',
+        id: `conv_${Date.now()}`,
         userId,
         title: 'Polity & Article 32 Writs Session',
         createdAt: new Date().toISOString(),
@@ -480,7 +500,7 @@ async function startServer() {
           {
             id: 'm1',
             role: 'assistant',
-            text: 'Hello Ananya! I am IKSHOVIA AI Tutor. I notice you are revising Fundamental Rights today. How can I help clarify your concepts or test your understanding?',
+            text: `Hello ${userName}! I am IKSHOVIA AI Tutor. I notice you are revising Fundamental Rights today. How can I help clarify your concepts or test your understanding?`,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -491,9 +511,10 @@ async function startServer() {
     res.json(list);
   });
 
-  app.post('/api/ai/conversations', (req, res) => {
-    const { userId, title, initialMessage } = req.body;
-    const uid = userId || 'usr_demo';
+  app.post('/api/ai/conversations', requireAuth, (req, res) => {
+    const user = (req as any).user;
+    const { title, initialMessage } = req.body;
+    const uid = user.id;
     const id = `conv_${Date.now()}`;
     const newConv: ChatConversation = {
       id,
@@ -506,7 +527,7 @@ async function startServer() {
     res.json(newConv);
   });
 
-  app.post('/api/ai/conversations/:id/messages', async (req, res) => {
+  app.post('/api/ai/conversations/:id/messages', requireAuth, async (req, res) => {
     const { id } = req.params;
     const { userText, conceptId, quickAction, context } = req.body;
     const conv = db.conversations.get(id);

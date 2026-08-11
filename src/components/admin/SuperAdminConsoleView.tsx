@@ -429,7 +429,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                   type="text"
                   value={newAdminName}
                   onChange={e => setNewAdminName(e.target.value)}
-                  placeholder="Dr. Rajesh Kumar"
+                  placeholder="e.g. Akash Singh"
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white"
                   required
                 />

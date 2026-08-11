@@ -55,7 +55,7 @@ class IKSHOVIADatabase {
     const demoUser: UserProfile = {
       id: 'usr_demo',
       email: 'student@ikshovia.com',
-      name: 'Ananya Sharma',
+      name: 'Akash',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
       role: 'USER',
       isOnboarded: true,
@@ -72,7 +72,7 @@ class IKSHOVIADatabase {
     const adminUser: UserProfile = {
       id: 'usr_admin',
       email: 'admin@ikshovia.com',
-      name: 'Dr. Vikramaditya (Admin)',
+      name: 'Akash Singh',
       role: 'ADMIN',
       isOnboarded: true,
       createdAt: new Date().toISOString(),
@@ -81,7 +81,7 @@ class IKSHOVIADatabase {
     const superAdminUser: UserProfile = {
       id: 'usr_superadmin',
       email: 'superadmin@ikshovia.com',
-      name: 'Chief Admin (Super Admin)',
+      name: 'Akash Pratap Singh',
       role: 'SUPER_ADMIN',
       isOnboarded: true,
       createdAt: new Date().toISOString(),
