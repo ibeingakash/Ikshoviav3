@@ -5,11 +5,10 @@ import { api } from '../lib/api.js';
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  login: (email?: string, password?: string, role?: string) => Promise<void>;
-  register: (name: string, email: string, role?: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   saveOnboarding: (data: any) => Promise<void>;
-  switchRole: (role: UserRole) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,24 +34,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMe();
   }, []);
 
-  const login = async (email?: string, password?: string, role?: string) => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
-    const res = await api.login(email, password, role);
-    if (res.user && res.token) {
-      localStorage.setItem('ikshovia_token', res.token);
-      setUser(res.user);
+    try {
+      const res = await api.login(email, password);
+      if (res.error || !res.user) {
+        throw new Error(res.error || 'Invalid credentials.');
+      }
+      if (res.user && res.token) {
+        localStorage.setItem('ikshovia_token', res.token);
+        setUser(res.user);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const register = async (name: string, email: string, role?: string) => {
+  const register = async (name: string, email: string, password: string) => {
     setLoading(true);
-    const res = await api.register(name, email, role);
-    if (res.user && res.token) {
-      localStorage.setItem('ikshovia_token', res.token);
-      setUser(res.user);
+    try {
+      const res = await api.register(name, email, password);
+      if (res.error || !res.user) {
+        throw new Error(res.error || 'Registration failed.');
+      }
+      if (res.user && res.token) {
+        localStorage.setItem('ikshovia_token', res.token);
+        setUser(res.user);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const logout = () => {
@@ -68,18 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchRole = async (role: UserRole) => {
-    let targetEmail = 'student@ikshovia.com';
-    if (role === 'SUPER_ADMIN') {
-      targetEmail = 'superadmin@ikshovia.com';
-    } else if (role === 'ADMIN') {
-      targetEmail = 'admin@ikshovia.com';
-    }
-    await login(targetEmail, 'password', role);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, saveOnboarding, switchRole }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, saveOnboarding }}>
       {children}
     </AuthContext.Provider>
   );

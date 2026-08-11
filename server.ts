@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { db } from './server/db.js';
+import { db, hashPassword, verifyPassword } from './server/db.js';
 import {
   recordQuestionAttempt,
   updateLearnerModel,
@@ -108,17 +108,21 @@ async function startServer() {
 
   // Auth Endpoints
   app.post('/api/auth/login', (req, res) => {
-    const { email, role } = req.body;
-    let user = Array.from(db.users.values()).find(u => u.email.toLowerCase() === (email || '').toLowerCase());
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const user = Array.from(db.users.values()).find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
-      if (role === 'SUPER_ADMIN' || (email && email.includes('superadmin'))) {
-        user = db.users.get('usr_superadmin')!;
-      } else if (role === 'ADMIN' || (email && email.includes('admin'))) {
-        user = db.users.get('usr_admin')!;
-      } else {
-        user = db.users.get('usr_demo')!;
-      }
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const storedHash = db.userPasswords.get(cleanEmail);
+    if (!storedHash || !verifyPassword(String(password), storedHash)) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     logAudit(user.id, user.role, 'USER_LOGIN', 'USER', user.id, { email: user.email });
@@ -126,20 +130,32 @@ async function startServer() {
   });
 
   app.post('/api/auth/register', (req, res) => {
-    const { name, email, role } = req.body;
+    const { name, email, password } = req.body;
+    if (!email || !password || !name) {
+      return res.status(400).json({ error: 'Name, email, and password are required.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const existingUser = Array.from(db.users.values()).find(u => u.email.toLowerCase() === cleanEmail);
+    if (existingUser) {
+      return res.status(400).json({ error: 'An account with this email already exists.' });
+    }
+
     const userId = `usr_${Date.now()}`;
     const newUser = {
       id: userId,
-      email: email || `user_${Date.now()}@ikshovia.com`,
-      name: name || 'IKSHOVIA User',
-      role: (role === 'ADMIN' ? 'ADMIN' : 'USER') as any, // Only server decides role
+      email: cleanEmail,
+      name: String(name).trim(),
+      role: 'USER' as const, // All registrations default to USER role
       isOnboarded: false,
       createdAt: new Date().toISOString(),
     };
 
     db.users.set(userId, newUser);
+    db.userPasswords.set(cleanEmail, hashPassword(String(password)));
     updateLearnerModel(userId);
 
+    logAudit(newUser.id, newUser.role, 'USER_REGISTER', 'USER', newUser.id, { email: newUser.email });
     res.json({ success: true, user: newUser, token: `token_${userId}` });
   });
 

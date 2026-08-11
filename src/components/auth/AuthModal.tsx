@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Lock, Mail, User, ArrowRight, Sparkles, X } from 'lucide-react';
+import { Award, Lock, Mail, User, ArrowRight, Sparkles, X, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../lib/api.js';
 
@@ -24,7 +24,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'USER' | 'ADMIN'>('USER');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -41,9 +41,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (mode === 'login') {
-        await login(email, password, role);
+        await login(email, password);
       } else if (mode === 'register') {
-        await register(name || 'IKSHOVIA User', email, role);
+        await register(name || 'Akash', email, password);
       } else if (mode === 'forgot') {
         const res = await api.forgotPassword(email);
         setMessage(res.message || 'Password reset link sent.');
@@ -150,7 +150,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="user@ikshovia.com"
+                placeholder="student@ikshovia.com"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
               />
             </div>
@@ -162,43 +162,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-10 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
                 />
-              </div>
-            </div>
-          )}
-
-          {/* Role selector for registration/login testing */}
-          {mode !== 'forgot' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Role Preference</label>
-              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setRole('USER')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    role === 'USER'
-                      ? 'bg-indigo-950 border-indigo-600 text-indigo-200'
-                      : 'bg-slate-950 border-slate-800 text-slate-400'
-                  }`}
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3 text-slate-400 hover:text-white transition-colors"
                 >
-                  Learner Aspirant
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('ADMIN')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    role === 'ADMIN'
-                      ? 'bg-rose-950 border-rose-600 text-rose-200'
-                      : 'bg-slate-950 border-slate-800 text-slate-400'
-                  }`}
-                >
-                  System Admin
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -207,7 +183,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            className="w-full py-3 bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
           >
             <span>
               {mode === 'login' && 'Sign In to Platform'}
