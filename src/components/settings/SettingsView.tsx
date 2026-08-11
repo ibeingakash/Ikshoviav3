@@ -16,7 +16,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
 
 export const SettingsView: React.FC = () => {
-  const { user, switchRole } = useAuth();
+  const { user } = useAuth();
   const { refreshLearnerData } = useLearner();
 
   const [tutorMode, setTutorMode] = useState<'SOCRATIC' | 'DIRECT' | 'SUMMARY'>('SOCRATIC');
@@ -166,30 +166,22 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Access & Role Controls */}
+        {/* Account Info & Diagnostics */}
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
           <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
             <Shield className="w-4 h-4 text-rose-400" />
-            <span>Role Switcher & Diagnostics</span>
+            <span>Account Security & System Diagnostics</span>
           </h2>
 
           <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-2">
-                <span>Current Mode: {user?.role === 'ADMIN' ? 'Admin / Content Creator' : 'Learner / Candidate'}</span>
+                <span>Authenticated Account: {user?.name} ({user?.role})</span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Toggle role to inspect or test the Admin Control Panel and AI Content Generation Studio.
+                {user?.email} • Target Exam: {user?.onboarding?.targetExam || 'UPSC CSE 2026'}
               </p>
             </div>
-
-            <button
-              type="button"
-              onClick={() => switchRole(user?.role === 'ADMIN' ? 'USER' : 'ADMIN')}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shrink-0"
-            >
-              Switch to {user?.role === 'ADMIN' ? 'Learner Mode' : 'Admin Mode'}
-            </button>
           </div>
 
           <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/60 flex items-center justify-between">

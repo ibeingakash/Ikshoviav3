@@ -26,20 +26,20 @@ const getAuthHeaders = () => {
 
 export const api = {
   // Auth
-  login: async (email?: string, password?: string, role?: string) => {
+  login: async (email: string, password: string) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, role }),
+      body: JSON.stringify({ email, password }),
     });
     return res.json();
   },
 
-  register: async (name: string, email: string, role?: string) => {
+  register: async (name: string, email: string, password: string) => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, role }),
+      body: JSON.stringify({ name, email, password }),
     });
     return res.json();
   },

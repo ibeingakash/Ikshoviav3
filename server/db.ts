@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import {
   UserProfile,
   Subject,
@@ -24,8 +25,19 @@ import {
   AdminUser,
 } from '../src/types/index.js';
 
+export function hashPassword(password: string): string {
+  const salt = 'ikshovia_auth_salt_2026';
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+export function verifyPassword(password: string, hash: string): boolean {
+  if (!password || !hash) return false;
+  return hashPassword(password) === hash;
+}
+
 class IKSHOVIADatabase {
   public users: Map<string, UserProfile> = new Map();
+  public userPasswords: Map<string, string> = new Map(); // key: lowercase email, value: hashed password
   public subjects: Map<string, Subject> = new Map();
   public topics: Map<string, Topic> = new Map();
   public concepts: Map<string, Concept> = new Map();
@@ -51,9 +63,9 @@ class IKSHOVIADatabase {
   }
 
   private seedDatabase() {
-    // 1. Seed Users
-    const demoUser: UserProfile = {
-      id: 'usr_demo',
+    // 1. Seed System Accounts
+    const studentUser: UserProfile = {
+      id: 'usr_student',
       email: 'student@ikshovia.com',
       name: 'Akash',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
@@ -64,7 +76,7 @@ class IKSHOVIADatabase {
         selectedSubjects: ['sub_polity', 'sub_economy', 'sub_history', 'sub_geography'],
         dailyGoalMinutes: 120,
         experienceLevel: 'Intermediate',
-        goalStatement: 'Aiming for Top 100 rank in UPSC Civil Services Examination with strong grasp on Polity and Economy.',
+        goalStatement: 'Aiming for Top 100 rank in UPSC Civil Services Examination 2026 with strong grasp on Polity and Economy.',
       },
       createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     };
@@ -87,9 +99,15 @@ class IKSHOVIADatabase {
       createdAt: new Date().toISOString(),
     };
 
-    this.users.set(demoUser.id, demoUser);
+    this.users.set(studentUser.id, studentUser);
+    this.users.set('usr_demo', studentUser); // Backward compatibility mapping
     this.users.set(adminUser.id, adminUser);
     this.users.set(superAdminUser.id, superAdminUser);
+
+    // Seed Passwords (Strictly Hashed)
+    this.userPasswords.set('student@ikshovia.com', hashPassword('Akash@123'));
+    this.userPasswords.set('admin@ikshovia.com', hashPassword('AkashAdmin@123'));
+    this.userPasswords.set('superadmin@ikshovia.com', hashPassword('AkashSuper@123'));
 
     this.adminPermissions.set('usr_admin', [
       'QUESTION_CREATE',
@@ -567,11 +585,14 @@ class IKSHOVIADatabase {
       },
     ];
 
-    demoMastery.forEach(m => this.mastery.set(`usr_demo_${m.conceptId}`, m));
+    demoMastery.forEach(m => {
+      this.mastery.set(`usr_student_${m.conceptId}`, m);
+      this.mastery.set(`usr_demo_${m.conceptId}`, m);
+    });
 
-    // 7. Seed Learner Model for Demo User
+    // 7. Seed Learner Model for Learner Account
     const demoLearnerModel: LearnerModel = {
-      userId: 'usr_demo',
+      userId: 'usr_student',
       overallScore: 71,
       totalStudyTimeMinutes: 1420,
       currentStreak: 6,
@@ -598,7 +619,8 @@ class IKSHOVIADatabase {
       dueRevisionCount: 4,
       lastUpdated: new Date().toISOString(),
     };
-    this.learnerModels.set('usr_demo', demoLearnerModel);
+    this.learnerModels.set('usr_student', demoLearnerModel);
+    this.learnerModels.set('usr_demo', { ...demoLearnerModel, userId: 'usr_demo' });
 
     // 8. Seed Questions (With PYQ provenance & verification flags)
     const questions: Question[] = [
@@ -942,7 +964,7 @@ class IKSHOVIADatabase {
     // 12. Seed Goals
     const goal1: StudyGoal = {
       id: 'goal_1',
-      userId: 'usr_demo',
+      userId: 'usr_student',
       title: 'Crack UPSC Civil Services Prelims 2026',
       targetExam: 'UPSC CSE 2026',
       targetDate: '2026-05-24',
@@ -954,7 +976,7 @@ class IKSHOVIADatabase {
     this.goals.set(goal1.id, goal1);
 
     // 13. Seed Notifications
-    this.notifications.set('usr_demo', [
+    const notifList: NotificationItem[] = [
       {
         id: 'n1',
         title: 'Revision Due Notice',
@@ -981,7 +1003,9 @@ class IKSHOVIADatabase {
         timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
         isRead: true,
       },
-    ]);
+    ];
+    this.notifications.set('usr_student', notifList);
+    this.notifications.set('usr_demo', notifList);
   }
 }
 
