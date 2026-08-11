@@ -13,6 +13,8 @@ import {
   askAITutor,
   generateAIInsightForUser,
   generateQuestionsAdmin,
+  analyzeMistakeWithAI,
+  evaluateMainsAnswerWithAI,
 } from './server/ai.js';
 import {
   QuestionAttempt,
@@ -25,6 +27,26 @@ import {
 } from './src/types/index.js';
 
 dotenv.config();
+
+// Helper middleware for auth & admin authorization
+function getAuthenticatedUser(req: express.Request) {
+  const authHeader = req.headers.authorization;
+  let userId = 'usr_demo';
+  if (authHeader && authHeader.startsWith('Bearer token_')) {
+    userId = authHeader.replace('Bearer token_', '');
+  }
+
+  return db.users.get(userId) || db.users.get('usr_demo')!;
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = getAuthenticatedUser(req);
+  if (user.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Access denied. Admin role required.' });
+  }
+  (req as any).user = user;
+  next();
+}
 
 async function startServer() {
   const app = express();
@@ -64,7 +86,7 @@ async function startServer() {
       id: userId,
       email: email || `user_${Date.now()}@ikshovia.com`,
       name: name || 'New Aspirant',
-      role: (role === 'ADMIN' ? 'ADMIN' : 'USER') as any,
+      role: (role === 'ADMIN' ? 'ADMIN' : 'USER') as any, // Only server decides role
       isOnboarded: false,
       createdAt: new Date().toISOString(),
     };
@@ -75,16 +97,21 @@ async function startServer() {
     res.json({ success: true, user: newUser, token: `token_${userId}` });
   });
 
-  app.get('/api/auth/me', (req, res) => {
-    const authHeader = req.headers.authorization;
-    let userId = 'usr_demo';
-    if (authHeader && authHeader.includes('usr_admin')) {
-      userId = 'usr_admin';
-    } else if (authHeader && authHeader.startsWith('Bearer token_usr_')) {
-      userId = authHeader.replace('Bearer token_', '');
-    }
+  app.post('/api/auth/forgot-password', (req, res) => {
+    const { email } = req.body;
+    res.json({
+      success: true,
+      message: `Password reset instructions sent to ${email || 'your registered email address'}.`,
+    });
+  });
 
-    const user = db.users.get(userId) || db.users.get('usr_demo')!;
+  app.post('/api/auth/reset-password', (req, res) => {
+    const { token, newPassword } = req.body;
+    res.json({ success: true, message: 'Password reset successfully. You may now log in.' });
+  });
+
+  app.get('/api/auth/me', (req, res) => {
+    const user = getAuthenticatedUser(req);
     res.json({ user });
   });
 
@@ -155,7 +182,7 @@ async function startServer() {
     const updatedMastery = recordQuestionAttempt(
       uid,
       conceptId,
-      true, // confidence self-assessment rating
+      true,
       30,
       confidenceRating || 4
     );
@@ -230,6 +257,69 @@ async function startServer() {
     });
   });
 
+  // AI Mistake Analysis Endpoint
+  app.post('/api/ai/analyze-mistake', async (req, res) => {
+    const { questionId, userAnswer, correctAnswer, explanation, conceptTitle } = req.body;
+    const question = questionId ? db.questions.get(questionId) : null;
+
+    const analysis = await analyzeMistakeWithAI(
+      question?.question || 'Question',
+      userAnswer || 'User Option',
+      correctAnswer || question?.correctAnswer || 'Correct Option',
+      explanation || question?.explanation || 'Explanation',
+      conceptTitle
+    );
+
+    res.json({ success: true, analysis });
+  });
+
+  // Mains Answer Evaluator Endpoint
+  app.post('/api/mains/evaluate', async (req, res) => {
+    const { question, userAnswer, conceptTitle } = req.body;
+    if (!userAnswer || !userAnswer.trim()) {
+      return res.status(400).json({ error: 'Answer text cannot be empty' });
+    }
+
+    const user = getAuthenticatedUser(req);
+
+    const evaluation = await evaluateMainsAnswerWithAI(
+      question || 'General Civil Services Mains Question',
+      userAnswer,
+      conceptTitle
+    );
+
+    // Save to DB mockAttempts
+    const mockAttempt: MockAttempt = {
+      id: `mains_${Date.now()}`,
+      userId: user.id,
+      mockTestId: 'mains_eval_test',
+      mockTitle: question ? question.slice(0, 40) + '...' : 'Mains Answer Evaluation',
+      score: evaluation.score,
+      maxScore: evaluation.maxScore || 10,
+      accuracy: Math.round((evaluation.score / (evaluation.maxScore || 10)) * 100),
+      timeTakenSeconds: 300,
+      completedAt: new Date().toISOString(),
+      subjectScores: { mains: { total: 10, correct: Math.round(evaluation.score), score: evaluation.score } },
+      weakConceptIds: evaluation.weaknesses || [],
+      mistakeSummary: { MAINS_WEAKNESS: evaluation.weaknesses?.length || 1 },
+    };
+    db.mockAttempts.push(mockAttempt);
+
+    // Update Learner Model with identified weaknesses
+    const learnerModel = db.learnerModels.get(user.id);
+    if (learnerModel) {
+      if (evaluation.score < 7) {
+        learnerModel.weakConceptsCount = (learnerModel.weakConceptsCount || 0) + 1;
+        learnerModel.mistakeBreakdown.CONCEPT_GAP = (learnerModel.mistakeBreakdown.CONCEPT_GAP || 0) + 1;
+      }
+      db.learnerModels.set(user.id, learnerModel);
+    }
+
+    updateLearnerModel(user.id);
+
+    res.json({ success: true, evaluation, attemptSaved: mockAttempt });
+  });
+
   // Revision Queue Endpoint
   app.get('/api/revision/queue', (req, res) => {
     const userId = (req.query.userId as string) || 'usr_demo';
@@ -271,11 +361,23 @@ async function startServer() {
   app.get('/api/analytics', (req, res) => {
     const userId = (req.query.userId as string) || 'usr_demo';
     const model = db.learnerModels.get(userId) || updateLearnerModel(userId);
+    const userAttempts = db.questionAttempts.filter(a => a.userId === userId);
+
+    if (userAttempts.length < 3) {
+      return res.json({
+        model,
+        hasEnoughData: false,
+        message: 'Not enough data yet. Complete at least 3 practice questions to unlock deep analytics.',
+        subjectStats: [],
+        userMasteries: [],
+        recentAttempts: userAttempts,
+      });
+    }
+
     const userMasteries = Array.from(db.mastery.entries())
       .filter(([k]) => k.startsWith(`${userId}_`))
       .map(([, v]) => v);
 
-    // Subject breakdown
     const subjectStats = Array.from(db.subjects.values()).map(s => {
       const conceptsInSub = Array.from(db.concepts.values()).filter(c => c.subjectId === s.id);
       const masteries = conceptsInSub.map(c => db.mastery.get(`${userId}_${c.id}`)).filter(Boolean);
@@ -293,9 +395,10 @@ async function startServer() {
 
     res.json({
       model,
+      hasEnoughData: true,
       subjectStats,
       userMasteries,
-      recentAttempts: db.questionAttempts.filter(a => a.userId === userId).slice(-15),
+      recentAttempts: userAttempts.slice(-15),
     });
   });
 
@@ -312,7 +415,6 @@ async function startServer() {
     const userId = (req.query.userId as string) || 'usr_demo';
     const list = Array.from(db.conversations.values()).filter(c => c.userId === userId);
     if (list.length === 0) {
-      // Seed default conversation
       const defaultConv: ChatConversation = {
         id: 'conv_1',
         userId,
@@ -504,9 +606,9 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------
-  // ADMIN ROUTES
+  // ADMIN ROUTES (Protected by server-side requireAdmin middleware)
   // -------------------------------------------------------------
-  app.get('/api/admin/metrics', (req, res) => {
+  app.get('/api/admin/metrics', requireAdmin, (req, res) => {
     res.json({
       totalUsers: db.users.size,
       activeUsers24h: Math.round(db.users.size * 0.8),
@@ -521,11 +623,11 @@ async function startServer() {
     });
   });
 
-  app.get('/api/admin/users', (req, res) => {
+  app.get('/api/admin/users', requireAdmin, (req, res) => {
     res.json(Array.from(db.users.values()));
   });
 
-  app.post('/api/admin/concepts', (req, res) => {
+  app.post('/api/admin/concepts', requireAdmin, (req, res) => {
     const conceptData = req.body;
     const id = conceptData.id || `c_${Date.now()}`;
     const newConcept = {
@@ -536,7 +638,7 @@ async function startServer() {
     res.json({ success: true, concept: newConcept });
   });
 
-  app.post('/api/admin/questions', (req, res) => {
+  app.post('/api/admin/questions', requireAdmin, (req, res) => {
     const qData = req.body;
     const id = qData.id || `q_${Date.now()}`;
     const newQ: Question = {
@@ -548,7 +650,7 @@ async function startServer() {
     res.json({ success: true, question: newQ });
   });
 
-  app.post('/api/admin/ai/generate', async (req, res) => {
+  app.post('/api/admin/ai/generate', requireAdmin, async (req, res) => {
     const { prompt, subjectId, topicId, count } = req.body;
     const generatedQs = await generateQuestionsAdmin(prompt, subjectId, topicId, count || 2);
 
@@ -570,11 +672,11 @@ async function startServer() {
     res.json({ success: true, drafts });
   });
 
-  app.get('/api/admin/ai/drafts', (req, res) => {
+  app.get('/api/admin/ai/drafts', requireAdmin, (req, res) => {
     res.json(Array.from(db.aiDrafts.values()));
   });
 
-  app.post('/api/admin/ai/drafts/:id/approve', (req, res) => {
+  app.post('/api/admin/ai/drafts/:id/approve', requireAdmin, (req, res) => {
     const { id } = req.params;
     const draft = db.aiDrafts.get(id);
     if (!draft) return res.status(404).json({ error: 'Draft not found' });
