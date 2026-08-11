@@ -34,11 +34,11 @@ const MainContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white font-sans">
+      <div className="min-h-screen bg-[#0B1933] flex items-center justify-center text-white font-sans">
         <div className="text-center space-y-3">
-          <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto" />
-          <div className="text-sm font-bold tracking-wide text-slate-300 font-serif">
-            Initializing IKSHOVIA...
+          <div className="w-12 h-12 border-4 border-[#E7A91A] border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="text-sm font-bold tracking-wide text-slate-200 font-serif">
+            Initializing IKSHOVIA Intelligence...
           </div>
         </div>
       </div>
@@ -67,13 +67,13 @@ const MainContent: React.FC = () => {
   const getThemeClass = () => {
     switch (appTheme) {
       case 'futuristic-glass':
-        return 'bg-futuristic-glass text-slate-100';
+        return 'bg-[#FAF9F5] text-[#0B1933]';
       case 'upsc-parchment':
         return 'bg-upsc-parchment text-slate-800';
       case 'bpsc-navy':
         return 'bg-bpsc-navy text-slate-100';
       default:
-        return 'bg-futuristic-glass text-slate-100';
+        return 'bg-[#FAF9F5] text-[#0B1933]';
     }
   };
 
@@ -123,9 +123,9 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-rose-500 selection:text-white transition-colors duration-300 upsc-watermark-bg`}>
+    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-[#D99A16] selection:text-white transition-colors duration-300`}>
       {/* Accent Ribbon */}
-      <div className="h-1 w-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500 shadow-sm" />
+      <div className="h-1 w-full bg-gradient-to-r from-[#0B1933] via-[#D99A16] to-[#5B5CE2] shadow-sm" />
       <Header />
       <div className="flex flex-1 max-w-[1700px] w-full mx-auto">
         <Sidebar />
