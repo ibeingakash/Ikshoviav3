@@ -533,11 +533,18 @@ export const AdminView: React.FC = () => {
                       <div className="space-y-2 text-xs text-slate-200">
                         <div className="font-bold text-white">{draft.generatedData.question}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-2 text-slate-300 text-[11px]">
-                          {draft.generatedData.options?.map((opt: string, i: number) => (
-                            <div key={i} className={`p-1.5 rounded border ${i === draft.generatedData.correctAnswer ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200 font-semibold' : 'bg-slate-900 border-slate-800'}`}>
-                              {i === draft.generatedData.correctAnswer ? '✓ ' : ''}{opt}
-                            </div>
-                          ))}
+                          {draft.generatedData.options?.map((opt: any, i: number) => {
+                            const optText = typeof opt === 'object' && opt !== null ? (opt.text || JSON.stringify(opt)) : String(opt);
+                            const isCorrect = i === draft.generatedData.correctAnswer ||
+                              draft.generatedData.correctAnswer === String(i) ||
+                              (typeof opt === 'object' && opt !== null && draft.generatedData.correctAnswer === opt.id);
+
+                            return (
+                              <div key={i} className={`p-1.5 rounded border ${isCorrect ? 'bg-emerald-950/60 border-emerald-800 text-emerald-200 font-semibold' : 'bg-slate-900 border-slate-800'}`}>
+                                {isCorrect ? '✓ ' : ''}{optText}
+                              </div>
+                            );
+                          })}
                         </div>
                         <p className="text-[11px] text-slate-400 italic bg-slate-950 p-2 rounded">
                           <strong>Explanation:</strong> {draft.generatedData.explanation}

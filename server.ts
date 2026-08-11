@@ -24,7 +24,12 @@ import {
   StudyGoal,
   ChatMessage,
   ChatConversation,
+  OCRJob,
+  UserRole,
 } from './src/types/index.js';
+
+import { processOcrDocument } from './server/ocr.js';
+import { documentStorage } from './server/storage.js';
 
 dotenv.config();
 
@@ -39,10 +44,32 @@ function getAuthenticatedUser(req: express.Request) {
   return db.users.get(userId) || db.users.get('usr_demo')!;
 }
 
+function logAudit(actorUserId: string, actorRole: any, action: string, targetType: string, targetId: string, metadata?: any) {
+  db.auditLogs.unshift({
+    id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    actorUserId,
+    actorRole,
+    action,
+    targetType,
+    targetId,
+    timestamp: new Date().toISOString(),
+    metadata,
+  });
+}
+
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
   const user = getAuthenticatedUser(req);
-  if (user.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Access denied. Admin role required.' });
+  if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Access denied. Admin or Super Admin role required.' });
+  }
+  (req as any).user = user;
+  next();
+}
+
+function requireSuperAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = getAuthenticatedUser(req);
+  if (user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Access denied. Super Admin role required.' });
   }
   (req as any).user = user;
   next();
@@ -52,7 +79,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // -------------------------------------------------------------
   // API ROUTES
@@ -65,17 +93,20 @@ async function startServer() {
 
   // Auth Endpoints
   app.post('/api/auth/login', (req, res) => {
-    const { email, password, role } = req.body;
+    const { email, role } = req.body;
     let user = Array.from(db.users.values()).find(u => u.email.toLowerCase() === (email || '').toLowerCase());
 
     if (!user) {
-      if (role === 'ADMIN' || email?.includes('admin')) {
+      if (role === 'SUPER_ADMIN' || (email && email.includes('superadmin'))) {
+        user = db.users.get('usr_superadmin')!;
+      } else if (role === 'ADMIN' || (email && email.includes('admin'))) {
         user = db.users.get('usr_admin')!;
       } else {
         user = db.users.get('usr_demo')!;
       }
     }
 
+    logAudit(user.id, user.role, 'USER_LOGIN', 'USER', user.id, { email: user.email });
     res.json({ success: true, user, token: `token_${user.id}` });
   });
 
@@ -116,23 +147,38 @@ async function startServer() {
   });
 
   app.post('/api/auth/onboarding', (req, res) => {
-    const { userId, targetExam, selectedSubjects, dailyGoalMinutes, experienceLevel, goalStatement } = req.body;
+    const { userId, targetExam, selectedSubjects, dailyGoalMinutes, experienceLevel, goalStatement, preferredLanguage } = req.body;
     const uid = userId || 'usr_demo';
     const user = db.users.get(uid);
 
     if (user) {
       user.isOnboarded = true;
+      user.preferredLanguage = preferredLanguage || user.preferredLanguage || 'en';
       user.onboarding = {
         targetExam: targetExam || 'UPSC CSE 2026',
         selectedSubjects: selectedSubjects || ['sub_polity', 'sub_economy'],
         dailyGoalMinutes: dailyGoalMinutes || 120,
         experienceLevel: experienceLevel || 'Intermediate',
         goalStatement: goalStatement || 'Dedicated preparation for Civil Services Examination',
+        preferredLanguage: user.preferredLanguage,
       };
       db.users.set(uid, user);
       updateLearnerModel(uid);
     }
 
+    res.json({ success: true, user });
+  });
+
+  app.patch('/api/auth/preferences', (req, res) => {
+    const user = getAuthenticatedUser(req);
+    const { preferredLanguage } = req.body;
+    if (preferredLanguage === 'en' || preferredLanguage === 'hi') {
+      user.preferredLanguage = preferredLanguage;
+      if (user.onboarding) {
+        user.onboarding.preferredLanguage = preferredLanguage;
+      }
+      db.users.set(user.id, user);
+    }
     res.json({ success: true, user });
   });
 
@@ -149,6 +195,16 @@ async function startServer() {
     const concepts = Array.from(db.concepts.values()).filter(c => c.subjectId === subject.id);
 
     res.json({ subject, topics, concepts });
+  });
+
+  app.get('/api/subjects/:id/topics', (req, res) => {
+    const topics = Array.from(db.topics.values()).filter(t => t.subjectId === req.params.id);
+    res.json(topics);
+  });
+
+  app.get('/api/topics/:id/concepts', (req, res) => {
+    const concepts = Array.from(db.concepts.values()).filter(c => c.topicId === req.params.id);
+    res.json(concepts);
   });
 
   app.get('/api/concepts/:id', (req, res) => {
@@ -404,10 +460,10 @@ async function startServer() {
 
   // AI Tutor Endpoints
   app.post('/api/ai/tutor', async (req, res) => {
-    const { userId, userPrompt, conceptId, quickAction } = req.body;
+    const { userId, userPrompt, conceptId, quickAction, context } = req.body;
     const uid = userId || 'usr_demo';
 
-    const aiResponse = await askAITutor(uid, userPrompt, conceptId, quickAction);
+    const aiResponse = await askAITutor(uid, userPrompt, conceptId, quickAction, context);
     res.json({ success: true, text: aiResponse });
   });
 
@@ -452,7 +508,7 @@ async function startServer() {
 
   app.post('/api/ai/conversations/:id/messages', async (req, res) => {
     const { id } = req.params;
-    const { userText, conceptId, quickAction } = req.body;
+    const { userText, conceptId, quickAction, context } = req.body;
     const conv = db.conversations.get(id);
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
 
@@ -461,10 +517,16 @@ async function startServer() {
       role: 'user',
       text: userText,
       timestamp: new Date().toISOString(),
+      context: context || undefined,
     };
     conv.messages.push(userMsg);
 
-    const aiText = await askAITutor(conv.userId, userText, conceptId, quickAction);
+    // Auto update conversation title if default title
+    if (conv.messages.filter(m => m.role === 'user').length === 1 || conv.title === 'New AI Tutor Session') {
+      conv.title = userText.slice(0, 36) + (userText.length > 36 ? '...' : '');
+    }
+
+    const aiText = await askAITutor(conv.userId, userText, conceptId, quickAction, context);
     const aiMsg: ChatMessage = {
       id: `msg_${Date.now()}_a`,
       role: 'assistant',
@@ -536,9 +598,89 @@ async function startServer() {
     res.json({ success: true, mockAttempt });
   });
 
-  // Current Affairs & Resources
+  // Current Affairs & Resources Endpoints (Date-wise, topic-wise, source-backed)
   app.get('/api/current-affairs', (req, res) => {
-    res.json(Array.from(db.currentAffairs.values()).filter(c => c.isPublished));
+    const { category, dateRange, search, subjectId } = req.query;
+    let list = Array.from(db.currentAffairs.values()).filter(c => c.isPublished);
+
+    if (category && category !== 'All') {
+      const catStr = String(category).toLowerCase();
+      list = list.filter(c => c.category.toLowerCase().includes(catStr) || (c.subtopic && c.subtopic.toLowerCase().includes(catStr)));
+    }
+
+    if (subjectId) {
+      list = list.filter(c => c.relatedSubject === subjectId || c.relatedConceptIds.includes(String(subjectId)));
+    }
+
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(c =>
+        c.title.toLowerCase().includes(q) ||
+        c.summary.toLowerCase().includes(q) ||
+        (c.keywords && c.keywords.some(k => k.toLowerCase().includes(q))) ||
+        c.source.toLowerCase().includes(q)
+      );
+    }
+
+    if (dateRange && dateRange !== 'ALL') {
+      const now = new Date();
+      if (dateRange === 'TODAY') {
+        const todayStr = now.toISOString().split('T')[0];
+        list = list.filter(c => c.date === todayStr);
+      } else if (dateRange === 'YESTERDAY') {
+        const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        list = list.filter(c => c.date === yest);
+      } else if (dateRange === 'LAST_7_DAYS') {
+        const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        list = list.filter(c => c.date >= cutoff);
+      } else if (dateRange === 'LAST_30_DAYS') {
+        const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        list = list.filter(c => c.date >= cutoff);
+      }
+    }
+
+    // Sort by published date descending
+    list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    res.json(list);
+  });
+
+  // Dedicated Real PYQ (Previous Year Question) Bank Endpoint
+  app.get('/api/pyqs', (req, res) => {
+    const { exam, year, paper, subjectId, topicId, search } = req.query;
+    let list = Array.from(db.questions.values()).filter(q => q.isPublished && (q.isPyq || (q.examTag && q.examTag.includes('PYQ'))));
+
+    if (exam && exam !== 'All') {
+      list = list.filter(q => (q.exam && q.exam.toLowerCase().includes(String(exam).toLowerCase())) || (q.examTag && q.examTag.toLowerCase().includes(String(exam).toLowerCase())));
+    }
+
+    if (year) {
+      const yr = Number(year);
+      list = list.filter(q => q.pyqYear === yr);
+    }
+
+    if (paper) {
+      list = list.filter(q => q.paper && q.paper.toLowerCase().includes(String(paper).toLowerCase()));
+    }
+
+    if (subjectId) {
+      list = list.filter(q => q.subjectId === subjectId);
+    }
+
+    if (topicId) {
+      list = list.filter(q => q.topicId === topicId);
+    }
+
+    if (search) {
+      const q = String(search).toLowerCase();
+      list = list.filter(qItem =>
+        qItem.question.toLowerCase().includes(q) ||
+        qItem.explanation.toLowerCase().includes(q) ||
+        (qItem.source && qItem.source.toLowerCase().includes(q))
+      );
+    }
+
+    res.json(list);
   });
 
   app.get('/api/resources', (req, res) => {
@@ -620,6 +762,7 @@ async function startServer() {
       totalCurrentAffairs: db.currentAffairs.size,
       totalResources: db.resources.size,
       totalAiDrafts: db.aiDrafts.size,
+      totalOcrJobs: db.ocrJobs.size,
     });
   });
 
@@ -628,6 +771,7 @@ async function startServer() {
   });
 
   app.post('/api/admin/concepts', requireAdmin, (req, res) => {
+    const actor = (req as any).user;
     const conceptData = req.body;
     const id = conceptData.id || `c_${Date.now()}`;
     const newConcept = {
@@ -635,19 +779,275 @@ async function startServer() {
       id,
     };
     db.concepts.set(id, newConcept);
+    logAudit(actor.id, actor.role, 'CONCEPT_CREATE', 'CONCEPT', id, { title: newConcept.title });
     res.json({ success: true, concept: newConcept });
   });
 
+  app.put('/api/admin/questions/:id', requireAdmin, (req, res) => {
+    const actor = (req as any).user;
+    const { id } = req.params;
+    const existing = db.questions.get(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    const {
+      question,
+      question_en,
+      question_hi,
+      options,
+      options_en,
+      options_hi,
+      correctAnswer,
+      explanation,
+      explanation_en,
+      explanation_hi,
+      availableLanguages,
+      difficulty,
+      subjectId,
+      topicId,
+      conceptId,
+      status,
+      destination,
+      examTag,
+      pyqYear,
+    } = req.body;
+
+    const updated: Question = {
+      ...existing,
+      question: question !== undefined ? question : existing.question,
+      question_en: question_en !== undefined ? question_en : existing.question_en,
+      question_hi: question_hi !== undefined ? question_hi : existing.question_hi,
+      options: options !== undefined ? options : existing.options,
+      options_en: options_en !== undefined ? options_en : existing.options_en,
+      options_hi: options_hi !== undefined ? options_hi : existing.options_hi,
+      correctAnswer: correctAnswer !== undefined ? correctAnswer : existing.correctAnswer,
+      explanation: explanation !== undefined ? explanation : existing.explanation,
+      explanation_en: explanation_en !== undefined ? explanation_en : existing.explanation_en,
+      explanation_hi: explanation_hi !== undefined ? explanation_hi : existing.explanation_hi,
+      availableLanguages: availableLanguages !== undefined ? availableLanguages : existing.availableLanguages,
+      difficulty: difficulty !== undefined ? difficulty : existing.difficulty,
+      subjectId: subjectId !== undefined ? subjectId : existing.subjectId,
+      topicId: topicId !== undefined ? topicId : existing.topicId,
+      conceptId: conceptId !== undefined ? conceptId : existing.conceptId,
+      status: status !== undefined ? status : existing.status,
+      destination: destination !== undefined ? destination : existing.destination,
+      examTag: examTag !== undefined ? examTag : existing.examTag,
+      pyqYear: pyqYear !== undefined ? pyqYear : existing.pyqYear,
+    };
+
+    // Auto-update status to READY_TO_PUBLISH if correct answer was just assigned
+    if (updated.correctAnswer && updated.correctAnswer !== '' && updated.status === 'NEEDS_ANSWER') {
+      updated.status = 'READY_TO_PUBLISH';
+    }
+
+    db.questions.set(id, updated);
+    logAudit(actor.id, actor.role, 'QUESTION_UPDATE', 'QUESTION', id, { question: updated.question.substring(0, 40) });
+    res.json({ success: true, question: updated });
+  });
+
   app.post('/api/admin/questions', requireAdmin, (req, res) => {
+    const actor = (req as any).user;
     const qData = req.body;
     const id = qData.id || `q_${Date.now()}`;
     const newQ: Question = {
       ...qData,
       id,
-      isPublished: true,
+      isPublished: qData.isPublished !== undefined ? qData.isPublished : true,
+      status: qData.status || 'READY_TO_PUBLISH',
     };
     db.questions.set(id, newQ);
+    logAudit(actor.id, actor.role, 'QUESTION_CREATE', 'QUESTION', id, { question: newQ.question.substring(0, 40) });
     res.json({ success: true, question: newQ });
+  });
+
+  // OCR Studio Processing Endpoint
+  app.post('/api/admin/ocr/process', requireAdmin, async (req, res) => {
+    const actor = (req as any).user;
+    const {
+      mode,
+      documentLanguage = 'AUTO',
+      totalExpectedQuestions = 150,
+      questionPdfBase64,
+      answerPdfBase64,
+      questionFileName,
+      answerFileName,
+      questionTextRaw,
+      answerTextRaw,
+      subjectId,
+      topicId,
+      conceptId,
+      difficulty,
+      examTag,
+      pyqYear,
+      destination,
+      keepOriginalPdf = false,
+    } = req.body;
+
+    try {
+      const result = await processOcrDocument({
+        mode,
+        documentLanguage,
+        totalExpectedQuestions: Number(totalExpectedQuestions) || 150,
+        questionPdfBase64,
+        answerPdfBase64,
+        questionFileName,
+        answerFileName,
+        questionTextRaw,
+        answerTextRaw,
+        subjectId: subjectId || 'sub_polity',
+        topicId: topicId || 'top_rights',
+        conceptId: conceptId || 'c_art32',
+        difficulty: difficulty || 'MEDIUM',
+        examTag: examTag || 'UPSC CSE Prelims',
+        pyqYear: pyqYear || 2025,
+        destination: destination || 'PRACTICE_BANK',
+        keepOriginalPdf,
+      });
+
+      if (!result.success) {
+        return res.status(400).json({ success: false, error: result.error });
+      }
+
+      // Handle optional storage retention
+      let storedQuestionPdfKey: string | undefined;
+      let storedAnswerPdfKey: string | undefined;
+
+      if (keepOriginalPdf && questionPdfBase64) {
+        const cleanB64 = questionPdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        const buf = Buffer.from(cleanB64, 'base64');
+        storedQuestionPdfKey = await documentStorage.uploadDocument(questionFileName || 'Question_Paper.pdf', buf);
+      }
+
+      if (keepOriginalPdf && answerPdfBase64) {
+        const cleanB64 = answerPdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        const buf = Buffer.from(cleanB64, 'base64');
+        storedAnswerPdfKey = await documentStorage.uploadDocument(answerFileName || 'Answer_Key.pdf', buf);
+      }
+
+      // Store questions in database
+      result.questions.forEach(q => db.questions.set(q.id, q));
+
+      const ocrJob: OCRJob = {
+        id: result.jobId,
+        mode,
+        questionPdfName: questionFileName || 'Question_Paper.pdf',
+        answerPdfName: answerFileName || (mode === 'SEPARATE_PDFS' || mode === 'ANSWER_PDF_ONLY' ? 'Solution_Key.pdf' : undefined),
+        totalDetected: result.totalDetected,
+        matchedCount: result.matchedCount,
+        needsReviewCount: result.needsReviewCount,
+        missingAnswerCount: result.missingAnswerCount,
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+        questions: result.questions,
+      };
+
+      db.ocrJobs.set(result.jobId, ocrJob);
+      logAudit(actor.id, actor.role, 'OCR_IMPORT_PROCESS', 'OCR_JOB', result.jobId, {
+        mode,
+        count: result.questions.length,
+        keepOriginalPdf,
+        storedQuestionPdfKey,
+        storedAnswerPdfKey,
+      });
+
+      res.json({
+        success: true,
+        job: ocrJob,
+        questions: result.questions,
+        totalDetected: result.totalDetected,
+        matchedCount: result.matchedCount,
+        needsReviewCount: result.needsReviewCount,
+        missingAnswerCount: result.missingAnswerCount,
+        lowConfidenceCount: result.lowConfidenceCount,
+        storedQuestionPdfKey,
+        storedAnswerPdfKey,
+      });
+    } catch (err: any) {
+      console.error('OCR Processing error:', err);
+      res.status(500).json({ success: false, error: `OCR Processing Exception: ${err.message}` });
+    }
+  });
+
+  app.get('/api/admin/ocr/jobs', requireAdmin, (req, res) => {
+    res.json(Array.from(db.ocrJobs.values()));
+  });
+
+  // Bulk Operations & Publishing Destination
+  app.post('/api/admin/ocr/questions/bulk-action', requireAdmin, (req, res) => {
+    const actor = (req as any).user;
+    const { questionIds, action, subjectId, topicId, conceptId, difficulty, destination, examTag, pyqYear } = req.body;
+
+    if (!Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ error: 'No questions selected for bulk action.' });
+    }
+
+    let affectedCount = 0;
+    let publishBlockedCount = 0;
+
+    questionIds.forEach(qId => {
+      const q = db.questions.get(qId);
+      if (!q) return;
+
+      if (action === 'DELETE') {
+        db.questions.delete(qId);
+        affectedCount++;
+      } else if (action === 'ASSIGN_META') {
+        if (subjectId) q.subjectId = subjectId;
+        if (topicId) q.topicId = topicId;
+        if (conceptId) q.conceptId = conceptId;
+        if (difficulty) q.difficulty = difficulty;
+        if (examTag) q.examTag = examTag;
+        if (pyqYear) q.pyqYear = pyqYear;
+        db.questions.set(qId, q);
+        affectedCount++;
+      } else if (action === 'SAVE_DRAFT') {
+        q.isPublished = false;
+        q.status = 'DRAFT';
+        db.questions.set(qId, q);
+        affectedCount++;
+      } else if (action === 'APPROVE') {
+        q.status = 'READY_TO_PUBLISH';
+        db.questions.set(qId, q);
+        affectedCount++;
+      } else if (action === 'PUBLISH') {
+        // Enforce lifecycle rule: A question without a verified answer CANNOT be published!
+        if (!q.correctAnswer || q.correctAnswer === '' || q.status === 'NEEDS_ANSWER') {
+          publishBlockedCount++;
+          return;
+        }
+
+        q.isPublished = true;
+        q.status = 'PUBLISHED';
+        q.destination = destination || 'PRACTICE_BANK';
+        if (subjectId) q.subjectId = subjectId;
+        if (topicId) q.topicId = topicId;
+        if (conceptId) q.conceptId = conceptId;
+        if (difficulty) q.difficulty = difficulty;
+        if (examTag) q.examTag = examTag;
+        if (pyqYear) q.pyqYear = pyqYear;
+
+        db.questions.set(qId, q);
+        affectedCount++;
+      }
+    });
+
+    const subObj = subjectId ? db.subjects.get(subjectId) : null;
+    const conObj = conceptId ? db.concepts.get(conceptId) : null;
+
+    const confirmationMsg = action === 'PUBLISH'
+      ? `Successfully published ${affectedCount} question(s) to ${destination || 'Practice Bank'} under ${subObj?.name || 'Polity'} -> ${conObj?.title || 'Article 32'}.${publishBlockedCount > 0 ? ` (${publishBlockedCount} question(s) were blocked because they lack verified correct answers)` : ''}`
+      : `Successfully performed ${action} on ${affectedCount} question(s).`;
+
+    logAudit(actor.id, actor.role, `QUESTION_BULK_${action}`, 'QUESTION', 'BULK', { count: affectedCount, action, destination });
+
+    res.json({
+      success: true,
+      action,
+      affectedCount,
+      publishBlockedCount,
+      message: confirmationMsg,
+    });
   });
 
   app.post('/api/admin/ai/generate', requireAdmin, async (req, res) => {
@@ -698,11 +1098,85 @@ async function startServer() {
         difficulty: draft.generatedData.difficulty || 'MEDIUM',
         examTag: 'AI Approved',
         isPublished: true,
+        status: 'PUBLISHED',
+        destination: 'PRACTICE_BANK',
       };
       db.questions.set(q.id, q);
     }
 
     res.json({ success: true, draft });
+  });
+
+  // -------------------------------------------------------------
+  // SUPER ADMIN ROUTES (Protected by server-side requireSuperAdmin)
+  // -------------------------------------------------------------
+  app.get('/api/superadmin/overview', requireSuperAdmin, (req, res) => {
+    const admins = Array.from(db.users.values()).filter(u => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+    res.json({
+      metrics: {
+        totalUsers: db.users.size,
+        totalAdmins: admins.length,
+        totalQuestions: db.questions.size,
+        totalOcrJobs: db.ocrJobs.size,
+        totalAiDrafts: db.aiDrafts.size,
+        totalMockTests: db.mockTests.size,
+        systemHealth: 'OPERATIONAL',
+      },
+      admins,
+      recentAuditLogs: db.auditLogs.slice(0, 20),
+    });
+  });
+
+  app.get('/api/superadmin/admins', requireSuperAdmin, (req, res) => {
+    const admins = Array.from(db.users.values())
+      .filter(u => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN')
+      .map(u => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        permissions: db.adminPermissions.get(u.id) || ['QUESTION_CREATE', 'QUESTION_PUBLISH'],
+        status: 'ACTIVE' as const,
+        createdAt: u.createdAt,
+      }));
+    res.json(admins);
+  });
+
+  app.post('/api/superadmin/admins', requireSuperAdmin, (req, res) => {
+    const actor = (req as any).user;
+    const { name, email, role, permissions } = req.body;
+
+    const newAdminId = `usr_admin_${Date.now()}`;
+    const newAdminUser = {
+      id: newAdminId,
+      email: email || `admin_${Date.now()}@ikshovia.com`,
+      name: name || 'New Platform Admin',
+      role: (role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN') as UserRole,
+      isOnboarded: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    db.users.set(newAdminId, newAdminUser);
+    db.adminPermissions.set(newAdminId, permissions || ['QUESTION_CREATE', 'QUESTION_PUBLISH', 'OCR_IMPORT']);
+
+    logAudit(actor.id, actor.role, 'SUPERADMIN_CREATE_ADMIN', 'USER', newAdminId, { name, email, role });
+
+    res.json({ success: true, admin: newAdminUser });
+  });
+
+  app.post('/api/superadmin/admins/:id/toggle-status', requireSuperAdmin, (req, res) => {
+    const actor = (req as any).user;
+    const { id } = req.params;
+    const targetUser = db.users.get(id);
+
+    if (!targetUser) return res.status(404).json({ error: 'Admin user not found' });
+
+    logAudit(actor.id, actor.role, 'SUPERADMIN_TOGGLE_ADMIN', 'USER', id, { name: targetUser.name });
+    res.json({ success: true, message: `Admin ${targetUser.name} status updated.` });
+  });
+
+  app.get('/api/superadmin/audit-logs', requireSuperAdmin, (req, res) => {
+    res.json(db.auditLogs);
   });
 
   // -------------------------------------------------------------

@@ -18,6 +18,10 @@ import {
   FileSpreadsheet,
   HelpCircle,
   Sparkles,
+  FileUp,
+  ShieldAlert,
+  SlidersHorizontal,
+  History,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -62,7 +66,15 @@ export const Sidebar: React.FC = () => {
     { id: 'admin-users', label: 'User Directory', icon: Users, adminOnly: true },
     { id: 'admin-content', label: 'Subjects & Concepts', icon: FileSpreadsheet, adminOnly: true },
     { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle, adminOnly: true },
+    { id: 'admin-ocr', label: 'OCR Import Studio', icon: FileUp, adminOnly: true, badge: '4 Modes' },
     { id: 'admin-ai', label: 'AI Content Studio', icon: Sparkles, adminOnly: true, badge: 'Drafts' },
+  ];
+
+  const superAdminNavItems: NavItem[] = [
+    { id: 'super-admin-dashboard', label: 'Console Overview', icon: ShieldAlert, adminOnly: true },
+    { id: 'super-admin-admins', label: 'Administrators & RBAC', icon: Users, adminOnly: true },
+    { id: 'super-admin-audit', label: 'Security Audit Logs', icon: History, adminOnly: true },
+    { id: 'super-admin-settings', label: 'System Settings', icon: SlidersHorizontal, adminOnly: true },
   ];
 
   return (
@@ -124,12 +136,12 @@ export const Sidebar: React.FC = () => {
           </nav>
         </div>
 
-        {/* Admin Navigation (Visible if user is ADMIN) */}
-        {user?.role === 'ADMIN' && (
-          <div className="border-t border-slate-800/80 pt-4">
-            <div className="text-[11px] font-bold text-rose-400 tracking-wider uppercase px-3 mb-2 flex items-center gap-1.5">
+        {/* Admin Navigation (Visible if user is ADMIN or SUPER_ADMIN) */}
+        {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+          <div className="border-t border-slate-800/80 pt-3">
+            <div className="text-[11px] font-bold text-rose-400 tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
               <Shield className="w-3 h-3" />
-              <span>Admin Control</span>
+              <span>Admin Studio</span>
             </div>
             <nav className="space-y-1">
               {adminNavItems.map(item => {
@@ -139,7 +151,7 @@ export const Sidebar: React.FC = () => {
                   <button
                     key={item.id}
                     onClick={() => setActiveSection(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                       isActive
                         ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20 font-semibold'
                         : 'hover:bg-slate-800/80 text-slate-300 hover:text-white'
@@ -154,6 +166,38 @@ export const Sidebar: React.FC = () => {
                         {item.badge}
                       </span>
                     )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
+        {/* Super Admin Console (Visible only if user is SUPER_ADMIN) */}
+        {user?.role === 'SUPER_ADMIN' && (
+          <div className="border-t border-amber-500/30 pt-3">
+            <div className="text-[11px] font-bold text-amber-400 tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>Super Admin Console</span>
+            </div>
+            <nav className="space-y-1">
+              {superAdminNavItems.map(item => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveSection(item.id)}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                      isActive
+                        ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                        : 'hover:bg-slate-800/80 text-amber-200/80 hover:text-amber-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />
+                      <span>{item.label}</span>
+                    </div>
                   </button>
                 );
               })}

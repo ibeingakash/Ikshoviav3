@@ -1,4 +1,57 @@
-export type UserRole = 'USER' | 'ADMIN';
+export type UserRole = 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+
+export type QuestionStatus =
+  | 'IMPORTED'
+  | 'DRAFT'
+  | 'NEEDS_ANSWER'
+  | 'NEEDS_REVIEW'
+  | 'READY_TO_PUBLISH'
+  | 'PUBLISHED'
+  | 'ARCHIVED';
+
+export type OCRImportMode =
+  | 'QUESTION_PDF_ONLY'
+  | 'ANSWER_PDF_ONLY'
+  | 'COMBINED_PDF'
+  | 'SEPARATE_PDFS';
+
+export type PublishDestination = 'PRACTICE_BANK' | 'MOCK_TEST' | 'BOTH';
+
+export interface AuditLogRecord {
+  id: string;
+  actorUserId: string;
+  actorRole: UserRole;
+  action: string;
+  targetType: string;
+  targetId: string;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  permissions: string[];
+  status: 'ACTIVE' | 'DISABLED';
+  createdAt: string;
+  lastActiveAt?: string;
+}
+
+export interface OCRJob {
+  id: string;
+  mode: OCRImportMode;
+  questionPdfName?: string;
+  answerPdfName?: string;
+  totalDetected: number;
+  matchedCount: number;
+  needsReviewCount: number;
+  missingAnswerCount: number;
+  status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+  questions: Question[];
+}
 
 export interface UserOnboardingData {
   targetExam: string;
@@ -6,6 +59,7 @@ export interface UserOnboardingData {
   dailyGoalMinutes: number;
   experienceLevel: 'Beginner' | 'Intermediate' | 'Advanced';
   goalStatement: string;
+  preferredLanguage?: 'en' | 'hi';
 }
 
 export interface UserProfile {
@@ -16,6 +70,7 @@ export interface UserProfile {
   role: UserRole;
   isOnboarded: boolean;
   onboarding?: UserOnboardingData;
+  preferredLanguage?: 'en' | 'hi';
   createdAt: string;
 }
 
@@ -126,6 +181,18 @@ export interface QuestionOption {
   text: string;
 }
 
+export type FieldConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export interface FieldConfidence {
+  question: FieldConfidenceLevel;
+  options: FieldConfidenceLevel;
+  answer: FieldConfidenceLevel;
+  explanation: FieldConfidenceLevel;
+}
+
+export type OCRDocumentLanguage = 'EN' | 'HI' | 'BILINGUAL' | 'AUTO';
+export type OCRExtractionStrategy = 'TEXT_EXTRACTION' | 'VISION_OCR' | 'HYBRID_PAGE_BY_PAGE';
+
 export interface Question {
   id: string;
   subjectId: string;
@@ -139,7 +206,37 @@ export interface Question {
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   examTag?: string;
   pyqYear?: number;
+  exam?: string;
+  paper?: string;
+  questionNumber?: number;
+  isPyq?: boolean;
+  isAiGenerated?: boolean;
+  source?: string;
+  sourceUrl?: string;
+  verifiedStatus?: 'VERIFIED_PYQ' | 'UNVERIFIED' | 'NEEDS_REVIEW';
   isPublished: boolean;
+  status?: QuestionStatus;
+  destination?: PublishDestination;
+  ocrConfidence?: number;
+  ocrMatchReason?: string;
+  sourceJobId?: string;
+
+  // OCR V3 Accuracy & Sequence
+  questionNum?: number;
+  pageNumber?: number;
+  hasVisualContent?: boolean;
+  fieldConfidence?: FieldConfidence;
+  validationErrors?: string[];
+
+  // Bilingual Support
+  question_en?: string;
+  question_hi?: string;
+  options_en?: QuestionOption[];
+  options_hi?: QuestionOption[];
+  explanation_en?: string;
+  explanation_hi?: string;
+  availableLanguages?: ('en' | 'hi')[];
+  isAITranslated?: boolean;
 }
 
 export interface QuestionAttempt {
@@ -197,14 +294,22 @@ export interface CurrentAffairArticle {
   id: string;
   title: string;
   date: string;
-  category: string;
+  category: string; // 'Polity & Governance', 'Economy', 'International Relations', 'Environment', 'Science & Tech', 'Internal Security', 'Social Issues', 'Reports & Indices', 'Government Schemes', 'Bihar-Specific'
+  subtopic?: string;
   summary: string;
   background: string;
   keyFacts: string[];
+  examRelevance?: string;
   prelimsRelevance: string;
   mainsRelevance: string;
+  relatedSubject?: string;
   relatedConceptIds: string[];
-  source: string;
+  keywords?: string[];
+  source: string; // E.g. 'Press Information Bureau (PIB)', 'Supreme Court Judgment', 'RBI Bulletin'
+  sourceUrl?: string;
+  sourceType?: 'PRIMARY_GOVT' | 'SECONDARY_NEWS' | 'OFFICIAL_PORTAL';
+  publishedAt: string;
+  retrievedAt?: string;
   isPublished: boolean;
   questions?: Question[];
 }
@@ -234,6 +339,21 @@ export interface StudyGoal {
   progressPercentage: number;
 }
 
+export interface AiContextData {
+  subjectName?: string;
+  topicName?: string;
+  conceptId?: string;
+  conceptTitle?: string;
+  conceptSummary?: string;
+  questionText?: string;
+  options?: any[];
+  userAnswer?: string;
+  correctAnswer?: string;
+  explanation?: string;
+  mistakeType?: string;
+  pageContext?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -241,6 +361,7 @@ export interface ChatMessage {
   timestamp: string;
   quickActions?: string[];
   relatedConceptIds?: string[];
+  context?: AiContextData;
 }
 
 export interface ChatConversation {
@@ -251,15 +372,22 @@ export interface ChatConversation {
   messages: ChatMessage[];
 }
 
+export type AIDraftType = 'MCQ' | 'CONCEPT' | 'SUMMARY' | 'EXPLANATION' | 'REVISION_NOTES' | 'MAINS_QUESTION' | 'FLASHCARD' | 'PRACTICE_SET';
+
 export interface AIContentDraft {
   id: string;
-  type: 'MCQ' | 'CONCEPT' | 'SUMMARY';
+  type: AIDraftType;
   prompt: string;
   subjectId: string;
   topicId?: string;
   conceptId?: string;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  examTag?: string;
+  sourceContext?: string;
   generatedData: any;
-  status: 'DRAFT' | 'APPROVED' | 'REJECTED';
+  createdBy?: string;
+  aiModel?: string;
+  status: 'DRAFT' | 'APPROVED' | 'REJECTED' | 'NEEDS_VERIFICATION';
   createdAt: string;
 }
 

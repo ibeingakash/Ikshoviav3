@@ -22,8 +22,8 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <header id="app-header" className="sticky top-0 z-30 bg-[#0F1E36] text-slate-100 border-b border-amber-500/20 px-4 py-2.5 shadow-lg backdrop-blur-md">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+    <header id="app-header" className="sticky top-0 z-30 bg-[#0F1E36] text-slate-100 border-b border-amber-500/20 px-4 sm:px-6 py-2.5 shadow-lg backdrop-blur-md">
+      <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-4">
         {/* Brand Logo & Civil Services Emblem Badge */}
         <div className="flex items-center gap-3">
           <div
@@ -135,19 +135,28 @@ export const Header: React.FC = () => {
             )}
           </button>
 
-          {/* Role Switcher Pill (User vs Admin) */}
-          <button
-            onClick={() => switchRole(user?.role === 'ADMIN' ? 'USER' : 'ADMIN')}
-            className={`hidden lg:flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border transition-all ${
-              user?.role === 'ADMIN'
-                ? 'bg-rose-950/90 border-rose-700 text-rose-200 hover:bg-rose-900'
-                : 'bg-indigo-950/90 border-indigo-700 text-indigo-200 hover:bg-indigo-900'
-            }`}
-            title="Toggle between Learner and Admin modes"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>{user?.role === 'ADMIN' ? 'Admin' : 'Learner'}</span>
-          </button>
+          {/* Role-Authenticated Workspace Links */}
+          {user?.role === 'SUPER_ADMIN' && (
+            <button
+              onClick={() => setActiveSection('super-admin-dashboard')}
+              className="hidden lg:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg border bg-amber-500 text-slate-950 border-amber-300 hover:bg-amber-400 transition-all shadow-sm"
+              title="Super Admin Control Console"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Super Admin</span>
+            </button>
+          )}
+
+          {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+            <button
+              onClick={() => setActiveSection('admin-dashboard')}
+              className="hidden lg:flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border bg-indigo-950/90 border-indigo-500 text-amber-300 hover:bg-indigo-900 transition-all"
+              title="Admin Content Studio"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin Studio</span>
+            </button>
+          )}
 
           {/* User Profile Pill */}
           <div className="flex items-center gap-2 border-l border-slate-800 pl-2.5">

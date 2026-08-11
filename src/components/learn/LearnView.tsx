@@ -16,7 +16,7 @@ import { api } from '../../lib/api.js';
 import { Subject, Concept } from '../../types/index.js';
 
 export const LearnView: React.FC = () => {
-  const { selectedConceptId, setSelectedConceptId, navigateToConcept, setActiveSection, appTheme } = useLearner();
+  const { selectedConceptId, setSelectedConceptId, navigateToConcept, setActiveSection, appTheme, askTutorWithContext } = useLearner();
   const isParchment = appTheme === 'upsc-parchment';
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [activeSubjectId, setActiveSubjectId] = useState<string>('sub_polity');
@@ -212,6 +212,49 @@ export const LearnView: React.FC = () => {
                 }`}>
                   {activeConcept.summary}
                 </p>
+
+                {/* AI Tutor Action */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={() => {
+                      askTutorWithContext(
+                        `Explain ${activeConcept.title} in depth with civil services examples and landmark cases.`,
+                        {
+                          conceptId: activeConcept.id,
+                          conceptTitle: activeConcept.title,
+                          conceptSummary: activeConcept.summary,
+                          subjectName: subjects.find(s => s.id === activeSubjectId)?.name || 'General Studies',
+                          pageContext: `Learn -> ${activeConcept.title}`,
+                        },
+                        'EXPLAIN'
+                      );
+                    }}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <Bot className="w-4 h-4 text-white" />
+                    <span>Ask AI Tutor to Explain in Depth</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      askTutorWithContext(
+                        `Simplify ${activeConcept.title} into crisp bullet points and analogies.`,
+                        {
+                          conceptId: activeConcept.id,
+                          conceptTitle: activeConcept.title,
+                          conceptSummary: activeConcept.summary,
+                          subjectName: subjects.find(s => s.id === activeSubjectId)?.name || 'General Studies',
+                        },
+                        'SIMPLIFY'
+                      );
+                    }}
+                    className={`px-3.5 py-1.5 border font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all ${
+                      isParchment ? 'bg-amber-100 hover:bg-amber-200 border-amber-300 text-amber-950' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Simplify Topic</span>
+                  </button>
+                </div>
               </div>
 
               {/* Detailed Explanation */}
