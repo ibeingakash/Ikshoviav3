@@ -3,59 +3,56 @@ import {
   Search,
   Bell,
   Flame,
-  User,
   ShieldCheck,
   Brain,
-  Sparkles,
-  ChevronDown,
   LogOut,
-  Palette,
-  Award,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
 
 export const Header: React.FC = () => {
-  const { user, logout, switchRole } = useAuth();
-  const { learnerModel, notifications, setIsSearchOpen, setActiveSection, activeSection, appTheme, setAppTheme } = useLearner();
+  const { user, logout } = useAuth();
+  const { learnerModel, notifications, setIsSearchOpen, setActiveSection } = useLearner();
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <header id="app-header" className="sticky top-0 z-30 bg-[#0F1E36] text-slate-100 border-b border-amber-500/20 px-4 sm:px-6 py-2.5 shadow-lg backdrop-blur-md">
+    <header id="app-header" className="sticky top-0 z-30 bg-[#0B1933] text-white border-b border-[#0B1933]/40 px-4 sm:px-6 py-3 shadow-md">
       <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-4">
-        {/* Brand Logo & Civil Services Emblem Badge */}
+        
+        {/* Brand Logo & Name */}
         <div className="flex items-center gap-3">
           <div
             onClick={() => setActiveSection('dashboard')}
-            className="flex items-center gap-2.5 cursor-pointer group"
+            className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 via-amber-600 to-indigo-900 flex items-center justify-center shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform border border-amber-300/40">
-              <Award className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-[#E7A91A] text-[#0B1933] flex items-center justify-center font-serif font-bold text-lg shadow-sm border border-amber-300 group-hover:scale-105 transition-transform">
+              I
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xl font-extrabold tracking-tight text-white font-serif">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold tracking-tight text-white font-serif">
                   IKSHOVIA
                 </span>
-                <span className="text-[10px] uppercase font-mono tracking-widest text-rose-300 bg-rose-950/80 border border-rose-800/80 px-2 py-0.5 rounded-md">
+                <span className="text-[10px] uppercase font-mono tracking-widest text-[#E7A91A] bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded-md font-sans font-bold">
                   Intelligence
                 </span>
               </div>
               <div className="text-[10px] text-slate-300 font-medium tracking-wide hidden md:block">
-                Personal Learning Intelligence Platform
+                Personal Learning Intelligence
               </div>
             </div>
           </div>
         </div>
 
-        {/* Global Search Bar Button */}
+        {/* Global Search Button */}
         <button
           id="global-search-btn"
           onClick={() => setIsSearchOpen(true)}
-          className="hidden md:flex items-center gap-2 bg-slate-900/80 hover:bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-1.5 text-xs text-slate-300 transition-all w-64 shadow-inner"
+          className="hidden md:flex items-center gap-2.5 bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-1.5 text-xs text-slate-300 transition-all w-72 shadow-inner"
         >
-          <Search className="w-3.5 h-3.5 text-amber-400" />
+          <Search className="w-3.5 h-3.5 text-[#E7A91A]" />
           <span className="flex-1 text-left text-slate-300">Search Polity, PYQs, Current Affairs...</span>
           <kbd className="hidden sm:inline-block bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
             ⌘K
@@ -63,60 +60,24 @@ export const Header: React.FC = () => {
         </button>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
-          {/* Theme Quick Switcher Toggle */}
-          <div className="flex items-center bg-slate-900/90 border border-slate-700/80 p-0.5 rounded-xl text-[11px] font-semibold">
-            <button
-              onClick={() => setAppTheme('futuristic-glass')}
-              className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
-                appTheme === 'futuristic-glass'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-              title="Futuristic Cyber Glass Theme"
-            >
-              <span>⚡ Cyber</span>
-            </button>
-            <button
-              onClick={() => setAppTheme('upsc-parchment')}
-              className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
-                appTheme === 'upsc-parchment'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-              title="UPSC Ivory Parchment Theme"
-            >
-              <span>📜 Parchment</span>
-            </button>
-            <button
-              onClick={() => setAppTheme('bpsc-navy')}
-              className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
-                appTheme === 'bpsc-navy'
-                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-              title="BPSC Royal Navy Theme"
-            >
-              <span>🏛️ Navy</span>
-            </button>
-          </div>
-
-          {/* Search icon for mobile */}
+        <div className="flex items-center gap-3">
+          
+          {/* Mobile Search Button */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="md:hidden p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300"
+            className="md:hidden p-2 rounded-lg bg-slate-900 text-slate-300 border border-slate-700"
           >
-            <Search className="w-4 h-4" />
+            <Search className="w-4 h-4 text-[#E7A91A]" />
           </button>
 
-          {/* Streak Badge */}
+          {/* Daily Streak Pill */}
           {learnerModel && (
             <div
               onClick={() => setActiveSection('profile')}
-              className="flex items-center gap-1.5 bg-amber-950/80 border border-amber-600/60 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-lg cursor-pointer hover:bg-amber-900/80 transition-colors"
+              className="flex items-center gap-1.5 bg-amber-950/80 border border-amber-500/50 text-[#E7A91A] text-xs font-semibold px-2.5 py-1 rounded-xl cursor-pointer hover:bg-amber-900/80 transition-colors"
               title="Daily Study Streak"
             >
-              <Flame className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+              <Flame className="w-4 h-4 text-[#E7A91A] fill-[#E7A91A]" />
               <span>{learnerModel.currentStreak} Days</span>
             </div>
           )}
@@ -124,71 +85,71 @@ export const Header: React.FC = () => {
           {/* Notifications Button */}
           <button
             onClick={() => setActiveSection('dashboard')}
-            className="relative p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/60 transition-colors"
+            className="relative p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 transition-colors cursor-pointer"
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-bounce">
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
                 {unreadCount}
               </span>
             )}
           </button>
 
-          {/* Role-Authenticated Workspace Links */}
+          {/* Super Admin Badge (when authorized) */}
           {user?.role === 'SUPER_ADMIN' && (
             <button
               onClick={() => setActiveSection('super-admin-dashboard')}
-              className="hidden lg:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg border bg-amber-500 text-slate-950 border-amber-300 hover:bg-amber-400 transition-all shadow-sm"
-              title="Super Admin Control Console"
+              className="hidden lg:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-xl border bg-[#E7A91A] text-[#0B1933] border-amber-300 hover:bg-amber-400 transition-all shadow-sm cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Super Admin</span>
             </button>
           )}
 
+          {/* Admin Studio Badge (when authorized) */}
           {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
             <button
               onClick={() => setActiveSection('admin-dashboard')}
-              className="hidden lg:flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border bg-indigo-950/90 border-indigo-500 text-amber-300 hover:bg-indigo-900 transition-all"
-              title="Admin Content Studio"
+              className="hidden lg:flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-xl border bg-indigo-950/90 border-indigo-500 text-[#E7A91A] hover:bg-indigo-900 transition-all cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Admin Studio</span>
             </button>
           )}
 
-          {/* User Profile Pill */}
-          <div className="flex items-center gap-2 border-l border-slate-800 pl-2.5">
+          {/* Dynamic Authenticated User Profile */}
+          <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
             <div
               onClick={() => setActiveSection('profile')}
-              className="flex items-center gap-2 cursor-pointer group"
+              className="flex items-center gap-2.5 cursor-pointer group"
             >
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
                   alt={user.name}
-                  className="w-8 h-8 rounded-full object-cover border border-amber-400/60 group-hover:ring-2 ring-amber-400 transition-all"
+                  className="w-8 h-8 rounded-full object-cover border border-[#E7A91A] group-hover:ring-2 ring-[#E7A91A] transition-all"
                 />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-amber-500/50 flex items-center justify-center text-amber-300 font-bold text-xs">
-                  {user?.name?.charAt(0) || 'U'}
+                <div className="w-8 h-8 rounded-full bg-[#101C35] border border-[#E7A91A]/60 flex items-center justify-center text-[#E7A91A] font-bold text-xs font-serif">
+                  {user?.name?.charAt(0) || 'A'}
                 </div>
               )}
               <div className="hidden xl:block text-left">
-                <div className="text-xs font-semibold text-slate-100 leading-none">{user?.name || 'IKSHOVIA User'}</div>
-                <div className="text-[10px] text-amber-300/80 mt-0.5">{user?.onboarding?.targetExam || 'UPSC 2026'}</div>
+                <div className="text-xs font-bold text-white leading-none">{user?.name || 'Aspirant'}</div>
+                <div className="text-[10px] text-[#E7A91A] mt-0.5">{user?.onboarding?.targetExam || 'UPSC CSE 2026'}</div>
               </div>
             </div>
 
             <button
               onClick={logout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition-colors ml-1 cursor-pointer"
               title="Log Out"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+
         </div>
       </div>
     </header>
