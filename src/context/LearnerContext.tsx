@@ -1,0 +1,126 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { LearnerModel, NextBestAction, NotificationItem } from '../types/index.js';
+import { api } from '../lib/api.js';
+import { useAuth } from './AuthContext.js';
+
+export type NavigationSection =
+  | 'dashboard'
+  | 'learn'
+  | 'ai-tutor'
+  | 'practice'
+  | 'mock-tests'
+  | 'revision'
+  | 'graph'
+  | 'analytics'
+  | 'current-affairs'
+  | 'resources'
+  | 'goals'
+  | 'profile'
+  | 'settings'
+  | 'admin-dashboard'
+  | 'admin-users'
+  | 'admin-content'
+  | 'admin-questions'
+  | 'admin-ai';
+
+export type AppTheme = 'futuristic-glass' | 'upsc-parchment' | 'bpsc-navy';
+
+interface LearnerContextType {
+  activeSection: NavigationSection;
+  setActiveSection: (sec: NavigationSection) => void;
+  appTheme: AppTheme;
+  setAppTheme: (theme: AppTheme) => void;
+  learnerModel: LearnerModel | null;
+  nextBestAction: NextBestAction | null;
+  aiInsight: string;
+  notifications: NotificationItem[];
+  selectedSubjectId: string | null;
+  setSelectedSubjectId: (id: string | null) => void;
+  selectedConceptId: string | null;
+  setSelectedConceptId: (id: string | null) => void;
+  isSearchOpen: boolean;
+  setIsSearchOpen: (open: boolean) => void;
+  refreshLearnerData: () => Promise<void>;
+  navigateToConcept: (conceptId: string) => void;
+}
+
+const LearnerContext = createContext<LearnerContextType | undefined>(undefined);
+
+export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const [activeSection, setActiveSection] = useState<NavigationSection>('dashboard');
+  const [appTheme, setAppTheme] = useState<AppTheme>('futuristic-glass');
+  const [learnerModel, setLearnerModel] = useState<LearnerModel | null>(null);
+  const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
+  const [aiInsight, setAiInsight] = useState<string>('Analyzing your learning health...');
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>('sub_polity');
+  const [selectedConceptId, setSelectedConceptId] = useState<string | null>('c_art21');
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+
+  const refreshLearnerData = async () => {
+    try {
+      const data = await api.getLearnerModel(user?.id);
+      setLearnerModel(data.model);
+      setNextBestAction(data.nextBestAction);
+      if (data.aiInsight) setAiInsight(data.aiInsight);
+
+      const notifs = await api.getNotifications(user?.id);
+      setNotifications(notifs);
+    } catch (err) {
+      console.error('Failed to load learner data:', err);
+    }
+  };
+
+  useEffect(() => {
+    refreshLearnerData();
+  }, [user]);
+
+  // Handle Ctrl+K shortcut for global search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsSearchOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const navigateToConcept = (conceptId: string) => {
+    setSelectedConceptId(conceptId);
+    setActiveSection('learn');
+  };
+
+  return (
+    <LearnerContext.Provider
+      value={{
+        activeSection,
+        setActiveSection,
+        appTheme,
+        setAppTheme,
+        learnerModel,
+        nextBestAction,
+        aiInsight,
+        notifications,
+        selectedSubjectId,
+        setSelectedSubjectId,
+        selectedConceptId,
+        setSelectedConceptId,
+        isSearchOpen,
+        setIsSearchOpen,
+        refreshLearnerData,
+        navigateToConcept,
+      }}
+    >
+      {children}
+    </LearnerContext.Provider>
+  );
+};
+
+export const useLearner = () => {
+  const ctx = useContext(LearnerContext);
+  if (!ctx) throw new Error('useLearner must be used within LearnerProvider');
+  return ctx;
+};
