@@ -1,5 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { db } from './db.js';
+import { userRepository } from './repositories/UserRepository.js';
+import { learnerRepository } from './repositories/LearnerRepository.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -24,8 +26,8 @@ export async function askAITutor(
   quickAction?: string,
   context?: any
 ): Promise<string> {
-  const user = db.users.get(userId);
-  const learnerModel = db.learnerModels.get(userId);
+  const user = await userRepository.findById(userId);
+  const learnerModel = await learnerRepository.getLearnerModel(userId);
   const concept = conceptId ? db.concepts.get(conceptId) : null;
 
   const ai = getAIClient();
@@ -140,7 +142,7 @@ The AI intelligence engine could not process your query at this moment. Please c
 }
 
 export async function generateAIInsightForUser(userId: string): Promise<string> {
-  const learnerModel = db.learnerModels.get(userId);
+  const learnerModel = await learnerRepository.getLearnerModel(userId);
   const ai = getAIClient();
 
   if (!ai || !learnerModel) {

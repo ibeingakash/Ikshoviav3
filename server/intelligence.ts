@@ -1,26 +1,28 @@
-import { db } from './db.js';
+import pool from './db/pool.js';
+import { learnerRepository } from './repositories/LearnerRepository.js';
+import { revisionRepository } from './repositories/RevisionRepository.js';
 import {
   ConceptMastery,
   LearnerModel,
   NextBestAction,
-  QuestionAttempt,
   RevisionItem,
   MistakeCategory,
 } from '../src/types/index.js';
+import { PoolClient } from 'pg';
 
 /**
  * Recalculates concept mastery for a user after a learning event or question attempt.
  */
-export function recordQuestionAttempt(
+export async function recordQuestionAttempt(
   userId: string,
   conceptId: string,
   isCorrect: boolean,
   timeSpentSeconds: number,
   confidenceRating: number, // 1 to 5
-  mistakeCategory?: MistakeCategory
-): ConceptMastery {
-  const key = `${userId}_${conceptId}`;
-  let mastery = db.mastery.get(key);
+  mistakeCategory?: MistakeCategory,
+  client?: PoolClient
+): Promise<ConceptMastery> {
+  let mastery = await learnerRepository.getConceptMastery(userId, conceptId, client);
 
   if (!mastery) {
     mastery = {
@@ -50,12 +52,10 @@ export function recordQuestionAttempt(
 
   if (isCorrect) {
     mastery.correctCount += 1;
-    // Boost application, accuracy, understanding, retention
     mastery.accuracy = Math.round((mastery.correctCount / mastery.attemptsCount) * 100);
     mastery.application = Math.min(100, mastery.application + 8);
     mastery.understanding = Math.min(100, mastery.understanding + 5);
     mastery.retention = Math.min(100, mastery.retention + 6);
-    // Push next review date further (spaced repetition expansion)
     const daysToAdd = mastery.overallMastery > 80 ? 7 : 4;
     mastery.nextReviewDate = new Date(Date.now() + daysToAdd * 24 * 3600 * 1000).toISOString();
   } else {
@@ -68,12 +68,9 @@ export function recordQuestionAttempt(
       mastery.understanding = Math.max(10, mastery.understanding - 15);
     }
 
-    // Schedule review urgently (tomorrow or in 2 days)
     mastery.nextReviewDate = new Date(Date.now() + 1 * 24 * 3600 * 1000).toISOString();
   }
 
-  // Overall mastery weighted formula:
-  // 30% Understanding + 25% Application + 25% Accuracy + 20% Retention
   mastery.overallMastery = Math.round(
     0.3 * mastery.understanding +
     0.25 * mastery.application +
@@ -81,10 +78,29 @@ export function recordQuestionAttempt(
     0.2 * mastery.retention
   );
 
-  db.mastery.set(key, mastery);
+  await learnerRepository.saveConceptMastery(userId, conceptId, mastery, client);
+  await learnerRepository.saveRetentionState(userId, conceptId, mastery.retention, 0.05, client);
+
+  // Update revision item in PostgreSQL if needed
+  const isOverdue = mastery.nextReviewDate ? new Date(mastery.nextReviewDate).getTime() < Date.now() : true;
+  if (isOverdue || mastery.retention < 70) {
+    await revisionRepository.upsertRevisionItem(
+      {
+        userId,
+        conceptId,
+        retention: mastery.retention,
+        priority: mastery.retention < 60 ? 'HIGH' : mastery.retention < 75 ? 'MEDIUM' : 'LOW',
+        lastReviewedAt: mastery.lastReviewedAt,
+        nextReviewDate: mastery.nextReviewDate,
+        status: 'PENDING',
+        mistakeReason: mistakeCategory ? `Category: ${mistakeCategory}` : 'Periodic practice',
+      },
+      client
+    );
+  }
 
   // Re-calculate user's aggregate LearnerModel
-  updateLearnerModel(userId);
+  await updateLearnerModel(userId, client);
 
   return mastery;
 }
@@ -92,40 +108,14 @@ export function recordQuestionAttempt(
 /**
  * Aggregates all user interactions to update the global LearnerModel
  */
-export function updateLearnerModel(userId: string): LearnerModel {
-  let model = db.learnerModels.get(userId);
-  if (!model) {
-    model = {
-      userId,
-      overallScore: 60,
-      totalStudyTimeMinutes: 0,
-      currentStreak: 1,
-      highestStreak: 1,
-      activeDaysCount: 1,
-      confidenceBias: 'BALANCED',
-      mistakeBreakdown: {
-        CONCEPT_GAP: 0,
-        RECALL_FAILURE: 0,
-        CONCEPT_CONFUSION: 0,
-        MISINTERPRETATION: 0,
-        CARELESS_ERROR: 0,
-        TIME_PRESSURE: 0,
-      },
-      subjectMastery: {},
-      masteredConceptsCount: 0,
-      weakConceptsCount: 0,
-      dueRevisionCount: 0,
-      lastUpdated: new Date().toISOString(),
-    };
-  }
+export async function updateLearnerModel(userId: string, client?: PoolClient): Promise<LearnerModel> {
+  const model = await learnerRepository.getLearnerModel(userId, client);
+  const userMasteryList = await learnerRepository.getUserMasteries(userId, client);
 
-  // Calculate subject mastery and counts from user's concept mastery records
-  const userMasteryList: ConceptMastery[] = [];
-  db.mastery.forEach((m, key) => {
-    if (key.startsWith(`${userId}_`)) {
-      userMasteryList.push(m);
-    }
-  });
+  if (userMasteryList.length === 0) {
+    model.lastUpdated = new Date().toISOString();
+    return await learnerRepository.saveLearnerModel(model, client);
+  }
 
   let totalMasterySum = 0;
   let masteredCount = 0;
@@ -136,6 +126,15 @@ export function updateLearnerModel(userId: string): LearnerModel {
 
   const subjectSums: Record<string, { sum: number; count: number }> = {};
 
+  const executor = client || pool;
+  const conceptIds = userMasteryList.map(m => m.conceptId);
+  const conceptsRes = await executor.query(
+    'SELECT id, subject_id FROM public.concepts WHERE id = ANY($1)',
+    [conceptIds]
+  );
+  const conceptMap = new Map<string, { subject_id: string }>();
+  conceptsRes.rows.forEach(r => conceptMap.set(r.id, { subject_id: r.subject_id }));
+
   userMasteryList.forEach(m => {
     totalMasterySum += m.overallMastery;
     avgConfidence += m.confidence;
@@ -144,17 +143,16 @@ export function updateLearnerModel(userId: string): LearnerModel {
     if (m.overallMastery >= 80) masteredCount++;
     if (m.overallMastery < 65) weakCount++;
 
-    if (m.nextReviewDate && new Date(m.nextReviewDate).getTime() < Date.now()) {
-      dueCount++;
-    }
+    const isOverdue = m.nextReviewDate ? new Date(m.nextReviewDate).getTime() < Date.now() : false;
+    if (isOverdue || m.retention < 70) dueCount++;
 
-    const concept = db.concepts.get(m.conceptId);
-    if (concept) {
-      if (!subjectSums[concept.subjectId]) {
-        subjectSums[concept.subjectId] = { sum: 0, count: 0 };
+    const concept = conceptMap.get(m.conceptId);
+    if (concept && concept.subject_id) {
+      if (!subjectSums[concept.subject_id]) {
+        subjectSums[concept.subject_id] = { sum: 0, count: 0 };
       }
-      subjectSums[concept.subjectId].sum += m.overallMastery;
-      subjectSums[concept.subjectId].count += 1;
+      subjectSums[concept.subject_id].sum += m.overallMastery;
+      subjectSums[concept.subject_id].count += 1;
     }
   });
 
@@ -176,37 +174,38 @@ export function updateLearnerModel(userId: string): LearnerModel {
   }
 
   // Compute Subject Mastery
+  const subjectsRes = await executor.query('SELECT id FROM public.subjects');
   const subjectMasteryMap: Record<string, number> = {};
-  db.subjects.forEach(s => {
+  subjectsRes.rows.forEach(s => {
     if (subjectSums[s.id]) {
       subjectMasteryMap[s.id] = Math.round(subjectSums[s.id].sum / subjectSums[s.id].count);
     } else {
-      subjectMasteryMap[s.id] = 50; // default initial baseline
+      subjectMasteryMap[s.id] = 50;
     }
   });
   model.subjectMastery = subjectMasteryMap;
   model.lastUpdated = new Date().toISOString();
 
-  db.learnerModels.set(userId, model);
-  return model;
+  return await learnerRepository.saveLearnerModel(model, client);
 }
 
 /**
  * CENTRAL INTELLIGENCE ENGINE: Determines the "Next Best Action" for a learner
  */
-export function getNextBestAction(userId: string): NextBestAction {
-  const model = db.learnerModels.get(userId) || updateLearnerModel(userId);
-  const userMasteries: ConceptMastery[] = [];
-  db.mastery.forEach((m, key) => {
-    if (key.startsWith(`${userId}_`)) {
-      userMasteries.push(m);
-    }
-  });
+export async function getNextBestAction(userId: string): Promise<NextBestAction> {
+  await updateLearnerModel(userId);
+  const userMasteries = await learnerRepository.getUserMasteries(userId);
 
-  // Calculate composite priority score for every concept mastery
-  // Score = (100 - retention)*0.4 + (importance == HIGH ? 35 : 15) + (incorrectCount * 8) + (isOverdue ? 25 : 0)
+  const conceptIds = userMasteries.map(m => m.conceptId);
+  const conceptsRes = conceptIds.length > 0
+    ? await pool.query('SELECT * FROM public.concepts WHERE id = ANY($1)', [conceptIds])
+    : { rows: [] };
+
+  const conceptMap = new Map<string, any>();
+  conceptsRes.rows.forEach(c => conceptMap.set(c.id, c));
+
   const prioritized = userMasteries.map(m => {
-    const concept = db.concepts.get(m.conceptId);
+    const concept = conceptMap.get(m.conceptId);
     const isOverdue = m.nextReviewDate ? new Date(m.nextReviewDate).getTime() < Date.now() : false;
     const importanceWeight = concept?.importance === 'HIGH' ? 35 : concept?.importance === 'MEDIUM' ? 15 : 5;
     const mistakeWeight = m.incorrectCount * 8;
@@ -219,7 +218,7 @@ export function getNextBestAction(userId: string): NextBestAction {
 
   if (prioritized.length > 0 && prioritized[0].concept) {
     const top = prioritized[0];
-    const concept = top.concept!;
+    const concept = top.concept;
     const m = top.mastery;
 
     if (top.isOverdue || m.retention < 65 || m.incorrectCount > 0) {
@@ -230,8 +229,8 @@ export function getNextBestAction(userId: string): NextBestAction {
         description: `Retention decayed to ${m.retention}% with ${m.incorrectCount} recent mistake(s) in a High-Importance exam concept.`,
         reason: `Engine prioritized ${concept.title} because it combines High Exam Importance (${concept.importance}), Low Retention (${m.retention}%), and recent mistake history.`,
         estimatedMinutes: 12,
-        subjectId: concept.subjectId,
-        topicId: concept.topicId,
+        subjectId: concept.subject_id,
+        topicId: concept.topic_id,
         conceptId: concept.id,
         priority: 'URGENT',
         followUpAction: `Complete 5 targeted application MCQs on ${concept.title}.`,
@@ -242,9 +241,11 @@ export function getNextBestAction(userId: string): NextBestAction {
   // 2. Check for Concept Confusion or Overconfidence
   const confusedConcept = userMasteries.find(m => m.confusionPartners && m.confusionPartners.length > 0);
   if (confusedConcept) {
-    const conceptA = db.concepts.get(confusedConcept.conceptId);
     const partnerId = confusedConcept.confusionPartners![0];
-    const conceptB = db.concepts.get(partnerId);
+    const res2 = await pool.query('SELECT * FROM public.concepts WHERE id = ANY($1)', [[confusedConcept.conceptId, partnerId]]);
+    const cMap2 = new Map(res2.rows.map(r => [r.id, r]));
+    const conceptA = cMap2.get(confusedConcept.conceptId);
+    const conceptB = cMap2.get(partnerId);
 
     if (conceptA && conceptB) {
       return {
@@ -254,7 +255,7 @@ export function getNextBestAction(userId: string): NextBestAction {
         description: `You have repeatedly confused these two related concepts in past attempts.`,
         reason: `Mistake pattern intelligence identified a high error correlation between ${conceptA.title} and ${conceptB.title}.`,
         estimatedMinutes: 10,
-        subjectId: conceptA.subjectId,
+        subjectId: conceptA.subject_id,
         conceptId: conceptA.id,
         priority: 'HIGH',
         followUpAction: `Complete a 5-question comparison drill to solidify the key differences.`,
@@ -265,7 +266,8 @@ export function getNextBestAction(userId: string): NextBestAction {
   // 3. Check for Weakest Subject / Concept
   const weakMastery = userMasteries.sort((a, b) => a.overallMastery - b.overallMastery)[0];
   if (weakMastery) {
-    const concept = db.concepts.get(weakMastery.conceptId);
+    const res3 = await pool.query('SELECT * FROM public.concepts WHERE id = $1', [weakMastery.conceptId]);
+    const concept = res3.rows[0];
     if (concept) {
       return {
         id: `nba_${Date.now()}`,
@@ -274,7 +276,7 @@ export function getNextBestAction(userId: string): NextBestAction {
         description: `Your mastery in this core concept stands at ${weakMastery.overallMastery}%.`,
         reason: `Targeted practice will boost your application score and elevate your overall subject score.`,
         estimatedMinutes: 15,
-        subjectId: concept.subjectId,
+        subjectId: concept.subject_id,
         conceptId: concept.id,
         priority: 'HIGH',
         followUpAction: `Review key points if accuracy remains below 70%.`,
@@ -282,8 +284,25 @@ export function getNextBestAction(userId: string): NextBestAction {
     }
   }
 
-  // Fallback default recommendation
-  const defaultConcept = db.concepts.get('c_art21') || Array.from(db.concepts.values())[0];
+  // Fallback default recommendation from PostgreSQL
+  const defaultRes = await pool.query('SELECT * FROM public.concepts WHERE id = $1 LIMIT 1', ['c_art21']);
+  const defaultConcept = defaultRes.rows[0] || (await pool.query('SELECT * FROM public.concepts LIMIT 1')).rows[0];
+
+  if (!defaultConcept) {
+    return {
+      id: `nba_${Date.now()}`,
+      actionType: 'LEARN',
+      title: 'Deep Dive: Core Concepts',
+      description: 'Build strong foundational clarity.',
+      reason: 'Regular concept learning keeps your knowledge graph connected and active.',
+      estimatedMinutes: 15,
+      subjectId: 'sub_polity',
+      conceptId: 'c_art21',
+      priority: 'MEDIUM',
+      followUpAction: 'Attempt practice questions to build mastery.',
+    };
+  }
+
   return {
     id: `nba_${Date.now()}`,
     actionType: 'LEARN',
@@ -291,7 +310,7 @@ export function getNextBestAction(userId: string): NextBestAction {
     description: `Build strong foundational clarity on Part III Fundamental Rights.`,
     reason: `Regular concept learning keeps your knowledge graph connected and active.`,
     estimatedMinutes: 15,
-    subjectId: defaultConcept.subjectId,
+    subjectId: defaultConcept.subject_id,
     conceptId: defaultConcept.id,
     priority: 'MEDIUM',
     followUpAction: `Rate your confidence and attempt 3 practice questions.`,
@@ -299,41 +318,8 @@ export function getNextBestAction(userId: string): NextBestAction {
 }
 
 /**
- * Returns the spaced-repetition revision queue for a user
+ * Returns the spaced-repetition revision queue for a user directly from PostgreSQL
  */
-export function getRevisionQueue(userId: string): RevisionItem[] {
-  const queue: RevisionItem[] = [];
-
-  db.mastery.forEach((m, key) => {
-    if (key.startsWith(`${userId}_`)) {
-      const concept = db.concepts.get(m.conceptId);
-      if (concept) {
-        const daysSinceLast = m.lastReviewedAt
-          ? Math.max(0, Math.round((Date.now() - new Date(m.lastReviewedAt).getTime()) / (1000 * 3600 * 24)))
-          : 5;
-
-        const isOverdue = m.nextReviewDate ? new Date(m.nextReviewDate).getTime() < Date.now() : true;
-
-        if (isOverdue || m.retention < 70) {
-          const subject = db.subjects.get(concept.subjectId);
-          queue.push({
-            conceptId: concept.id,
-            conceptTitle: concept.title,
-            subjectName: subject?.name || 'General',
-            retention: m.retention,
-            priority: m.retention < 60 ? 'HIGH' : m.retention < 75 ? 'MEDIUM' : 'LOW',
-            daysSinceLastReview: daysSinceLast,
-            estimatedMinutes: 10,
-            mistakeReason: m.confusionPartners && m.confusionPartners.length > 0
-              ? `Confusing with ${db.concepts.get(m.confusionPartners[0])?.title || 'related concept'}`
-              : m.retention < 60
-              ? 'Retention decay over time'
-              : 'Periodic refresher',
-          });
-        }
-      }
-    }
-  });
-
-  return queue.sort((a, b) => a.retention - b.retention);
+export async function getRevisionQueue(userId: string): Promise<RevisionItem[]> {
+  return await revisionRepository.getRevisionQueue(userId);
 }
