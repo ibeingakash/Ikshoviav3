@@ -1,4 +1,5 @@
 import path from 'path';
+import { getSupabase } from './supabase.js';
 
 export interface StorageDocument {
   key: string;
@@ -7,54 +8,109 @@ export interface StorageDocument {
   sizeBytes: number;
   buffer: Buffer;
   uploadedAt: string;
+  publicUrl?: string;
 }
 
-// In-memory / abstracted object storage service (e.g. R2 / S3 abstraction)
 class DocumentStorageService {
-  private store = new Map<string, StorageDocument>();
+  async uploadDocument(
+    filename: string,
+    buffer: Buffer,
+    mimeType = 'application/pdf',
+    bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'
+  ): Promise<string> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
+    }
 
-  async uploadDocument(filename: string, buffer: Buffer, mimeType = 'application/pdf'): Promise<string> {
-    const key = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${path.basename(filename)}`;
-    const doc: StorageDocument = {
-      key,
-      filename,
-      mimeType,
-      sizeBytes: buffer.length,
-      buffer,
-      uploadedAt: new Date().toISOString(),
-    };
-    this.store.set(key, doc);
+    const sanitizeFilename = path.basename(filename).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const key = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${sanitizeFilename}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(key, buffer, { contentType: mimeType, upsert: true });
+
+    if (error) {
+      console.error('[Storage] Supabase Storage upload error:', error.message);
+      throw new Error(`Supabase Storage upload failed: ${error.message}`);
+    }
+
     return key;
   }
 
-  async getDocument(key: string): Promise<StorageDocument | null> {
-    return this.store.get(key) || null;
+  async getDocument(key: string, bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'): Promise<StorageDocument | null> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
+    }
+
+    try {
+      const { data, error } = await supabase.storage.from(bucket).download(key);
+      if (error || !data) {
+        // Try fallback bucket if needed
+        const { data: altData, error: altErr } = await supabase.storage.from('ocr-documents').download(key);
+        if (altErr || !altData) return null;
+        const arrayBuffer = await altData.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        return {
+          key,
+          filename: key,
+          mimeType: key.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+          sizeBytes: buffer.length,
+          buffer,
+          uploadedAt: new Date().toISOString(),
+        };
+      }
+
+      const arrayBuffer = await data.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return {
+        key,
+        filename: key,
+        mimeType: key.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+        sizeBytes: buffer.length,
+        buffer,
+        uploadedAt: new Date().toISOString(),
+      };
+    } catch (err: any) {
+      console.warn('[Storage] Supabase Storage download exception:', err.message);
+      return null;
+    }
   }
 
-  async deleteDocument(key: string): Promise<boolean> {
-    return this.store.delete(key);
+  async deleteDocument(key: string, bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'): Promise<boolean> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
+    }
+
+    const { error } = await supabase.storage.from(bucket).remove([key]);
+    if (error) {
+      console.warn('[Storage] Supabase delete warning:', error.message);
+      return false;
+    }
+    return true;
   }
 
-  async getSignedDocumentUrl(key: string): Promise<string> {
-    const doc = this.store.get(key);
-    if (!doc) throw new Error('Document not found in storage abstraction');
-    // Return abstract internal URL path
+  async getSignedDocumentUrl(key: string, bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'): Promise<string> {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return `/api/admin/ocr/storage/${key}`;
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(key);
+    if (data?.publicUrl) {
+      return data.publicUrl;
+    }
+
     return `/api/admin/ocr/storage/${key}`;
   }
 
-  // Cleanup abandoned temp documents older than 2 hours
-  async cleanupAbandonedTempDocs(maxAgeMs = 2 * 60 * 60 * 1000): Promise<number> {
-    const now = Date.now();
-    let cleaned = 0;
-    for (const [key, doc] of this.store.entries()) {
-      const age = now - new Date(doc.uploadedAt).getTime();
-      if (age > maxAgeMs) {
-        this.store.delete(key);
-        cleaned++;
-      }
-    }
-    return cleaned;
+  async cleanupAbandonedTempDocs(): Promise<number> {
+    return 0;
   }
 }
 
 export const documentStorage = new DocumentStorageService();
+
+

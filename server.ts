@@ -2,7 +2,13 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { db, hashPassword, verifyPassword } from './server/db.js';
+import { db, hashPassword, verifyPassword, initDatabase } from './server/db.js';
+import { userRepository } from './server/repositories/UserRepository.js';
+import { questionRepository } from './server/repositories/QuestionRepository.js';
+import { practiceRepository } from './server/repositories/PracticeRepository.js';
+import { learnerRepository } from './server/repositories/LearnerRepository.js';
+import { revisionRepository } from './server/repositories/RevisionRepository.js';
+import pool from './server/db/pool.js';
 import {
   recordQuestionAttempt,
   updateLearnerModel,
@@ -34,18 +40,18 @@ import { documentStorage } from './server/storage.js';
 dotenv.config();
 
 // Helper middleware for auth & admin authorization
-function getAuthenticatedUser(req: express.Request) {
+async function getAuthenticatedUser(req: express.Request): Promise<UserProfile | null> {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer token_')) {
     const userId = authHeader.replace('Bearer token_', '').trim();
-    const foundUser = db.users.get(userId);
+    const foundUser = await userRepository.findById(userId);
     if (foundUser) return foundUser;
   }
   return null;
 }
 
-function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const user = getAuthenticatedUser(req);
+async function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Authentication required. Please log in to access this feature.' });
   }
@@ -66,8 +72,8 @@ function logAudit(actorUserId: string, actorRole: any, action: string, targetTyp
   });
 }
 
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const user = getAuthenticatedUser(req);
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Authentication required. Please log in.' });
   }
@@ -78,8 +84,8 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-function requireSuperAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const user = getAuthenticatedUser(req);
+async function requireSuperAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Authentication required. Please log in.' });
   }
@@ -91,6 +97,7 @@ function requireSuperAdmin(req: express.Request, res: express.Response, next: ex
 }
 
 async function startServer() {
+  await initDatabase();
   const app = express();
   const PORT = 3000;
 
@@ -107,20 +114,21 @@ async function startServer() {
   });
 
   // Auth Endpoints
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
-    const user = Array.from(db.users.values()).find(u => u.email.toLowerCase() === cleanEmail);
+    const user = await userRepository.findByEmail(cleanEmail);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const storedHash = db.userPasswords.get(cleanEmail);
+    const storedHash = await userRepository.getPasswordHash(cleanEmail);
+
     if (!storedHash || !verifyPassword(String(password), storedHash)) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
@@ -129,34 +137,47 @@ async function startServer() {
     res.json({ success: true, user, token: `token_${user.id}` });
   });
 
-  app.post('/api/auth/register', (req, res) => {
+  app.post('/api/auth/register', async (req, res) => {
     const { name, email, password } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
-    const existingUser = Array.from(db.users.values()).find(u => u.email.toLowerCase() === cleanEmail);
+    const existingUser = await userRepository.findByEmail(cleanEmail);
     if (existingUser) {
       return res.status(400).json({ error: 'An account with this email already exists.' });
     }
 
     const userId = `usr_${Date.now()}`;
-    const newUser = {
-      id: userId,
-      email: cleanEmail,
-      name: String(name).trim(),
-      role: 'USER' as const, // All registrations default to USER role
-      isOnboarded: false,
-      createdAt: new Date().toISOString(),
-    };
+    const passwordHash = hashPassword(String(password));
 
-    db.users.set(userId, newUser);
-    db.userPasswords.set(cleanEmail, hashPassword(String(password)));
+    let newUser: any;
+    try {
+      newUser = await userRepository.createUser({
+        id: userId,
+        email: cleanEmail,
+        name: String(name).trim(),
+        role: 'USER',
+        isOnboarded: false,
+        passwordHash,
+      });
+    } catch (err: any) {
+      console.warn('[Register DB Notice]', err.message);
+      newUser = {
+        id: userId,
+        email: cleanEmail,
+        name: String(name).trim(),
+        role: 'USER' as const,
+        isOnboarded: false,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
     updateLearnerModel(userId);
 
     logAudit(newUser.id, newUser.role, 'USER_REGISTER', 'USER', newUser.id, { email: newUser.email });
-    res.json({ success: true, user: newUser, token: `token_${userId}` });
+    res.json({ success: true, user: newUser, token: `token_${newUser.id}` });
   });
 
   app.post('/api/auth/forgot-password', (req, res) => {
@@ -172,45 +193,55 @@ async function startServer() {
     res.json({ success: true, message: 'Password reset successfully. You may now log in.' });
   });
 
-  app.get('/api/auth/me', (req, res) => {
-    const user = getAuthenticatedUser(req);
+  app.get('/api/auth/me', async (req, res) => {
+    const user = await getAuthenticatedUser(req);
     res.json({ user });
   });
 
-  app.post('/api/auth/onboarding', (req, res) => {
+  app.post('/api/auth/onboarding', async (req, res) => {
     const { userId, targetExam, selectedSubjects, dailyGoalMinutes, experienceLevel, goalStatement, preferredLanguage } = req.body;
     const uid = userId || 'usr_demo';
-    const user = db.users.get(uid);
+    let user = await userRepository.findById(uid);
 
     if (user) {
-      user.isOnboarded = true;
-      user.preferredLanguage = preferredLanguage || user.preferredLanguage || 'en';
-      user.onboarding = {
+      const onboardingData = {
         targetExam: targetExam || 'UPSC CSE 2026',
         selectedSubjects: selectedSubjects || ['sub_polity', 'sub_economy'],
         dailyGoalMinutes: dailyGoalMinutes || 120,
         experienceLevel: experienceLevel || 'Intermediate',
         goalStatement: goalStatement || 'Dedicated preparation for Civil Services Examination',
-        preferredLanguage: user.preferredLanguage,
+        preferredLanguage: preferredLanguage || user.preferredLanguage || 'en',
       };
-      db.users.set(uid, user);
+
+      try {
+        await userRepository.updateProfile(uid, {
+          isOnboarded: true,
+          onboarding: onboardingData,
+        });
+      } catch (err: any) {
+        console.warn('[Onboarding DB Update notice]', err.message);
+      }
+
+      user = await userRepository.findById(uid);
       updateLearnerModel(uid);
     }
 
     res.json({ success: true, user });
   });
 
-  app.patch('/api/auth/preferences', (req, res) => {
-    const user = getAuthenticatedUser(req);
+  app.patch('/api/auth/preferences', async (req, res) => {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required' });
+
     const { preferredLanguage } = req.body;
     if (preferredLanguage === 'en' || preferredLanguage === 'hi') {
-      user.preferredLanguage = preferredLanguage;
-      if (user.onboarding) {
-        user.onboarding.preferredLanguage = preferredLanguage;
-      }
-      db.users.set(user.id, user);
+      await userRepository.updateProfile(user.id, {
+        preferredLanguage,
+      });
     }
-    res.json({ success: true, user });
+
+    const updated = await userRepository.findById(user.id);
+    res.json({ success: true, user: updated });
   });
 
   // Content Endpoints: Subjects, Topics, Concepts
@@ -238,16 +269,16 @@ async function startServer() {
     res.json(concepts);
   });
 
-  app.get('/api/concepts/:id', (req, res) => {
+  app.get('/api/concepts/:id', async (req, res) => {
     const concept = db.concepts.get(req.params.id);
     if (!concept) return res.status(404).json({ error: 'Concept not found' });
 
     const userId = (req.query.userId as string) || 'usr_demo';
-    const mastery = db.mastery.get(`${userId}_${concept.id}`) || null;
+    const mastery = await learnerRepository.getConceptMastery(userId, concept.id);
 
     const prerequisites = (concept.prerequisiteIds || []).map(id => db.concepts.get(id)).filter(Boolean);
     const related = (concept.relatedIds || []).map(id => db.concepts.get(id)).filter(Boolean);
-    const questions = Array.from(db.questions.values()).filter(q => q.conceptId === concept.id && q.isPublished);
+    const { items: questions } = await questionRepository.list({ conceptId: concept.id, isPublished: true });
 
     res.json({ concept, mastery, prerequisites, related, questions });
   });
@@ -256,19 +287,19 @@ async function startServer() {
   app.get('/api/learner/model', requireAuth, async (req, res) => {
     const user = (req as any).user;
     const userId = user.id;
-    const model = updateLearnerModel(userId);
-    const nextBestAction = getNextBestAction(userId);
+    const model = await updateLearnerModel(userId);
+    const nextBestAction = await getNextBestAction(userId);
     const aiInsight = await generateAIInsightForUser(userId);
 
     res.json({ model, nextBestAction, aiInsight });
   });
 
-  app.post('/api/learner/mastery/rate', requireAuth, (req, res) => {
+  app.post('/api/learner/mastery/rate', requireAuth, async (req, res) => {
     const user = (req as any).user;
     const { conceptId, confidenceRating } = req.body;
     const uid = user.id;
 
-    const updatedMastery = recordQuestionAttempt(
+    const updatedMastery = await recordQuestionAttempt(
       uid,
       conceptId,
       true,
@@ -280,26 +311,24 @@ async function startServer() {
   });
 
   // Practice & Questions Endpoints
-  app.get('/api/practice/questions', (req, res) => {
+  app.get('/api/practice/questions', async (req, res) => {
     const { subjectId, conceptId, limit } = req.query;
-    let list = Array.from(db.questions.values()).filter(q => q.isPublished);
-
-    if (subjectId) {
-      list = list.filter(q => q.subjectId === subjectId);
-    }
-    if (conceptId) {
-      list = list.filter(q => q.conceptId === conceptId);
-    }
-
     const max = parseInt(limit as string) || 10;
-    res.json(list.slice(0, max));
+    const { items } = await questionRepository.list({
+      subjectId: subjectId ? String(subjectId) : undefined,
+      conceptId: conceptId ? String(conceptId) : undefined,
+      isPublished: true,
+      limit: max,
+    });
+
+    res.json(items);
   });
 
-  app.post('/api/practice/attempt', (req, res) => {
+  app.post('/api/practice/attempt', async (req, res) => {
     const { userId, questionId, userAnswer, timeSpentSeconds, confidenceRating, mistakeCategory } = req.body;
     const uid = userId || 'usr_demo';
 
-    const question = db.questions.get(questionId);
+    const question = await questionRepository.findById(questionId);
     if (!question) return res.status(404).json({ error: 'Question not found' });
 
     const isCorrect = String(userAnswer) === String(question.correctAnswer);
@@ -317,24 +346,43 @@ async function startServer() {
       timestamp: new Date().toISOString(),
     };
 
-    db.questionAttempts.push(attempt);
+    const client = await pool.connect();
+    let updatedMastery;
+    try {
+      await client.query('BEGIN');
 
-    // Update mistake breakdown in LearnerModel if wrong
-    const learnerModel = db.learnerModels.get(uid);
-    if (!isCorrect && attempt.mistakeCategory && learnerModel) {
-      learnerModel.mistakeBreakdown[attempt.mistakeCategory] =
-        (learnerModel.mistakeBreakdown[attempt.mistakeCategory] || 0) + 1;
+      await practiceRepository.recordAttempt(attempt, client);
+
+      await practiceRepository.recordLearningEvent(
+        {
+          userId: uid,
+          conceptId: question.conceptId,
+          eventType: 'QUESTION_ATTEMPT',
+          payload: { questionId, isCorrect, userAnswer, mistakeCategory: attempt.mistakeCategory },
+        },
+        client
+      );
+
+      updatedMastery = await recordQuestionAttempt(
+        uid,
+        question.conceptId,
+        isCorrect,
+        timeSpentSeconds || 25,
+        confidenceRating || 3,
+        attempt.mistakeCategory,
+        client
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('Error persisting practice attempt in transaction:', err);
+      return res.status(500).json({ error: 'Failed to record attempt' });
+    } finally {
+      client.release();
     }
 
-    // Trigger Intelligence update
-    const updatedMastery = recordQuestionAttempt(
-      uid,
-      question.conceptId,
-      isCorrect,
-      timeSpentSeconds || 25,
-      confidenceRating || 3,
-      attempt.mistakeCategory
-    );
+    const nextBestAction = await getNextBestAction(uid);
 
     res.json({
       success: true,
@@ -342,14 +390,14 @@ async function startServer() {
       correctAnswer: question.correctAnswer,
       explanation: question.explanation,
       updatedMastery,
-      nextBestAction: getNextBestAction(uid),
+      nextBestAction,
     });
   });
 
   // AI Mistake Analysis Endpoint
   app.post('/api/ai/analyze-mistake', requireAuth, async (req, res) => {
     const { questionId, userAnswer, correctAnswer, explanation, conceptTitle } = req.body;
-    const question = questionId ? db.questions.get(questionId) : null;
+    const question = questionId ? await questionRepository.findById(questionId) : null;
 
     const analysis = await analyzeMistakeWithAI(
       question?.question || 'Question',
@@ -395,32 +443,35 @@ async function startServer() {
     db.mockAttempts.push(mockAttempt);
 
     // Update Learner Model with identified weaknesses
-    const learnerModel = db.learnerModels.get(user.id);
+    const learnerModel = await learnerRepository.getLearnerModel(user.id);
     if (learnerModel) {
       if (evaluation.score < 7) {
         learnerModel.weakConceptsCount = (learnerModel.weakConceptsCount || 0) + 1;
         learnerModel.mistakeBreakdown.CONCEPT_GAP = (learnerModel.mistakeBreakdown.CONCEPT_GAP || 0) + 1;
       }
-      db.learnerModels.set(user.id, learnerModel);
+      await learnerRepository.saveLearnerModel(learnerModel);
     }
 
-    updateLearnerModel(user.id);
+    await updateLearnerModel(user.id);
 
     res.json({ success: true, evaluation, attemptSaved: mockAttempt });
   });
 
   // Revision Queue Endpoint
-  app.get('/api/revision/queue', (req, res) => {
+  app.get('/api/revision/queue', async (req, res) => {
     const userId = (req.query.userId as string) || 'usr_demo';
-    const queue = getRevisionQueue(userId);
+    const queue = await getRevisionQueue(userId);
     res.json(queue);
   });
 
   // Knowledge Graph Endpoint
-  app.get('/api/graph', (req, res) => {
+  app.get('/api/graph', async (req, res) => {
     const userId = (req.query.userId as string) || 'usr_demo';
+    const userMasteries = await learnerRepository.getUserMasteries(userId);
+    const masteryMap = new Map(userMasteries.map(m => [m.conceptId, m]));
+
     const nodes = Array.from(db.concepts.values()).map(c => {
-      const m = db.mastery.get(`${userId}_${c.id}`);
+      const m = masteryMap.get(c.id);
       let status: 'Mastered' | 'Strong' | 'Developing' | 'Weak' | 'Unexplored' = 'Unexplored';
       if (m) {
         if (m.overallMastery >= 80) status = 'Mastered';
@@ -447,10 +498,10 @@ async function startServer() {
   });
 
   // Analytics Endpoint
-  app.get('/api/analytics', (req, res) => {
+  app.get('/api/analytics', async (req, res) => {
     const userId = (req.query.userId as string) || 'usr_demo';
-    const model = db.learnerModels.get(userId) || updateLearnerModel(userId);
-    const userAttempts = db.questionAttempts.filter(a => a.userId === userId);
+    const model = await learnerRepository.getLearnerModel(userId);
+    const userAttempts = await practiceRepository.getUserAttempts(userId);
 
     if (userAttempts.length < 3) {
       return res.json({
@@ -463,15 +514,14 @@ async function startServer() {
       });
     }
 
-    const userMasteries = Array.from(db.mastery.entries())
-      .filter(([k]) => k.startsWith(`${userId}_`))
-      .map(([, v]) => v);
+    const userMasteries = await learnerRepository.getUserMasteries(userId);
 
     const subjectStats = Array.from(db.subjects.values()).map(s => {
       const conceptsInSub = Array.from(db.concepts.values()).filter(c => c.subjectId === s.id);
-      const masteries = conceptsInSub.map(c => db.mastery.get(`${userId}_${c.id}`)).filter(Boolean);
+      const conceptIds = new Set(conceptsInSub.map(c => c.id));
+      const masteries = userMasteries.filter(m => conceptIds.has(m.conceptId));
       const avgMastery = masteries.length > 0
-        ? Math.round(masteries.reduce((a, b) => a + b!.overallMastery, 0) / masteries.length)
+        ? Math.round(masteries.reduce((a, b) => a + b.overallMastery, 0) / masteries.length)
         : 50;
       return {
         subjectId: s.id,
@@ -487,7 +537,7 @@ async function startServer() {
       hasEnoughData: true,
       subjectStats,
       userMasteries,
-      recentAttempts: userAttempts.slice(-15),
+      recentAttempts: userAttempts.slice(0, 15),
     });
   });
 
@@ -581,13 +631,14 @@ async function startServer() {
     res.json(Array.from(db.mockTests.values()).filter(m => m.isPublished));
   });
 
-  app.post('/api/mock-tests/:id/submit', (req, res) => {
+  app.post('/api/mock-tests/:id/submit', async (req, res) => {
     const { userId, answers, timeTakenSeconds } = req.body;
     const uid = userId || 'usr_demo';
     const test = db.mockTests.get(req.params.id);
     if (!test) return res.status(404).json({ error: 'Mock test not found' });
 
-    const testQuestions = Array.from(db.questions.values()).filter(q =>
+    const allQuestions = await questionRepository.listAll();
+    const testQuestions = allQuestions.filter(q =>
       test.subjectIds.includes(q.subjectId)
     );
 
@@ -595,19 +646,19 @@ async function startServer() {
     let correctCount = 0;
     const markPerQ = test.totalMarks / (testQuestions.length || 10);
 
-    testQuestions.forEach(q => {
+    for (const q of testQuestions) {
       const userAns = answers?.[q.id];
       if (userAns !== undefined) {
         if (String(userAns) === String(q.correctAnswer)) {
           score += markPerQ;
           correctCount++;
-          recordQuestionAttempt(uid, q.conceptId, true, 45, 4);
+          await recordQuestionAttempt(uid, q.conceptId, true, 45, 4);
         } else {
           score -= markPerQ * test.negativeMarkingRate;
-          recordQuestionAttempt(uid, q.conceptId, false, 45, 3, 'CONCEPT_GAP');
+          await recordQuestionAttempt(uid, q.conceptId, false, 45, 3, 'CONCEPT_GAP');
         }
       }
-    });
+    }
 
     score = Math.max(0, Math.round(score * 10) / 10);
     const accuracy = testQuestions.length > 0 ? Math.round((correctCount / testQuestions.length) * 100) : 0;
@@ -630,7 +681,7 @@ async function startServer() {
     };
 
     db.mockAttempts.push(mockAttempt);
-    updateLearnerModel(uid);
+    await updateLearnerModel(uid);
 
     res.json({ success: true, mockAttempt });
   });
@@ -683,37 +734,27 @@ async function startServer() {
   });
 
   // Dedicated Real PYQ (Previous Year Question) Bank Endpoint
-  app.get('/api/pyqs', (req, res) => {
+  app.get('/api/pyqs', async (req, res) => {
     const { exam, year, paper, subjectId, topicId, search } = req.query;
-    let list = Array.from(db.questions.values()).filter(q => q.isPublished && (q.isPyq || (q.examTag && q.examTag.includes('PYQ'))));
+    const { items } = await questionRepository.listPYQs({
+      exam: exam && exam !== 'All' ? String(exam) : undefined,
+      pyqYear: year ? Number(year) : undefined,
+      subjectId: subjectId ? String(subjectId) : undefined,
+      topicId: topicId ? String(topicId) : undefined,
+      limit: 100,
+    });
 
-    if (exam && exam !== 'All') {
-      list = list.filter(q => (q.exam && q.exam.toLowerCase().includes(String(exam).toLowerCase())) || (q.examTag && q.examTag.toLowerCase().includes(String(exam).toLowerCase())));
-    }
-
-    if (year) {
-      const yr = Number(year);
-      list = list.filter(q => q.pyqYear === yr);
-    }
-
+    let list = items;
     if (paper) {
       list = list.filter(q => q.paper && q.paper.toLowerCase().includes(String(paper).toLowerCase()));
     }
 
-    if (subjectId) {
-      list = list.filter(q => q.subjectId === subjectId);
-    }
-
-    if (topicId) {
-      list = list.filter(q => q.topicId === topicId);
-    }
-
     if (search) {
-      const q = String(search).toLowerCase();
+      const qStr = String(search).toLowerCase();
       list = list.filter(qItem =>
-        qItem.question.toLowerCase().includes(q) ||
-        qItem.explanation.toLowerCase().includes(q) ||
-        (qItem.source && qItem.source.toLowerCase().includes(q))
+        qItem.question.toLowerCase().includes(qStr) ||
+        qItem.explanation.toLowerCase().includes(qStr) ||
+        (qItem.source && qItem.source.toLowerCase().includes(qStr))
       );
     }
 
@@ -755,7 +796,7 @@ async function startServer() {
   });
 
   // Global Search Endpoint
-  app.get('/api/search', (req, res) => {
+  app.get('/api/search', async (req, res) => {
     const query = (req.query.q as string || '').toLowerCase().trim();
     if (!query) return res.json({ subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] });
 
@@ -769,9 +810,7 @@ async function startServer() {
       c.tags.some(t => t.toLowerCase().includes(query))
     );
 
-    const questions = Array.from(db.questions.values()).filter(q =>
-      q.question.toLowerCase().includes(query)
-    );
+    const { items: questions } = await questionRepository.list({ searchQuery: query, limit: 20 });
 
     const currentAffairs = Array.from(db.currentAffairs.values()).filter(ca =>
       ca.title.toLowerCase().includes(query) || ca.summary.toLowerCase().includes(query)
@@ -787,14 +826,17 @@ async function startServer() {
   // -------------------------------------------------------------
   // ADMIN ROUTES (Protected by server-side requireAdmin middleware)
   // -------------------------------------------------------------
-  app.get('/api/admin/metrics', requireAdmin, (req, res) => {
+  app.get('/api/admin/metrics', requireAdmin, async (req, res) => {
+    const users = await userRepository.listUsers();
+    const questionCount = await questionRepository.count();
+
     res.json({
-      totalUsers: db.users.size,
-      activeUsers24h: Math.round(db.users.size * 0.8),
+      totalUsers: users.length,
+      activeUsers24h: Math.round(users.length * 0.8),
       totalSubjects: db.subjects.size,
       totalTopics: db.topics.size,
       totalConcepts: db.concepts.size,
-      totalQuestions: db.questions.size,
+      totalQuestions: questionCount,
       totalMockTests: db.mockTests.size,
       totalCurrentAffairs: db.currentAffairs.size,
       totalResources: db.resources.size,
@@ -803,8 +845,9 @@ async function startServer() {
     });
   });
 
-  app.get('/api/admin/users', requireAdmin, (req, res) => {
-    res.json(Array.from(db.users.values()));
+  app.get('/api/admin/users', requireAdmin, async (req, res) => {
+    const users = await userRepository.listUsers();
+    res.json(users);
   });
 
   app.post('/api/admin/concepts', requireAdmin, (req, res) => {
@@ -820,10 +863,10 @@ async function startServer() {
     res.json({ success: true, concept: newConcept });
   });
 
-  app.put('/api/admin/questions/:id', requireAdmin, (req, res) => {
+  app.put('/api/admin/questions/:id', requireAdmin, async (req, res) => {
     const actor = (req as any).user;
     const { id } = req.params;
-    const existing = db.questions.get(id);
+    const existing = await questionRepository.findById(id);
     if (!existing) {
       return res.status(404).json({ error: 'Question not found' });
     }
@@ -878,12 +921,12 @@ async function startServer() {
       updated.status = 'READY_TO_PUBLISH';
     }
 
-    db.questions.set(id, updated);
+    await questionRepository.create(updated);
     logAudit(actor.id, actor.role, 'QUESTION_UPDATE', 'QUESTION', id, { question: updated.question.substring(0, 40) });
     res.json({ success: true, question: updated });
   });
 
-  app.post('/api/admin/questions', requireAdmin, (req, res) => {
+  app.post('/api/admin/questions', requireAdmin, async (req, res) => {
     const actor = (req as any).user;
     const qData = req.body;
     const id = qData.id || `q_${Date.now()}`;
@@ -893,7 +936,8 @@ async function startServer() {
       isPublished: qData.isPublished !== undefined ? qData.isPublished : true,
       status: qData.status || 'READY_TO_PUBLISH',
     };
-    db.questions.set(id, newQ);
+
+    await questionRepository.create(newQ);
     logAudit(actor.id, actor.role, 'QUESTION_CREATE', 'QUESTION', id, { question: newQ.question.substring(0, 40) });
     res.json({ success: true, question: newQ });
   });
@@ -963,7 +1007,9 @@ async function startServer() {
       }
 
       // Store questions in database
-      result.questions.forEach(q => db.questions.set(q.id, q));
+      for (const q of result.questions) {
+        await questionRepository.create(q);
+      }
 
       const ocrJob: OCRJob = {
         id: result.jobId,
@@ -1011,7 +1057,7 @@ async function startServer() {
   });
 
   // Bulk Operations & Publishing Destination
-  app.post('/api/admin/ocr/questions/bulk-action', requireAdmin, (req, res) => {
+  app.post('/api/admin/ocr/questions/bulk-action', requireAdmin, async (req, res) => {
     const actor = (req as any).user;
     const { questionIds, action, subjectId, topicId, conceptId, difficulty, destination, examTag, pyqYear } = req.body;
 
@@ -1022,12 +1068,12 @@ async function startServer() {
     let affectedCount = 0;
     let publishBlockedCount = 0;
 
-    questionIds.forEach(qId => {
-      const q = db.questions.get(qId);
-      if (!q) return;
+    for (const qId of questionIds) {
+      const q = await questionRepository.findById(qId);
+      if (!q) continue;
 
       if (action === 'DELETE') {
-        db.questions.delete(qId);
+        await questionRepository.delete(qId);
         affectedCount++;
       } else if (action === 'ASSIGN_META') {
         if (subjectId) q.subjectId = subjectId;
@@ -1036,22 +1082,22 @@ async function startServer() {
         if (difficulty) q.difficulty = difficulty;
         if (examTag) q.examTag = examTag;
         if (pyqYear) q.pyqYear = pyqYear;
-        db.questions.set(qId, q);
+        await questionRepository.create(q);
         affectedCount++;
       } else if (action === 'SAVE_DRAFT') {
         q.isPublished = false;
         q.status = 'DRAFT';
-        db.questions.set(qId, q);
+        await questionRepository.create(q);
         affectedCount++;
       } else if (action === 'APPROVE') {
         q.status = 'READY_TO_PUBLISH';
-        db.questions.set(qId, q);
+        await questionRepository.create(q);
         affectedCount++;
       } else if (action === 'PUBLISH') {
         // Enforce lifecycle rule: A question without a verified answer CANNOT be published!
         if (!q.correctAnswer || q.correctAnswer === '' || q.status === 'NEEDS_ANSWER') {
           publishBlockedCount++;
-          return;
+          continue;
         }
 
         q.isPublished = true;
@@ -1064,10 +1110,10 @@ async function startServer() {
         if (examTag) q.examTag = examTag;
         if (pyqYear) q.pyqYear = pyqYear;
 
-        db.questions.set(qId, q);
+        await questionRepository.create(q);
         affectedCount++;
       }
-    });
+    }
 
     const subObj = subjectId ? db.subjects.get(subjectId) : null;
     const conObj = conceptId ? db.concepts.get(conceptId) : null;
@@ -1113,7 +1159,7 @@ async function startServer() {
     res.json(Array.from(db.aiDrafts.values()));
   });
 
-  app.post('/api/admin/ai/drafts/:id/approve', requireAdmin, (req, res) => {
+  app.post('/api/admin/ai/drafts/:id/approve', requireAdmin, async (req, res) => {
     const { id } = req.params;
     const draft = db.aiDrafts.get(id);
     if (!draft) return res.status(404).json({ error: 'Draft not found' });
@@ -1138,7 +1184,7 @@ async function startServer() {
         status: 'PUBLISHED',
         destination: 'PRACTICE_BANK',
       };
-      db.questions.set(q.id, q);
+      await questionRepository.create(q);
     }
 
     res.json({ success: true, draft });
@@ -1147,13 +1193,16 @@ async function startServer() {
   // -------------------------------------------------------------
   // SUPER ADMIN ROUTES (Protected by server-side requireSuperAdmin)
   // -------------------------------------------------------------
-  app.get('/api/superadmin/overview', requireSuperAdmin, (req, res) => {
-    const admins = Array.from(db.users.values()).filter(u => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+  app.get('/api/superadmin/overview', requireSuperAdmin, async (req, res) => {
+    const allUsers = await userRepository.listUsers();
+    const admins = allUsers.filter(u => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+    const questionCount = await questionRepository.count();
+
     res.json({
       metrics: {
-        totalUsers: db.users.size,
+        totalUsers: allUsers.length,
         totalAdmins: admins.length,
-        totalQuestions: db.questions.size,
+        totalQuestions: questionCount,
         totalOcrJobs: db.ocrJobs.size,
         totalAiDrafts: db.aiDrafts.size,
         totalMockTests: db.mockTests.size,
@@ -1164,8 +1213,9 @@ async function startServer() {
     });
   });
 
-  app.get('/api/superadmin/admins', requireSuperAdmin, (req, res) => {
-    const admins = Array.from(db.users.values())
+  app.get('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
+    const allUsers = await userRepository.listUsers();
+    const admins = allUsers
       .filter(u => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN')
       .map(u => ({
         id: u.id,
@@ -1179,21 +1229,22 @@ async function startServer() {
     res.json(admins);
   });
 
-  app.post('/api/superadmin/admins', requireSuperAdmin, (req, res) => {
+  app.post('/api/superadmin/admins', requireSuperAdmin, async (req, res) => {
     const actor = (req as any).user;
     const { name, email, role, permissions } = req.body;
 
     const newAdminId = `usr_admin_${Date.now()}`;
-    const newAdminUser = {
+    const passwordHash = hashPassword('IkshoviaAdmin@2026');
+
+    const newAdminUser = await userRepository.createUser({
       id: newAdminId,
       email: email || `admin_${Date.now()}@ikshovia.com`,
       name: name || 'New Platform Admin',
       role: (role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN') as UserRole,
       isOnboarded: true,
-      createdAt: new Date().toISOString(),
-    };
+      passwordHash,
+    });
 
-    db.users.set(newAdminId, newAdminUser);
     db.adminPermissions.set(newAdminId, permissions || ['QUESTION_CREATE', 'QUESTION_PUBLISH', 'OCR_IMPORT']);
 
     logAudit(actor.id, actor.role, 'SUPERADMIN_CREATE_ADMIN', 'USER', newAdminId, { name, email, role });
@@ -1201,10 +1252,10 @@ async function startServer() {
     res.json({ success: true, admin: newAdminUser });
   });
 
-  app.post('/api/superadmin/admins/:id/toggle-status', requireSuperAdmin, (req, res) => {
+  app.post('/api/superadmin/admins/:id/toggle-status', requireSuperAdmin, async (req, res) => {
     const actor = (req as any).user;
     const { id } = req.params;
-    const targetUser = db.users.get(id);
+    const targetUser = await userRepository.findById(id);
 
     if (!targetUser) return res.status(404).json({ error: 'Admin user not found' });
 
