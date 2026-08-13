@@ -398,6 +398,37 @@ export const api = {
     return res.json();
   },
 
+  getOcrJobDetails: async (id: string) => {
+    const res = await fetch(`/api/admin/ocr/jobs/${id}`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  updateOcrQuestion: async (id: string, updates: any) => {
+    const res = await fetch(`/api/admin/ocr/questions/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    return res.json();
+  },
+
+  approveOcrQuestion: async (id: string, data?: any) => {
+    const res = await fetch(`/api/admin/ocr/questions/${id}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data || {}),
+    });
+    return res.json();
+  },
+
+  rejectOcrQuestion: async (id: string) => {
+    const res = await fetch(`/api/admin/ocr/questions/${id}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
   bulkActionOcrQuestions: async (data: any) => {
     const res = await fetch('/api/admin/ocr/questions/bulk-action', {
       method: 'POST',

@@ -87,10 +87,22 @@ export const OCRStudioView: React.FC = () => {
   const [keepOriginalPdf, setKeepOriginalPdf] = useState(false);
 
   // Accuracy & Bilingual Configuration
+  const [selectedExam, setSelectedExam] = useState<'UPSC CSE' | 'BPSC'>('UPSC CSE');
   const [documentLanguage, setDocumentLanguage] = useState<'EN' | 'HI' | 'BILINGUAL' | 'AUTO'>('AUTO');
-  const [totalExpectedQuestions, setTotalExpectedQuestions] = useState<number>(150);
+  const [totalExpectedQuestions, setTotalExpectedQuestions] = useState<number>(100);
   const [ocrResultMeta, setOcrResultMeta] = useState<any>(null);
   const [cardLang, setCardLang] = useState<Record<string, 'en' | 'hi'>>({});
+
+  const handleExamChange = (exam: 'UPSC CSE' | 'BPSC') => {
+    setSelectedExam(exam);
+    if (exam === 'UPSC CSE') {
+      setTotalExpectedQuestions(100);
+      setExamTag('UPSC CSE Prelims');
+    } else if (exam === 'BPSC') {
+      setTotalExpectedQuestions(150);
+      setExamTag('BPSC Prelims');
+    }
+  };
 
   // Step 4: OCR Processing state
   const [isProcessing, setIsProcessing] = useState(false);
@@ -239,6 +251,7 @@ export const OCRStudioView: React.FC = () => {
 
       const res = await api.processOcrImport({
         mode,
+        exam: selectedExam,
         documentLanguage,
         totalExpectedQuestions,
         questionPdfBase64: questionFile.base64,
@@ -348,13 +361,22 @@ export const OCRStudioView: React.FC = () => {
   const handleSaveInlineEdit = async () => {
     if (!editingQId) return;
     try {
-      const res = await api.updateQuestion(editingQId, editForm);
-      if (res.success) {
+      const res = await api.updateOcrQuestion(editingQId, editForm);
+      if (res.success && res.question) {
         setExtractedQuestions(prev =>
           prev.map(q => (q.id === editingQId ? (res.question as Question) : q))
         );
         setEditingQId(null);
-        setStatusMessage({ type: 'success', text: 'Question updated successfully.' });
+        setStatusMessage({ type: 'success', text: 'Extracted question saved directly to PostgreSQL!' });
+      } else {
+        const fallback = await api.updateQuestion(editingQId, editForm);
+        if (fallback.success) {
+          setExtractedQuestions(prev =>
+            prev.map(q => (q.id === editingQId ? (fallback.question as Question) : q))
+          );
+          setEditingQId(null);
+          setStatusMessage({ type: 'success', text: 'Question updated successfully.' });
+        }
       }
     } catch (err) {
       setStatusMessage({ type: 'error', text: 'Failed to update question.' });
@@ -876,7 +898,23 @@ export const OCRStudioView: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-4 border-t border-slate-800">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 pt-4 border-t border-slate-800">
+            {/* Target Exam */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <span>Target Exam</span>
+                <span className="text-amber-400 font-bold">*</span>
+              </label>
+              <select
+                value={selectedExam}
+                onChange={e => handleExamChange(e.target.value as 'UPSC CSE' | 'BPSC')}
+                className="w-full bg-slate-950 border border-slate-700 text-amber-400 font-bold rounded-xl px-4 py-2 text-sm focus:border-amber-500 focus:outline-none"
+              >
+                <option value="UPSC CSE">UPSC CSE (100 Questions)</option>
+                <option value="BPSC">BPSC (150 Questions)</option>
+              </select>
+            </div>
+
             {/* Document Language */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
