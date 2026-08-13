@@ -248,15 +248,17 @@ export async function getNextBestAction(userId: string): Promise<NextBestAction>
     const conceptB = cMap2.get(partnerId);
 
     if (conceptA && conceptB) {
+      const cA = conceptA as any;
+      const cB = conceptB as any;
       return {
         id: `nba_${Date.now()}`,
         actionType: 'PRACTICE',
-        title: `Resolve Distinction: ${conceptA.title.split(':')[0]} vs ${conceptB.title.split(':')[0]}`,
+        title: `Resolve Distinction: ${cA.title.split(':')[0]} vs ${cB.title.split(':')[0]}`,
         description: `You have repeatedly confused these two related concepts in past attempts.`,
-        reason: `Mistake pattern intelligence identified a high error correlation between ${conceptA.title} and ${conceptB.title}.`,
+        reason: `Mistake pattern intelligence identified a high error correlation between ${cA.title} and ${cB.title}.`,
         estimatedMinutes: 10,
-        subjectId: conceptA.subject_id,
-        conceptId: conceptA.id,
+        subjectId: cA.subject_id,
+        conceptId: cA.id,
         priority: 'HIGH',
         followUpAction: `Complete a 5-question comparison drill to solidify the key differences.`,
       };

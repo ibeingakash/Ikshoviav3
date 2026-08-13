@@ -288,6 +288,8 @@ export interface MockAttempt {
   subjectScores: Record<string, { total: number; correct: number; score: number }>;
   weakConceptIds: string[];
   mistakeSummary: Record<string, number>;
+  status?: string;
+  startedAt?: string;
 }
 
 export interface CurrentAffairArticle {

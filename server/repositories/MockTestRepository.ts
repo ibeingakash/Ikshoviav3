@@ -243,6 +243,11 @@ export class MockTestRepository {
       status: row.status,
     };
   }
+
+  async countTests(): Promise<number> {
+    const res = await pool.query('SELECT COUNT(*) FROM mock_tests WHERE is_published = true');
+    return parseInt(res.rows[0].count, 10);
+  }
 }
 
 export const mockTestRepository = new MockTestRepository();
