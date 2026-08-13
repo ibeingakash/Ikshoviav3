@@ -8,6 +8,7 @@ import {
   FieldConfidence,
   FieldConfidenceLevel,
 } from '../src/types/index.js';
+import { ocrRepository, ExtractedQuestionRecord } from './repositories/OcrRepository.js';
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -53,6 +54,9 @@ export function cleanBase64Pdf(raw: string): string {
 
 export interface ProcessOcrOptions {
   mode: OCRImportMode;
+  userId?: string;
+  exam?: string;
+  storageKey?: string;
   documentLanguage?: OCRDocumentLanguage;
   totalExpectedQuestions?: number;
   questionPdfBase64?: string;
@@ -293,10 +297,14 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
   const jobId = `job_ocr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const {
     mode,
+    userId,
+    exam = 'UPSC CSE',
+    storageKey,
     documentLanguage = 'AUTO',
-    totalExpectedQuestions = 150,
     questionPdfBase64,
     answerPdfBase64,
+    questionFileName,
+    answerFileName,
     questionTextRaw,
     answerTextRaw,
     subjectId,
@@ -307,6 +315,16 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
     pyqYear = 2025,
     destination = 'PRACTICE_BANK',
   } = options;
+
+  // Enforce expected question count based on exam selection
+  let totalExpectedQuestions = 100;
+  if (exam === 'BPSC') {
+    totalExpectedQuestions = 150;
+  } else if (exam === 'UPSC CSE' || exam === 'UPSC') {
+    totalExpectedQuestions = 100;
+  } else if (options.totalExpectedQuestions) {
+    totalExpectedQuestions = Number(options.totalExpectedQuestions);
+  }
 
   const strategyUsed = detectExtractionStrategy(options);
 
@@ -412,7 +430,7 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
   const mergedQuestions = mergePageBoundaryQuestions(rawExtractedQuestions);
 
   // 4. Validate accuracy & field confidence for every question
-  const validatedQuestions: Question[] = mergedQuestions.map(q => {
+  const validatedQuestions: ExtractedQuestionRecord[] = mergedQuestions.map(q => {
     const val = validateQuestionAccuracy(q);
     const isNeedsReview =
       !val.isValid ||
@@ -430,6 +448,8 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
 
     return {
       ...q,
+      jobId,
+      sourceJobId: jobId,
       ocrConfidence: val.overallConfidence,
       fieldConfidence: val.fieldConfidence,
       validationErrors: val.errors,
@@ -438,8 +458,11 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
     };
   });
 
-  // 5. Sequence Validation & Missing Question Detection
-  const missingQuestionNums = detectMissingQuestions(validatedQuestions, totalExpectedQuestions);
+  // 5. Duplicate Detection against PostgreSQL Question Bank & Internal Questions
+  const questionsWithDuplicates = await ocrRepository.runDuplicateCheck(validatedQuestions);
+
+  // 6. Sequence Validation & Missing Question Detection
+  const missingQuestionNums = detectMissingQuestions(questionsWithDuplicates, totalExpectedQuestions);
 
   // Compute Statistics
   let matchedCount = 0;
@@ -448,7 +471,7 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
   let lowConfidenceCount = 0;
   let highConfidenceCount = 0;
 
-  for (const q of validatedQuestions) {
+  for (const q of questionsWithDuplicates) {
     if (!q.correctAnswer || q.correctAnswer === '' || q.status === 'NEEDS_ANSWER') {
       missingAnswerCount++;
     }
@@ -469,20 +492,52 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
   // Detect predominant document language
   let detectedLang: OCRDocumentLanguage = documentLanguage;
   if (documentLanguage === 'AUTO') {
-    const hasHindiChar = validatedQuestions.some(q => (q.question_hi && q.question_hi.length > 0) || /[\u0900-\u097F]/.test(q.question || ''));
-    const hasEnglishChar = validatedQuestions.some(q => (q.question_en && q.question_en.length > 0) || /[a-zA-Z]/.test(q.question || ''));
+    const hasHindiChar = questionsWithDuplicates.some(q => (q.question_hi && q.question_hi.length > 0) || /[\u0900-\u097F]/.test(q.question || ''));
+    const hasEnglishChar = questionsWithDuplicates.some(q => (q.question_en && q.question_en.length > 0) || /[a-zA-Z]/.test(q.question || ''));
 
     if (hasHindiChar && hasEnglishChar) detectedLang = 'BILINGUAL';
     else if (hasHindiChar) detectedLang = 'HI';
     else detectedLang = 'EN';
   }
 
-  const validationPassed = missingQuestionNums.length === 0 && lowConfidenceCount === 0;
+  const validationPassed = missingQuestionNums.length === 0 && lowConfidenceCount === 0 && questionsWithDuplicates.length === totalExpectedQuestions;
+
+  // Persist Job and Extracted Questions directly to PostgreSQL
+  const initialJobStatus = validationPassed ? 'VERIFIED' : 'PROCESSING';
+  await ocrRepository.createJob({
+    id: jobId,
+    userId,
+    originalFileName: questionFileName || 'Question_Paper.pdf',
+    storageKey,
+    fileSizeBytes: questionPdfBase64 ? questionPdfBase64.length : 0,
+    pageCount: Math.ceil(questionsWithDuplicates.length / 5) || 1,
+    strategy: strategyUsed,
+    exam,
+    expectedQuestionCount: totalExpectedQuestions,
+    status: initialJobStatus,
+    processedPages: Math.ceil(questionsWithDuplicates.length / 5) || 1,
+    detectedQuestionsCount: questionsWithDuplicates.length,
+    approvedCount: 0,
+    rejectedCount: 0,
+    confidenceScore: Math.round(
+      questionsWithDuplicates.reduce((acc, q) => acc + (q.ocrConfidence || 80), 0) / (questionsWithDuplicates.length || 1)
+    ),
+    missingQuestionNumbers: missingQuestionNums,
+    duplicateQuestionNumbers: questionsWithDuplicates.filter(q => q.duplicateWarning?.isDuplicate).map(q => q.questionNum || 0).filter(Boolean),
+    reviewState: {
+      matchedCount,
+      needsReviewCount,
+      missingAnswerCount,
+      lowConfidenceCount,
+    },
+  });
+
+  const savedQuestions = await ocrRepository.saveExtractedQuestions(jobId, questionsWithDuplicates);
 
   return {
     success: true,
     jobId,
-    totalDetected: validatedQuestions.length,
+    totalDetected: savedQuestions.length,
     totalExpected: totalExpectedQuestions,
     matchedCount,
     needsReviewCount,
@@ -493,7 +548,7 @@ export async function processOcrDocument(options: ProcessOcrOptions): Promise<Pr
     strategyUsed,
     detectedLanguage: detectedLang,
     validationPassed,
-    questions: validatedQuestions,
+    questions: savedQuestions,
   };
 }
 

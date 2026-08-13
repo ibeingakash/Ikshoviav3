@@ -9,6 +9,7 @@ import { practiceRepository } from './server/repositories/PracticeRepository.js'
 import { learnerRepository } from './server/repositories/LearnerRepository.js';
 import { revisionRepository } from './server/repositories/RevisionRepository.js';
 import { mockTestRepository } from './server/repositories/MockTestRepository.js';
+import { ocrRepository } from './server/repositories/OcrRepository.js';
 import pool from './server/db/pool.js';
 import {
   recordQuestionAttempt,
@@ -903,7 +904,7 @@ async function startServer() {
       totalCurrentAffairs: db.currentAffairs.size,
       totalResources: db.resources.size,
       totalAiDrafts: db.aiDrafts.size,
-      totalOcrJobs: db.ocrJobs.size,
+      totalOcrJobs: await ocrRepository.countJobs(),
     });
   });
 
@@ -1009,8 +1010,9 @@ async function startServer() {
     const actor = (req as any).user;
     const {
       mode,
+      exam = 'UPSC CSE',
       documentLanguage = 'AUTO',
-      totalExpectedQuestions = 150,
+      totalExpectedQuestions,
       questionPdfBase64,
       answerPdfBase64,
       questionFileName,
@@ -1024,14 +1026,32 @@ async function startServer() {
       examTag,
       pyqYear,
       destination,
-      keepOriginalPdf = false,
+      keepOriginalPdf = true,
     } = req.body;
 
     try {
+      let storedQuestionPdfKey: string | undefined;
+      let storedAnswerPdfKey: string | undefined;
+
+      if (questionPdfBase64) {
+        const cleanB64 = questionPdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        const buf = Buffer.from(cleanB64, 'base64');
+        storedQuestionPdfKey = await documentStorage.uploadDocument(questionFileName || 'Question_Paper.pdf', buf);
+      }
+
+      if (answerPdfBase64) {
+        const cleanB64 = answerPdfBase64.replace(/^data:application\/pdf;base64,/, '');
+        const buf = Buffer.from(cleanB64, 'base64');
+        storedAnswerPdfKey = await documentStorage.uploadDocument(answerFileName || 'Answer_Key.pdf', buf);
+      }
+
       const result = await processOcrDocument({
         mode,
+        userId: actor.id,
+        exam,
+        storageKey: storedQuestionPdfKey,
         documentLanguage,
-        totalExpectedQuestions: Number(totalExpectedQuestions) || 150,
+        totalExpectedQuestions: Number(totalExpectedQuestions) || (exam === 'BPSC' ? 150 : 100),
         questionPdfBase64,
         answerPdfBase64,
         questionFileName,
@@ -1042,7 +1062,7 @@ async function startServer() {
         topicId: topicId || 'top_rights',
         conceptId: conceptId || 'c_art32',
         difficulty: difficulty || 'MEDIUM',
-        examTag: examTag || 'UPSC CSE Prelims',
+        examTag: examTag || `${exam} Prelims`,
         pyqYear: pyqYear || 2025,
         destination: destination || 'PRACTICE_BANK',
         keepOriginalPdf,
@@ -1052,53 +1072,19 @@ async function startServer() {
         return res.status(400).json({ success: false, error: result.error });
       }
 
-      // Handle optional storage retention
-      let storedQuestionPdfKey: string | undefined;
-      let storedAnswerPdfKey: string | undefined;
+      const job = await ocrRepository.getJobById(result.jobId);
 
-      if (keepOriginalPdf && questionPdfBase64) {
-        const cleanB64 = questionPdfBase64.replace(/^data:application\/pdf;base64,/, '');
-        const buf = Buffer.from(cleanB64, 'base64');
-        storedQuestionPdfKey = await documentStorage.uploadDocument(questionFileName || 'Question_Paper.pdf', buf);
-      }
-
-      if (keepOriginalPdf && answerPdfBase64) {
-        const cleanB64 = answerPdfBase64.replace(/^data:application\/pdf;base64,/, '');
-        const buf = Buffer.from(cleanB64, 'base64');
-        storedAnswerPdfKey = await documentStorage.uploadDocument(answerFileName || 'Answer_Key.pdf', buf);
-      }
-
-      // Store questions in database
-      for (const q of result.questions) {
-        await questionRepository.create(q);
-      }
-
-      const ocrJob: OCRJob = {
-        id: result.jobId,
-        mode,
-        questionPdfName: questionFileName || 'Question_Paper.pdf',
-        answerPdfName: answerFileName || (mode === 'SEPARATE_PDFS' || mode === 'ANSWER_PDF_ONLY' ? 'Solution_Key.pdf' : undefined),
-        totalDetected: result.totalDetected,
-        matchedCount: result.matchedCount,
-        needsReviewCount: result.needsReviewCount,
-        missingAnswerCount: result.missingAnswerCount,
-        status: 'COMPLETED',
-        createdAt: new Date().toISOString(),
-        questions: result.questions,
-      };
-
-      db.ocrJobs.set(result.jobId, ocrJob);
       logAudit(actor.id, actor.role, 'OCR_IMPORT_PROCESS', 'OCR_JOB', result.jobId, {
         mode,
+        exam,
         count: result.questions.length,
-        keepOriginalPdf,
         storedQuestionPdfKey,
         storedAnswerPdfKey,
       });
 
       res.json({
         success: true,
-        job: ocrJob,
+        job,
         questions: result.questions,
         totalDetected: result.totalDetected,
         matchedCount: result.matchedCount,
@@ -1114,85 +1100,188 @@ async function startServer() {
     }
   });
 
-  app.get('/api/admin/ocr/jobs', requireAdmin, (req, res) => {
-    res.json(Array.from(db.ocrJobs.values()));
+  // GET all OCR jobs
+  app.get('/api/admin/ocr/jobs', requireAdmin, async (req, res) => {
+    try {
+      const jobs = await ocrRepository.listJobs();
+      res.json(jobs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
-  // Bulk Operations & Publishing Destination
+  // GET specific OCR job details & extracted questions
+  app.get('/api/admin/ocr/jobs/:id', requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await ocrRepository.getJobById(id);
+      if (!job) {
+        return res.status(404).json({ error: 'OCR Job not found' });
+      }
+      const questions = await ocrRepository.getQuestionsByJobId(id);
+      res.json({ job, questions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET questions for OCR job
+  app.get('/api/admin/ocr/jobs/:id/questions', requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const questions = await ocrRepository.getQuestionsByJobId(id);
+      res.json(questions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Edit single extracted question in PostgreSQL
+  app.put('/api/admin/ocr/questions/:id', requireAdmin, async (req, res) => {
+    try {
+      const actor = (req as any).user;
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updated = await ocrRepository.updateExtractedQuestion(id, updates);
+      if (!updated) {
+        return res.status(404).json({ error: 'Extracted question not found' });
+      }
+
+      logAudit(actor.id, actor.role, 'OCR_QUESTION_EDIT', 'OCR_QUESTION', id, { questionNum: updated.questionNum });
+      res.json({ success: true, question: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Approve single question
+  app.post('/api/admin/ocr/questions/:id/approve', requireAdmin, async (req, res) => {
+    try {
+      const actor = (req as any).user;
+      const { id } = req.params;
+      const { subjectId, topicId, conceptId, difficulty, destination, examTag, pyqYear } = req.body;
+
+      const result = await ocrRepository.approveAndPublishQuestion(id, {
+        subjectId,
+        topicId,
+        conceptId,
+        difficulty,
+        destination,
+        examTag,
+        pyqYear,
+      });
+
+      if (!result.success) {
+        return res.status(400).json({ success: false, error: result.error });
+      }
+
+      logAudit(actor.id, actor.role, 'OCR_QUESTION_APPROVE', 'QUESTION', id, {});
+      res.json({ success: true, question: result.question });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Reject single question
+  app.post('/api/admin/ocr/questions/:id/reject', requireAdmin, async (req, res) => {
+    try {
+      const actor = (req as any).user;
+      const { id } = req.params;
+
+      const success = await ocrRepository.rejectQuestion(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Extracted question not found' });
+      }
+
+      logAudit(actor.id, actor.role, 'OCR_QUESTION_REJECT', 'OCR_QUESTION', id, {});
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Bulk Actions
   app.post('/api/admin/ocr/questions/bulk-action', requireAdmin, async (req, res) => {
     const actor = (req as any).user;
-    const { questionIds, action, subjectId, topicId, conceptId, difficulty, destination, examTag, pyqYear } = req.body;
+    const {
+      jobId,
+      questionIds,
+      action,
+      subjectId,
+      topicId,
+      conceptId,
+      difficulty,
+      destination,
+      examTag,
+      pyqYear,
+      overrideWarnings = false,
+    } = req.body;
 
     if (!Array.isArray(questionIds) || questionIds.length === 0) {
       return res.status(400).json({ error: 'No questions selected for bulk action.' });
     }
 
-    let affectedCount = 0;
-    let publishBlockedCount = 0;
+    try {
+      if (action === 'APPROVE' || action === 'PUBLISH') {
+        const result = await ocrRepository.bulkApproveAndPublish(
+          jobId,
+          questionIds,
+          { subjectId, topicId, conceptId, difficulty, destination, examTag, pyqYear },
+          overrideWarnings
+        );
 
-    for (const qId of questionIds) {
-      const q = await questionRepository.findById(qId);
-      if (!q) continue;
+        logAudit(actor.id, actor.role, `OCR_BULK_${action}`, 'OCR_JOB', jobId || 'BULK', {
+          count: result.affectedCount,
+          blocked: result.publishBlockedCount,
+        });
 
-      if (action === 'DELETE') {
-        await questionRepository.delete(qId);
-        affectedCount++;
-      } else if (action === 'ASSIGN_META') {
-        if (subjectId) q.subjectId = subjectId;
-        if (topicId) q.topicId = topicId;
-        if (conceptId) q.conceptId = conceptId;
-        if (difficulty) q.difficulty = difficulty;
-        if (examTag) q.examTag = examTag;
-        if (pyqYear) q.pyqYear = pyqYear;
-        await questionRepository.create(q);
-        affectedCount++;
-      } else if (action === 'SAVE_DRAFT') {
-        q.isPublished = false;
-        q.status = 'DRAFT';
-        await questionRepository.create(q);
-        affectedCount++;
-      } else if (action === 'APPROVE') {
-        q.status = 'READY_TO_PUBLISH';
-        await questionRepository.create(q);
-        affectedCount++;
-      } else if (action === 'PUBLISH') {
-        // Enforce lifecycle rule: A question without a verified answer CANNOT be published!
-        if (!q.correctAnswer || q.correctAnswer === '' || q.status === 'NEEDS_ANSWER') {
-          publishBlockedCount++;
-          continue;
+        return res.json({
+          success: true,
+          action,
+          affectedCount: result.affectedCount,
+          publishBlockedCount: result.publishBlockedCount,
+          blockedReasons: result.blockedReasons,
+          message: `Successfully approved & published ${result.affectedCount} question(s) to ${destination || 'Practice Bank'}.${
+            result.publishBlockedCount > 0 ? ` (${result.publishBlockedCount} blocked due to missing fields/answers)` : ''
+          }`,
+        });
+      } else if (action === 'REJECT') {
+        const count = await ocrRepository.bulkRejectQuestions(jobId, questionIds);
+        logAudit(actor.id, actor.role, 'OCR_BULK_REJECT', 'OCR_JOB', jobId || 'BULK', { count });
+        return res.json({
+          success: true,
+          action,
+          affectedCount: count,
+          message: `Successfully rejected ${count} question(s).`,
+        });
+      } else {
+        // ASSIGN_META or SAVE_DRAFT on extracted questions
+        let affected = 0;
+        for (const qId of questionIds) {
+          const updates: any = {};
+          if (subjectId) updates.subjectId = subjectId;
+          if (topicId) updates.topicId = topicId;
+          if (conceptId) updates.conceptId = conceptId;
+          if (difficulty) updates.difficulty = difficulty;
+          if (destination) updates.destination = destination;
+          if (examTag) updates.examTag = examTag;
+          if (pyqYear) updates.pyqYear = pyqYear;
+
+          const updated = await ocrRepository.updateExtractedQuestion(qId, updates);
+          if (updated) affected++;
         }
 
-        q.isPublished = true;
-        q.status = 'PUBLISHED';
-        q.destination = destination || 'PRACTICE_BANK';
-        if (subjectId) q.subjectId = subjectId;
-        if (topicId) q.topicId = topicId;
-        if (conceptId) q.conceptId = conceptId;
-        if (difficulty) q.difficulty = difficulty;
-        if (examTag) q.examTag = examTag;
-        if (pyqYear) q.pyqYear = pyqYear;
-
-        await questionRepository.create(q);
-        affectedCount++;
+        return res.json({
+          success: true,
+          action,
+          affectedCount: affected,
+          message: `Updated ${affected} question(s).`,
+        });
       }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
-
-    const subObj = subjectId ? db.subjects.get(subjectId) : null;
-    const conObj = conceptId ? db.concepts.get(conceptId) : null;
-
-    const confirmationMsg = action === 'PUBLISH'
-      ? `Successfully published ${affectedCount} question(s) to ${destination || 'Practice Bank'} under ${subObj?.name || 'Polity'} -> ${conObj?.title || 'Article 32'}.${publishBlockedCount > 0 ? ` (${publishBlockedCount} question(s) were blocked because they lack verified correct answers)` : ''}`
-      : `Successfully performed ${action} on ${affectedCount} question(s).`;
-
-    logAudit(actor.id, actor.role, `QUESTION_BULK_${action}`, 'QUESTION', 'BULK', { count: affectedCount, action, destination });
-
-    res.json({
-      success: true,
-      action,
-      affectedCount,
-      publishBlockedCount,
-      message: confirmationMsg,
-    });
   });
 
   app.post('/api/admin/ai/generate', requireAdmin, async (req, res) => {
@@ -1265,7 +1354,7 @@ async function startServer() {
         totalUsers: allUsers.length,
         totalAdmins: admins.length,
         totalQuestions: questionCount,
-        totalOcrJobs: db.ocrJobs.size,
+        totalOcrJobs: await ocrRepository.countJobs(),
         totalAiDrafts: db.aiDrafts.size,
         totalMockTests: await mockTestRepository.countTests(),
         systemHealth: 'OPERATIONAL',
