@@ -1,95 +1,152 @@
 @import "tailwindcss";
 
 @layer utilities {
-  /* Futuristic Dark Glassmorphic Grid Texture */
-  .bg-futuristic-glass {
-    background-color: #060913;
-    background-image: 
-      radial-gradient(circle at 50% -10%, rgba(245, 158, 11, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 100% 80%, rgba(14, 165, 233, 0.12) 0%, transparent 45%),
-      linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+  .font-serif-editorial {
+    font-family: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
+  }
+  
+  .font-sans-editorial {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 
-  /* Glass Card Styling */
-  .glass-card {
-    background: rgba(15, 23, 42, 0.65);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+  /* Core Canvas Color Tokens */
+  .bg-warm-canvas {
+    background-color: #FAF7F0;
   }
 
-  .glass-card-hover {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  .bg-warm-card {
+    background-color: #FBF9F4;
   }
 
-  .glass-card-hover:hover {
-    border-color: rgba(245, 158, 11, 0.4);
-    box-shadow: 0 10px 30px -10px rgba(245, 158, 11, 0.15);
+  .bg-warm-surface {
+    background-color: #FDFBF7;
+  }
+
+  /* Deep Midnight / Plum Dark Surfaces */
+  .bg-midnight-plum {
+    background-color: #0C1024;
+  }
+
+  .bg-midnight-card {
+    background-color: #121027;
+  }
+
+  .bg-midnight-surface {
+    background-color: #17132B;
+  }
+
+  /* Royal Purple / Plum Accent Tokens */
+  .bg-royal-purple {
+    background-color: #35156B;
+  }
+
+  .bg-royal-purple-hover {
+    background-color: #4B1F78;
+  }
+
+  .text-royal-purple {
+    color: #5B2A86;
+  }
+
+  .border-royal-purple {
+    border-color: rgba(91, 42, 134, 0.3);
+  }
+
+  /* Warm Gold / Champagne Accent Tokens */
+  .bg-warm-gold {
+    background-color: #C9953C;
+  }
+
+  .text-warm-gold {
+    color: #D9A441;
+  }
+
+  .border-warm-gold {
+    border-color: rgba(217, 164, 65, 0.4);
+  }
+
+  /* Premium Card Styles */
+  .ik-card {
+    background-color: #FFFFFF;
+    border: 1px solid rgba(226, 230, 238, 0.9);
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px 0 rgba(17, 20, 38, 0.03), 0 1px 2px -1px rgba(17, 20, 38, 0.02);
+  }
+
+  .ik-card-hover {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .ik-card-hover:hover {
+    border-color: rgba(217, 164, 65, 0.5);
+    box-shadow: 0 12px 30px -8px rgba(12, 16, 36, 0.08);
     transform: translateY(-2px);
   }
 
-  /* UPSC / BPSC Ivory Parchment Background Texture */
-  .bg-upsc-parchment {
-    background-color: #F8F7F2;
-    background-image: 
-      radial-gradient(circle at 50% 0%, rgba(217, 119, 6, 0.07) 0%, transparent 60%),
-      radial-gradient(circle at 100% 100%, rgba(15, 30, 54, 0.04) 0%, transparent 50%),
-      linear-gradient(to right, rgba(15, 30, 54, 0.025) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 30, 54, 0.025) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+  .ik-card-dark {
+    background-color: #0C1024;
+    border: 1px solid rgba(217, 164, 65, 0.25);
+    border-radius: 1rem;
+    color: #FFFFFF;
+    box-shadow: 0 10px 30px -10px rgba(12, 16, 36, 0.3);
   }
 
-  /* BPSC Royal Navy & Gold Background Texture */
-  .bg-bpsc-navy {
-    background-color: #0b1329;
-    background-image: 
-      radial-gradient(circle at 50% 0%, rgba(217, 119, 6, 0.18) 0%, transparent 60%),
-      radial-gradient(circle at 100% 100%, rgba(30, 58, 138, 0.22) 0%, transparent 50%),
-      linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+  /* 3D Perspective Floating Dashboard Transformations */
+  .perspective-container {
+    perspective: 1400px;
+    perspective-origin: 50% 50%;
   }
 
-  /* Academic Dark Sepia Background Texture */
-  .bg-dark-sepia {
-    background-color: #12100e;
-    background-image: 
-      radial-gradient(circle at 50% 0%, rgba(180, 83, 9, 0.14) 0%, transparent 50%),
-      linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-    background-size: 100% 100%, 28px 28px, 28px 28px;
+  .dashboard-3d-tilt {
+    transform: rotateY(-8deg) rotateX(5deg) rotateZ(1deg);
+    transform-style: preserve-3d;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Tricolor Civil Services Ribbon Accent */
-  .upsc-tricolor-accent {
-    background: linear-gradient(90deg, #f97316 0%, #ffffff 50%, #16a34a 100%);
+  .dashboard-3d-tilt:hover {
+    transform: rotateY(-3deg) rotateX(2deg) rotateZ(0deg) translateY(-4px);
   }
 
-  /* Watermark Emblem Style */
-  .upsc-watermark-bg {
-    position: relative;
+  /* Golden Orbital Ring */
+  .orbital-ring {
+    border: 1px solid rgba(217, 164, 65, 0.25);
+    border-radius: 50%;
+    position: absolute;
+    pointer-events: none;
+  }
+
+  /* Legacy texture compatibility bridges */
+  .bg-warm-neutral {
+    background-color: #FAF7F0;
+  }
+
+  .bg-dark-obsidian {
+    background-color: #0C1024;
+  }
+
+  .bg-gold-accent {
+    background-color: #D9A441;
   }
   
-  .upsc-watermark-bg::before {
-    content: "सत्यमेव जयते";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 7rem;
-    font-weight: 900;
-    color: rgba(15, 30, 54, 0.025);
-    pointer-events: none;
-    white-space: nowrap;
-    user-select: none;
-    letter-spacing: 0.2em;
-    font-family: serif;
+  .text-gold-accent {
+    color: #D9A441;
+  }
+
+  .text-gold-serif {
+    color: #C9953C;
+  }
+
+  .surface-card {
+    background: #FFFFFF;
+    border: 1px solid rgba(226, 230, 238, 0.9);
+  }
+
+  .surface-card-hover:hover {
+    border-color: rgba(217, 164, 65, 0.5);
   }
 }
 
-/* Custom Scrollbar for Civil Services Reader */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -100,10 +157,36 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.35);
+  background: rgba(217, 164, 65, 0.3);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.6);
+  background: rgba(201, 149, 60, 0.6);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
 }

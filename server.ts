@@ -10,6 +10,9 @@ import { learnerRepository } from './server/repositories/LearnerRepository.js';
 import { revisionRepository } from './server/repositories/RevisionRepository.js';
 import { mockTestRepository } from './server/repositories/MockTestRepository.js';
 import { ocrRepository } from './server/repositories/OcrRepository.js';
+import { currentAffairsRepository } from './server/repositories/CurrentAffairsRepository.js';
+import { currentAffairsIngestionManager } from './server/services/CurrentAffairsProvider.js';
+import { currentAffairsAiService } from './server/services/CurrentAffairsAiService.js';
 import pool from './server/db/pool.js';
 import {
   recordQuestionAttempt,
@@ -101,6 +104,8 @@ async function requireSuperAdmin(req: express.Request, res: express.Response, ne
 
 async function startServer() {
   await initDatabase();
+  await userRepository.ensureDefaultAccounts(hashPassword);
+  await currentAffairsRepository.ensureSeedArticles();
   const app = express();
   const PORT = 3000;
 
@@ -749,51 +754,54 @@ async function startServer() {
     }
   });
 
-  // Current Affairs & Resources Endpoints (Date-wise, topic-wise, source-backed)
-  app.get('/api/current-affairs', (req, res) => {
-    const { category, dateRange, search, subjectId } = req.query;
-    let list = Array.from(db.currentAffairs.values()).filter(c => c.isPublished);
-
-    if (category && category !== 'All') {
-      const catStr = String(category).toLowerCase();
-      list = list.filter(c => c.category.toLowerCase().includes(catStr) || (c.subtopic && c.subtopic.toLowerCase().includes(catStr)));
+  // Current Affairs Endpoints (PostgreSQL Source of Truth)
+  app.get('/api/current-affairs', async (req, res) => {
+    try {
+      const { category, dateRange, search, subjectId, exam, relevance, biharOnly } = req.query;
+      const list = await currentAffairsRepository.listArticles({
+        category: category as string,
+        dateRange: dateRange as any,
+        search: search as string,
+        subjectId: subjectId as string,
+        exam: exam as any,
+        relevance: relevance as any,
+        biharOnly: biharOnly === 'true',
+        isPublished: true,
+      });
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list current affairs' });
     }
+  });
 
-    if (subjectId) {
-      list = list.filter(c => c.relatedSubject === subjectId || c.relatedConceptIds.includes(String(subjectId)));
+  app.get('/api/current-affairs/revisions/my', requireAuth, async (req, res) => {
+    try {
+      const uid = (req as any).user.id;
+      const list = await currentAffairsRepository.getUserRevisions(uid);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get current affairs revisions' });
     }
+  });
 
-    if (search) {
-      const q = String(search).toLowerCase();
-      list = list.filter(c =>
-        c.title.toLowerCase().includes(q) ||
-        c.summary.toLowerCase().includes(q) ||
-        (c.keywords && c.keywords.some(k => k.toLowerCase().includes(q))) ||
-        c.source.toLowerCase().includes(q)
-      );
+  app.get('/api/current-affairs/:id', async (req, res) => {
+    try {
+      const article = await currentAffairsRepository.getArticleById(req.params.id);
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+      res.json(article);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get current affair article' });
     }
+  });
 
-    if (dateRange && dateRange !== 'ALL') {
-      const now = new Date();
-      if (dateRange === 'TODAY') {
-        const todayStr = now.toISOString().split('T')[0];
-        list = list.filter(c => c.date === todayStr);
-      } else if (dateRange === 'YESTERDAY') {
-        const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        list = list.filter(c => c.date === yest);
-      } else if (dateRange === 'LAST_7_DAYS') {
-        const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        list = list.filter(c => c.date >= cutoff);
-      } else if (dateRange === 'LAST_30_DAYS') {
-        const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        list = list.filter(c => c.date >= cutoff);
-      }
+  app.post('/api/current-affairs/:id/bookmark', requireAuth, async (req, res) => {
+    try {
+      const uid = (req as any).user.id;
+      await currentAffairsRepository.bookmarkForRevision(uid, req.params.id);
+      res.json({ success: true, message: 'Bookmarked for spaced repetition revision' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to bookmark article' });
     }
-
-    // Sort by published date descending
-    list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    res.json(list);
   });
 
   // Dedicated Real PYQ (Previous Year Question) Bank Endpoint
@@ -875,9 +883,7 @@ async function startServer() {
 
     const { items: questions } = await questionRepository.list({ searchQuery: query, limit: 20 });
 
-    const currentAffairs = Array.from(db.currentAffairs.values()).filter(ca =>
-      ca.title.toLowerCase().includes(query) || ca.summary.toLowerCase().includes(query)
-    );
+    const currentAffairs = await currentAffairsRepository.listArticles({ search: query, limit: 10, isPublished: true });
 
     const resources = Array.from(db.resources.values()).filter(r =>
       r.title.toLowerCase().includes(query) || r.summary.toLowerCase().includes(query)
@@ -893,6 +899,8 @@ async function startServer() {
     const users = await userRepository.listUsers();
     const questionCount = await questionRepository.count();
 
+    const caMetrics = await currentAffairsRepository.getAdminMetrics();
+
     res.json({
       totalUsers: users.length,
       activeUsers24h: Math.round(users.length * 0.8),
@@ -901,7 +909,7 @@ async function startServer() {
       totalConcepts: db.concepts.size,
       totalQuestions: questionCount,
       totalMockTests: await mockTestRepository.countTests(),
-      totalCurrentAffairs: db.currentAffairs.size,
+      totalCurrentAffairs: caMetrics.total,
       totalResources: db.resources.size,
       totalAiDrafts: db.aiDrafts.size,
       totalOcrJobs: await ocrRepository.countJobs(),
@@ -911,6 +919,126 @@ async function startServer() {
   app.get('/api/admin/users', requireAdmin, async (req, res) => {
     const users = await userRepository.listUsers();
     res.json(users);
+  });
+
+  // Admin Current Affairs Management Endpoints
+  app.get('/api/admin/current-affairs/metrics', requireAdmin, async (req, res) => {
+    try {
+      const metrics = await currentAffairsRepository.getAdminMetrics();
+      res.json(metrics);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get current affairs metrics' });
+    }
+  });
+
+  app.get('/api/admin/current-affairs/list', requireAdmin, async (req, res) => {
+    try {
+      const { category, status, search, limit, offset } = req.query;
+      const list = await currentAffairsRepository.listArticles({
+        category: category as string,
+        status: status as string,
+        search: search as string,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list admin current affairs' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/ingest', requireAdmin, async (req, res) => {
+    try {
+      const { providerCode } = req.body || {};
+      const result = await currentAffairsIngestionManager.runIngestionPipeline({ customProviderCode: providerCode });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Ingestion failed' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/:id/enrich', requireAdmin, async (req, res) => {
+    try {
+      const result = await currentAffairsAiService.enrichArticle(req.params.id, true);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'AI enrichment failed' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/batch-enrich', requireAdmin, async (req, res) => {
+    try {
+      const result = await currentAffairsAiService.batchEnrichIngestedArticles();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Batch enrichment failed' });
+    }
+  });
+
+  app.put('/api/admin/current-affairs/:id', requireAdmin, async (req, res) => {
+    try {
+      const updated = await currentAffairsRepository.updateArticle(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: 'Article not found' });
+      res.json({ success: true, article: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update article' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/:id/publish', requireAdmin, async (req, res) => {
+    try {
+      const article = await currentAffairsRepository.publishArticle(req.params.id);
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+      res.json({ success: true, article });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to publish article' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/:id/reject', requireAdmin, async (req, res) => {
+    try {
+      const article = await currentAffairsRepository.rejectArticle(req.params.id);
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+      res.json({ success: true, article });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to reject article' });
+    }
+  });
+
+  app.delete('/api/admin/current-affairs/:id', requireAdmin, async (req, res) => {
+    try {
+      const success = await currentAffairsRepository.deleteArticle(req.params.id);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete article' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/:id/generate-question', requireAdmin, async (req, res) => {
+    try {
+      const result = await currentAffairsAiService.enrichArticle(req.params.id, true);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to generate question from article' });
+    }
+  });
+
+  app.get('/api/admin/current-affairs/sources', requireAdmin, async (req, res) => {
+    try {
+      const sources = await currentAffairsRepository.listSources();
+      res.json(sources);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list sources' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/sources', requireAdmin, async (req, res) => {
+    try {
+      const source = await currentAffairsRepository.createSource(req.body);
+      res.json({ success: true, source });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to create source' });
+    }
   });
 
   app.post('/api/admin/concepts', requireAdmin, (req, res) => {

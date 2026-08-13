@@ -23,6 +23,7 @@ export type NavigationSection =
   | 'admin-questions'
   | 'admin-ai'
   | 'admin-ocr'
+  | 'admin-current-affairs'
   | 'super-admin-dashboard'
   | 'super-admin-users'
   | 'super-admin-admins'
@@ -60,7 +61,7 @@ const LearnerContext = createContext<LearnerContextType | undefined>(undefined);
 export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState<NavigationSection>('dashboard');
-  const [appTheme, setAppTheme] = useState<AppTheme>('futuristic-glass');
+  const [appTheme, setAppTheme] = useState<AppTheme>('upsc-parchment');
   const [learnerModel, setLearnerModel] = useState<LearnerModel | null>(null);
   const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
   const [aiInsight, setAiInsight] = useState<string>('Analyzing your learning health...');

@@ -4,15 +4,7 @@ import {
   Send,
   Plus,
   Sparkles,
-  MessageSquare,
-  Brain,
   X,
-  HelpCircle,
-  FileText,
-  BarChart2,
-  BookOpen,
-  ArrowRight,
-  Zap,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -23,10 +15,10 @@ const parseInlineText = (text: string): React.ReactNode[] => {
   const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-bold text-amber-300">{part.slice(2, -2)}</strong>;
+      return <strong key={`b-${i}`} className="font-bold text-stone-900">{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={i} className="bg-slate-800 text-amber-300 px-1 py-0.5 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
+      return <code key={`c-${i}`} className="bg-amber-50 text-amber-900 px-1 py-0.5 rounded text-[11px] font-mono border border-amber-200/60">{part.slice(1, -1)}</code>;
     }
     return part;
   });
@@ -43,7 +35,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           const lines = block.slice(3, -3).trim().split('\n');
           const code = lines.join('\n');
           return (
-            <pre key={idx} className="bg-slate-900 text-amber-200 p-3 rounded-lg overflow-x-auto text-xs font-mono border border-slate-800 my-2">
+            <pre key={`code-${idx}`} className="bg-[#0B132B] text-amber-200 p-3.5 rounded-xl overflow-x-auto text-xs font-mono border border-slate-800 my-2">
               <code>{code}</code>
             </pre>
           );
@@ -58,26 +50,25 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           const line = lines[lIdx];
           const trimmed = line.trim();
 
-          // Table detection
           if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
             inTable = true;
             tableBuffer.push(trimmed);
             continue;
           } else if (inTable) {
             inTable = false;
-            elements.push(renderMarkdownTable(tableBuffer, lIdx));
+            elements.push(renderMarkdownTable(tableBuffer, `tbl-${idx}-${lIdx}`));
             tableBuffer = [];
           }
 
           if (!trimmed) {
-            elements.push(<div key={lIdx} className="h-1" />);
+            elements.push(<div key={`empty-${idx}-${lIdx}`} className="h-1" />);
             continue;
           }
 
           if (trimmed.startsWith('### ')) {
             elements.push(
-              <h4 key={lIdx} className="text-sm font-bold text-amber-400 font-serif mt-2 mb-1 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <h4 key={`h4-${idx}-${lIdx}`} className="text-sm font-bold text-stone-900 mt-2 mb-1 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span>{parseInlineText(trimmed.slice(4))}</span>
               </h4>
             );
@@ -85,7 +76,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           }
           if (trimmed.startsWith('## ')) {
             elements.push(
-              <h3 key={lIdx} className="text-base font-bold text-amber-300 font-serif mt-3 mb-1">
+              <h3 key={`h3-${idx}-${lIdx}`} className="text-base font-serif-editorial font-bold text-stone-900 mt-3 mb-1">
                 {parseInlineText(trimmed.slice(3))}
               </h3>
             );
@@ -93,7 +84,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           }
           if (trimmed.startsWith('# ')) {
             elements.push(
-              <h2 key={lIdx} className="text-lg font-extrabold text-amber-200 font-serif mt-3 mb-1">
+              <h2 key={`h2-${idx}-${lIdx}`} className="text-lg font-serif-editorial font-bold text-[#111827] mt-3 mb-1">
                 {parseInlineText(trimmed.slice(2))}
               </h2>
             );
@@ -102,7 +93,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
 
           if (trimmed.startsWith('> ')) {
             elements.push(
-              <blockquote key={lIdx} className="border-l-2 border-amber-500 pl-3 py-1 my-1.5 text-xs text-amber-200/90 italic bg-amber-950/20 rounded-r">
+              <blockquote key={`bq-${idx}-${lIdx}`} className="border-l-2 border-amber-600 pl-3 py-1 my-1.5 text-xs text-amber-950 italic bg-amber-50/60 rounded-r">
                 {parseInlineText(trimmed.slice(2))}
               </blockquote>
             );
@@ -111,7 +102,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
 
           if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
             elements.push(
-              <li key={lIdx} className="ml-4 list-disc text-xs sm:text-sm leading-relaxed text-slate-200 my-0.5">
+              <li key={`li-${idx}-${lIdx}`} className="ml-4 list-disc text-xs sm:text-sm leading-relaxed text-stone-700 my-0.5">
                 {parseInlineText(trimmed.slice(2))}
               </li>
             );
@@ -121,8 +112,8 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
           if (numMatch) {
             elements.push(
-              <div key={lIdx} className="ml-2 flex items-start gap-1.5 text-xs sm:text-sm leading-relaxed text-slate-200 my-0.5">
-                <span className="font-bold text-amber-400 font-mono text-xs">{numMatch[1]}.</span>
+              <div key={`num-${idx}-${lIdx}`} className="ml-2 flex items-start gap-1.5 text-xs sm:text-sm leading-relaxed text-stone-700 my-0.5">
+                <span className="font-bold text-amber-800 font-mono text-xs">{numMatch[1]}.</span>
                 <span>{parseInlineText(numMatch[2])}</span>
               </div>
             );
@@ -130,45 +121,45 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           }
 
           elements.push(
-            <p key={lIdx} className="text-xs sm:text-sm leading-relaxed text-slate-200">
+            <p key={`p-${idx}-${lIdx}`} className="text-xs sm:text-sm leading-relaxed text-stone-800">
               {parseInlineText(trimmed)}
             </p>
           );
         }
 
         if (inTable && tableBuffer.length > 0) {
-          elements.push(renderMarkdownTable(tableBuffer, idx + 999));
+          elements.push(renderMarkdownTable(tableBuffer, `tbl-end-${idx}`));
         }
 
-        return <div key={idx} className="space-y-1">{elements}</div>;
+        return <div key={`block-${idx}`} className="space-y-1">{elements}</div>;
       })}
     </div>
   );
 };
 
-const renderMarkdownTable = (tableLines: string[], keyIdx: number) => {
+const renderMarkdownTable = (tableLines: string[], keyIdx: string | number) => {
   if (tableLines.length < 2) return null;
   const headerLine = tableLines[0];
   const bodyLines = tableLines.filter(l => !l.includes('---'));
   const headers = headerLine.split('|').map(c => c.trim()).filter(c => c.length > 0);
 
   return (
-    <div key={keyIdx} className="overflow-x-auto my-3 rounded-lg border border-slate-700/60 shadow-sm">
+    <div key={keyIdx} className="overflow-x-auto my-3 rounded-xl border border-stone-200 shadow-2xs">
       <table className="min-w-full text-xs text-left">
-        <thead className="bg-amber-950/50 text-amber-300 font-bold border-b border-slate-700/60">
+        <thead className="bg-amber-50/80 text-amber-900 font-bold border-b border-stone-200">
           <tr>
             {headers.map((h, i) => (
-              <th key={i} className="px-3 py-2 border-r border-slate-700/40 last:border-0">{parseInlineText(h)}</th>
+              <th key={`th-${i}`} className="px-3 py-2 border-r border-stone-200 last:border-0">{parseInlineText(h)}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800/60">
+        <tbody className="divide-y divide-stone-100">
           {bodyLines.slice(1).map((rowStr, rIdx) => {
             const cells = rowStr.split('|').map(c => c.trim()).filter(c => c.length > 0);
             return (
-              <tr key={rIdx} className="hover:bg-slate-800/30">
+              <tr key={`tr-${rIdx}`} className="hover:bg-stone-50/60">
                 {cells.map((cell, cIdx) => (
-                  <td key={cIdx} className="px-3 py-2 border-r border-slate-800/40 last:border-0 text-slate-200">{parseInlineText(cell)}</td>
+                  <td key={`td-${rIdx}-${cIdx}`} className="px-3 py-2 border-r border-stone-100 last:border-0 text-stone-700">{parseInlineText(cell)}</td>
                 ))}
               </tr>
             );
@@ -210,35 +201,52 @@ export const AITutorView: React.FC = () => {
   const {
     selectedConceptId,
     learnerModel,
-    appTheme,
     aiContext,
     setAiContext,
     pendingAiPrompt,
     setPendingAiPrompt,
   } = useLearner();
-  const isParchment = appTheme === 'upsc-parchment';
+
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>('');
   const [inputPrompt, setInputPrompt] = useState('');
   const [sending, setSending] = useState(false);
+  const [loadingConvs, setLoadingConvs] = useState(true);
+  const [convError, setConvError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    api.getConversations().then(convs => {
-      setConversations(convs);
-      if (convs.length > 0) {
-        setActiveConvId(convs[0].id);
-      }
-    });
-  }, []);
+  const safeConversations = Array.isArray(conversations) ? conversations : [];
+  const activeConv = safeConversations.find(c => c.id === activeConvId) || safeConversations[0] || null;
 
-  const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0];
+  const loadConversations = async () => {
+    setLoadingConvs(true);
+    setConvError(null);
+    try {
+      const convs = await api.getConversations();
+      const validArray = Array.isArray(convs) ? convs : [];
+      setConversations(validArray);
+      if (validArray.length > 0) {
+        setActiveConvId(validArray[0].id);
+      } else {
+        setActiveConvId('');
+      }
+    } catch (err: any) {
+      console.error('Failed to load conversations:', err);
+      setConvError(err.message || 'Unable to load conversations.');
+      setConversations([]);
+    } finally {
+      setLoadingConvs(false);
+    }
+  };
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeConv?.messages, sending]);
 
-  // Handle pending prompt auto-send if triggered from PracticeView or LearnView
   useEffect(() => {
     if (pendingAiPrompt && !sending) {
       const p = pendingAiPrompt;
@@ -246,6 +254,20 @@ export const AITutorView: React.FC = () => {
       handleSendMessage(p.prompt, p.quickAction);
     }
   }, [pendingAiPrompt]);
+
+  const handleNewConversation = async (): Promise<ChatConversation | null> => {
+    try {
+      setConvError(null);
+      const newConv = await api.createConversation('New AI Tutor Session');
+      setConversations(prev => [newConv, ...(Array.isArray(prev) ? prev : [])]);
+      setActiveConvId(newConv.id);
+      return newConv;
+    } catch (err: any) {
+      console.error('Failed to create new conversation:', err);
+      setConvError('Unable to create new conversation.');
+      return null;
+    }
+  };
 
   const handleSendMessage = async (customPrompt?: string, quickAction?: string) => {
     const textToSend = customPrompt || inputPrompt;
@@ -256,14 +278,17 @@ export const AITutorView: React.FC = () => {
 
     try {
       let targetConvId = activeConvId;
-      if (!targetConvId && conversations.length > 0) {
-        targetConvId = conversations[0].id;
+      if (!targetConvId && safeConversations.length > 0) {
+        targetConvId = safeConversations[0].id;
       }
 
       if (!targetConvId) {
-        const newConvs = await api.getConversations();
-        targetConvId = newConvs[0].id;
-        setActiveConvId(targetConvId);
+        const created = await handleNewConversation();
+        if (!created) {
+          setSending(false);
+          return;
+        }
+        targetConvId = created.id;
       }
 
       const res = await api.sendChatMessage(
@@ -276,8 +301,11 @@ export const AITutorView: React.FC = () => {
 
       if (res.conversation) {
         setConversations(prev =>
-          prev.map(c => (c.id === res.conversation.id ? res.conversation : c))
+          (Array.isArray(prev) ? prev : []).map(c => (c.id === res.conversation.id ? res.conversation : c))
         );
+      } else {
+        const refreshed = await api.getConversations();
+        setConversations(Array.isArray(refreshed) ? refreshed : []);
       }
     } catch (err) {
       console.error('Failed to send AI tutor message:', err);
@@ -286,255 +314,207 @@ export const AITutorView: React.FC = () => {
     }
   };
 
-  const handleNewConversation = async () => {
-    try {
-      const res = await fetch('/api/ai/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id, title: 'New AI Tutor Session' }),
-      });
-      const newConv = await res.json();
-      setConversations(prev => [newConv, ...prev]);
-      setActiveConvId(newConv.id);
-    } catch (err) {
-      console.error('Failed to create new conversation:', err);
-    }
-  };
-
-  const quickActions = [
-    { label: 'Explain Concept', action: 'EXPLAIN' },
-    { label: 'Simplify Topic', action: 'SIMPLIFY' },
-    { label: 'Give Exam Examples', action: 'EXAMPLE' },
-    { label: 'Compare Terms', action: 'COMPARE' },
-    { label: 'Test Me with MCQ', action: 'TEST' },
-    { label: 'Why Was I Wrong?', action: 'WHY_WRONG' },
-    { label: 'Revision Notes', action: 'NOTES' },
-    { label: 'PYQ Angle', action: 'PYQ' },
-    { label: 'Mains Angle', action: 'MAINS' },
+  const compactQuickActions = [
+    { label: 'Explain', action: 'EXPLAIN' },
+    { label: 'Simplify', action: 'SIMPLIFY' },
+    { label: 'Examples', action: 'EXAMPLE' },
+    { label: 'Compare', action: 'COMPARE' },
+    { label: 'Test Me', action: 'TEST' },
   ];
 
   return (
-    <div className="space-y-4 animate-fade-in pb-12 max-w-6xl mx-auto">
-      {/* View Header */}
-      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 ${
-        isParchment ? 'border-slate-200' : 'border-slate-800'
-      }`}>
+    <div className="space-y-4 animate-fade-in pb-12 max-w-6xl mx-auto font-sans-editorial">
+      
+      {/* Top Header & Context Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-stone-200 pb-4">
         <div>
-          <h1 className={`text-2xl font-extrabold flex items-center gap-2 font-serif ${
-            isParchment ? 'text-[#0F1E36]' : 'text-white'
-          }`}>
-            <Bot className="w-6 h-6 text-amber-500" />
-            <span>IKSHOVIA AI Civil Services Personal Tutor</span>
-          </h1>
-          <p className={`text-xs mt-0.5 ${isParchment ? 'text-slate-600' : 'text-slate-400'}`}>
-            Context-aware tutor tailored to {user?.onboarding?.targetExam || 'UPSC CSE'}, your mastery score ({learnerModel?.overallScore || 70}%), and real-time active context.
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-serif-editorial font-bold text-[#111827] flex items-center gap-2">
+              <Bot className="w-6 h-6 text-amber-700" />
+              <span>Personal AI Tutor</span>
+            </h1>
+          </div>
+          <p className="text-xs text-stone-500 font-medium mt-0.5">
+            Context: <strong className="text-stone-800">{user?.onboarding?.targetExam || 'UPSC CSE 2026'}</strong> • Source-Grounded Learning Assistant
           </p>
         </div>
 
-        <button
-          onClick={handleNewConversation}
-          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 self-start shadow-sm"
-        >
-          <Plus className="w-4 h-4 text-white" />
-          <span>New Session</span>
-        </button>
+        {aiContext && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 px-3 py-1.5 rounded-xl text-xs font-semibold text-amber-900">
+            <span className="truncate max-w-xs">Topic Context: {aiContext.conceptTitle || aiContext.questionText}</span>
+            <button
+              onClick={() => setAiContext(null)}
+              className="text-stone-400 hover:text-rose-600 p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Main Chat Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-210px)] min-h-[520px]">
-        {/* Sidebar Conversations (3 cols) */}
-        <div className={`hidden lg:flex lg:col-span-3 rounded-2xl p-3 flex-col gap-2 overflow-y-auto border ${
-          isParchment ? 'bg-white border-slate-200 text-slate-800 shadow-sm' : 'bg-slate-900 border-slate-800 text-slate-200'
-        }`}>
-          <div className={`text-[11px] font-bold uppercase tracking-wider px-2 py-1 flex items-center justify-between ${
-            isParchment ? 'text-amber-900 font-serif' : 'text-slate-500'
-          }`}>
-            <span>Sessions History</span>
-            <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-mono font-bold">
-              {conversations.length}
-            </span>
-          </div>
-
-          <div className="space-y-1 flex-1">
-            {conversations.map(c => (
+      {/* Main Workspace Layout: Sessions Sidebar + Workspace Chat */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[520px]">
+        
+        {/* Left: Conversation Sidebar */}
+        <div className="lg:col-span-3 bg-white border border-stone-200/90 rounded-2xl p-3.5 space-y-3 shadow-2xs flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500">
+                SESSIONS
+              </span>
               <button
-                key={c.id}
-                onClick={() => setActiveConvId(c.id)}
-                className={`w-full text-left p-2.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 border ${
-                  c.id === activeConvId
-                    ? isParchment
-                      ? 'bg-amber-100/90 border-amber-400 text-amber-950 font-bold'
-                      : 'bg-indigo-950 border-indigo-700 text-indigo-200 font-bold'
-                    : isParchment
-                    ? 'bg-slate-50 hover:bg-amber-50 text-slate-700 border-slate-200'
-                    : 'bg-slate-800/40 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-transparent'
-                }`}
+                onClick={handleNewConversation}
+                className="p-1 rounded-lg bg-[#0B132B] text-amber-400 hover:bg-[#121D3B] border border-amber-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="New Session"
               >
-                <MessageSquare className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                <span className="truncate flex-1">{c.title}</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>New</span>
               </button>
-            ))}
+            </div>
+
+            <div className="space-y-1 max-h-[400px] overflow-y-auto">
+              {safeConversations.map(c => {
+                const isActive = c.id === activeConvId;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setActiveConvId(c.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer border ${
+                      isActive
+                        ? 'bg-amber-50 border-amber-200 text-amber-900 font-bold'
+                        : 'bg-white border-transparent text-stone-600 hover:bg-stone-50'
+                    }`}
+                  >
+                    <div className="truncate">{c.title || 'Study Session'}</div>
+                    <div className="text-[10px] text-stone-400 mt-0.5 font-mono">
+                      {new Date(c.updatedAt || Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* AI Context Box */}
-          <div className={`border rounded-xl p-3 text-[11px] space-y-1.5 ${
-            isParchment ? 'bg-amber-50/80 border-amber-200 text-slate-800' : 'bg-slate-950 border-slate-800 text-slate-400'
-          }`}>
-            <div className="font-bold text-amber-500 flex items-center gap-1 font-serif">
-              <Brain className="w-3.5 h-3.5 text-amber-500" />
-              <span>Learner Model Active</span>
-            </div>
-            <p className="text-[10px] text-slate-400 leading-tight">
-              Adjusts tone according to mastery level ({learnerModel?.overallScore || 70}%) & confidence bias ({learnerModel?.confidenceBias || 'BALANCED'}).
-            </p>
+          <div className="pt-3 border-t border-stone-100 text-[10px] text-stone-400 text-center font-mono">
+            Source-Grounded AI Engine
           </div>
         </div>
 
-        {/* Chat Feed (9 cols) */}
-        <div className={`lg:col-span-9 rounded-2xl flex flex-col overflow-hidden border shadow-sm ${
-          isParchment ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-200 shadow-xl'
-        }`}>
-          {/* Active Context Banner if available */}
-          {aiContext && (
-            <div className="bg-amber-950/40 border-b border-amber-800/50 px-4 py-2 flex items-center justify-between text-xs text-amber-200">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <Zap className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
-                <span className="font-bold shrink-0">Active Context:</span>
-                <span className="truncate text-amber-300 font-medium">
-                  {aiContext.questionText
-                    ? `Practice Question: "${aiContext.questionText.slice(0, 50)}..."`
-                    : aiContext.conceptTitle
-                    ? `${aiContext.subjectName || 'GS'} → ${aiContext.conceptTitle}`
-                    : 'Custom Study Context'}
-                </span>
-              </div>
-              <button
-                onClick={() => setAiContext(null)}
-                className="text-amber-400 hover:text-amber-200 flex items-center gap-1 shrink-0 ml-2 text-[11px] font-bold"
-              >
-                <span>Clear</span>
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+        {/* Right: Main Tutor Workspace Chat */}
+        <div className="lg:col-span-9 bg-white border border-stone-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between space-y-4">
+          
+          {/* Messages Area */}
+          <div className="space-y-4 flex-1 overflow-y-auto max-h-[500px] pr-1">
+            {activeConv?.messages && activeConv.messages.length > 0 ? (
+              activeConv.messages.map((m: ChatMessage) => {
+                const isUser = m.role === 'user';
+                const { mainText, followUps } = isUser ? { mainText: m.text, followUps: [] } : extractSuggestedFollowUps(m.text);
 
-          {/* Quick Action Bar */}
-          <div className={`p-2.5 border-b flex items-center gap-2 overflow-x-auto scrollbar-none ${
-            isParchment ? 'bg-amber-50/60 border-slate-200' : 'bg-slate-950/80 border-slate-800'
-          }`}>
-            <span className="text-[11px] font-bold text-amber-500 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1 font-serif">
-              <Sparkles className="w-3 h-3 text-amber-500" /> Actions:
-            </span>
-            {quickActions.map((qa, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSendMessage(`Execute quick action: ${qa.label}`, qa.action)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all whitespace-nowrap border ${
-                  isParchment
-                    ? 'bg-white hover:bg-amber-100 border-amber-300 text-amber-950'
-                    : 'bg-slate-800 hover:bg-amber-950/60 hover:border-amber-700/60 border-slate-700 text-slate-300'
-                }`}
-              >
-                {qa.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Message Stream */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            {activeConv?.messages.map(msg => {
-              const isUser = msg.role === 'user';
-              const { mainText, followUps } = isUser
-                ? { mainText: msg.text, followUps: [] }
-                : extractSuggestedFollowUps(msg.text);
-
-              return (
-                <div key={msg.id} className="space-y-2">
-                  <div className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                    {!isUser && (
-                      <div className="w-8 h-8 rounded-xl bg-amber-600 flex items-center justify-center shrink-0 text-white shadow-sm border border-amber-400">
-                        <Bot className="w-4.5 h-4.5" />
-                      </div>
-                    )}
-
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-1`}
+                  >
                     <div
-                      className={`max-w-[85%] sm:max-w-[82%] p-4 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                      className={`max-w-[85%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
                         isUser
-                          ? 'bg-[#0F1E36] text-amber-300 rounded-tr-none font-medium shadow-sm'
-                          : isParchment
-                          ? 'bg-amber-50/90 text-slate-900 border border-amber-200/90 rounded-tl-none font-serif shadow-sm'
-                          : 'bg-slate-950 text-slate-200 border border-slate-800 rounded-tl-none font-sans'
+                          ? 'bg-[#0B132B] text-white rounded-br-2xs shadow-2xs'
+                          : 'bg-[#FBF9F5] border border-stone-200/90 text-stone-800 rounded-bl-2xs shadow-2xs'
                       }`}
                     >
-                      {isUser ? msg.text : <FormattedMarkdownMessage text={mainText} />}
+                      {isUser ? (
+                        <p>{m.text}</p>
+                      ) : (
+                        <FormattedMarkdownMessage text={mainText} />
+                      )}
                     </div>
 
-                    {isUser && (
-                      <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-950 font-bold text-xs shadow-sm">
-                        {user?.name?.charAt(0) || 'U'}
+                    {/* Follow-up Pill Recommendations */}
+                    {!isUser && followUps.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1 pl-1">
+                        {followUps.map((fu, fIdx) => (
+                          <button
+                            key={fIdx}
+                            onClick={() => handleSendMessage(fu)}
+                            className="text-[11px] font-semibold bg-white hover:bg-amber-50 border border-amber-200 text-amber-900 px-3 py-1 rounded-full transition-all cursor-pointer shadow-2xs"
+                          >
+                            {fu}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
-
-                  {/* Render Suggested Follow-Up Pill Buttons */}
-                  {!isUser && followUps.length > 0 && (
-                    <div className="ml-11 flex flex-wrap gap-2 pt-1">
-                      <span className="w-full text-[10px] font-bold text-amber-500 uppercase tracking-wider font-serif">
-                        Click to ask follow-up:
-                      </span>
-                      {followUps.map((fu, fIdx) => (
-                        <button
-                          key={fIdx}
-                          onClick={() => handleSendMessage(fu)}
-                          className="text-xs bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 hover:text-amber-100 border border-amber-800/60 hover:border-amber-600 px-3 py-1.5 rounded-xl transition-all text-left flex items-center gap-1.5 shadow-sm"
-                        >
-                          <span>{fu}</span>
-                          <ArrowRight className="w-3 h-3 text-amber-400 shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                );
+              })
+            ) : (
+              <div className="text-center py-16 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto">
+                  <Bot className="w-6 h-6" />
                 </div>
-              );
-            })}
-
-            {sending && (
-              <div className="flex items-center gap-2 text-xs text-amber-400 p-3 bg-amber-950/30 rounded-xl border border-amber-800/40 font-bold font-serif animate-pulse">
-                <Sparkles className="w-4 h-4 animate-spin text-amber-400" />
-                <span>IKSHOVIA AI is generating personalized Civil Services tutor response...</span>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900">IKSHOVIA Personal Learning Tutor</h3>
+                <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
+                  Start your first learning session. Ask any question about Polity, Economy, History, or Current Affairs.
+                </p>
               </div>
             )}
+
+            {sending && (
+              <div className="flex items-center gap-2 text-xs text-amber-800 font-bold bg-amber-50/60 p-3 rounded-xl border border-amber-100 max-w-xs">
+                <div className="w-3.5 h-3.5 border-2 border-amber-700 border-t-transparent rounded-full animate-spin" />
+                <span>Analyzing Syllabus Sources...</span>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Box */}
-          <div className={`p-3 border-t flex items-center gap-2 ${
-            isParchment ? 'bg-amber-50/40 border-slate-200' : 'bg-slate-950 border-slate-800'
-          }`}>
-            <input
-              type="text"
-              value={inputPrompt}
-              onChange={e => setInputPrompt(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Ask AI anything (e.g., Explain Article 21, What is CRISPR?, Compare WPI vs CPI)..."
-              className={`flex-1 rounded-xl px-4 py-2.5 text-xs focus:outline-none border ${
-                isParchment
-                  ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-amber-500'
-                  : 'bg-slate-900 border-slate-800 text-slate-100 placeholder-slate-500 focus:border-amber-500'
-              }`}
-            />
-            <button
-              id="send-ai-chat-btn"
-              onClick={() => handleSendMessage()}
-              disabled={sending || !inputPrompt.trim()}
-              className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
-            >
-              <span>Send</span>
-              <Send className="w-3.5 h-3.5" />
-            </button>
+          {/* Suggested Actions Row & Composer */}
+          <div className="space-y-3 pt-3 border-t border-stone-100">
+            
+            {/* Suggested Actions */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none max-w-full">
+              <span className="text-[10px] font-mono font-bold text-stone-400 shrink-0 uppercase">QUICK:</span>
+              {compactQuickActions.map(qa => (
+                <button
+                  key={qa.action}
+                  onClick={() => handleSendMessage(undefined, qa.action)}
+                  className="text-[11px] font-bold bg-stone-100 hover:bg-stone-200 text-stone-700 px-3 py-1 rounded-lg transition-all shrink-0 cursor-pointer border border-stone-200"
+                >
+                  {qa.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Input Composer Box */}
+            <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-xl p-2 focus-within:border-amber-500 transition-colors">
+              <input
+                type="text"
+                value={inputPrompt}
+                onChange={e => setInputPrompt(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Ask your query or concept doubt..."
+                className="flex-1 bg-transparent border-none text-xs sm:text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none px-2"
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={sending || !inputPrompt.trim()}
+                className="p-2.5 bg-[#0B132B] hover:bg-[#121D3B] disabled:opacity-50 text-amber-400 rounded-lg transition-all cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+
           </div>
+
         </div>
+
       </div>
+
     </div>
   );
 };

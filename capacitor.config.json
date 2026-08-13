@@ -1,0 +1,16 @@
+{
+  "appId": "com.ikshovia.app",
+  "appName": "IKSHOVIA",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#FAF7F0",
+      "showSpinner": false
+    }
+  }
+}

@@ -206,9 +206,35 @@ export const api = {
     return res.json();
   },
 
-  getConversations: async (userId?: string): Promise<ChatConversation[]> => {
-    const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/ai/conversations?userId=${uid}`);
+  getConversations: async (): Promise<ChatConversation[]> => {
+    const res = await fetch('/api/ai/conversations', {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to load AI conversations (${res.status})`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray(data.conversations)) {
+      return data.conversations;
+    }
+    if (data && Array.isArray(data.data)) {
+      return data.data;
+    }
+    return [];
+  },
+
+  createConversation: async (title?: string, initialMessage?: any): Promise<ChatConversation> => {
+    const res = await fetch('/api/ai/conversations', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ title, initialMessage }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to create AI conversation (${res.status})`);
+    }
     return res.json();
   },
 
@@ -218,6 +244,9 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ userText, conceptId, quickAction, context }),
     });
+    if (!res.ok) {
+      throw new Error(`Failed to send message (${res.status})`);
+    }
     return res.json();
   },
 
@@ -237,14 +266,96 @@ export const api = {
   },
 
   // Current Affairs & Resources
-  getCurrentAffairs: async (filters?: { category?: string; dateRange?: string; search?: string; subjectId?: string }): Promise<CurrentAffairArticle[]> => {
+  getCurrentAffairs: async (filters?: { category?: string; dateRange?: string; search?: string; subjectId?: string; exam?: string; relevance?: string; biharOnly?: boolean }): Promise<CurrentAffairArticle[]> => {
     const params = new URLSearchParams();
     if (filters?.category) params.append('category', filters.category);
     if (filters?.dateRange) params.append('dateRange', filters.dateRange);
     if (filters?.search) params.append('search', filters.search);
     if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+    if (filters?.exam) params.append('exam', filters.exam);
+    if (filters?.relevance) params.append('relevance', filters.relevance);
+    if (filters?.biharOnly) params.append('biharOnly', 'true');
 
     const res = await fetch(`/api/current-affairs?${params.toString()}`);
+    return res.json();
+  },
+
+  getCurrentAffairById: async (id: string): Promise<CurrentAffairArticle> => {
+    const res = await fetch(`/api/current-affairs/${id}`);
+    return res.json();
+  },
+
+  bookmarkCurrentAffairForRevision: async (id: string) => {
+    const res = await fetch(`/api/current-affairs/${id}/bookmark`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  getMyCurrentAffairsRevisions: async (): Promise<CurrentAffairArticle[]> => {
+    const res = await fetch(`/api/current-affairs/revisions/my`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  adminGetCurrentAffairsMetrics: async () => {
+    const res = await fetch(`/api/admin/current-affairs/metrics`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  adminListCurrentAffairs: async (params?: any) => {
+    const q = new URLSearchParams(params || {}).toString();
+    const res = await fetch(`/api/admin/current-affairs/list?${q}`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  adminTriggerIngestion: async (providerCode?: string) => {
+    const res = await fetch(`/api/admin/current-affairs/ingest`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ providerCode }),
+    });
+    return res.json();
+  },
+
+  adminEnrichCurrentAffair: async (id: string) => {
+    const res = await fetch(`/api/admin/current-affairs/${id}/enrich`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  adminUpdateCurrentAffair: async (id: string, updates: any) => {
+    const res = await fetch(`/api/admin/current-affairs/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    return res.json();
+  },
+
+  adminPublishCurrentAffair: async (id: string) => {
+    const res = await fetch(`/api/admin/current-affairs/${id}/publish`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  adminRejectCurrentAffair: async (id: string) => {
+    const res = await fetch(`/api/admin/current-affairs/${id}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  adminGenerateQuestionFromCurrentAffair: async (id: string) => {
+    const res = await fetch(`/api/admin/current-affairs/${id}/generate-question`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
     return res.json();
   },
 
