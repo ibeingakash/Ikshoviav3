@@ -8,6 +8,7 @@ import { questionRepository } from './server/repositories/QuestionRepository.js'
 import { practiceRepository } from './server/repositories/PracticeRepository.js';
 import { learnerRepository } from './server/repositories/LearnerRepository.js';
 import { revisionRepository } from './server/repositories/RevisionRepository.js';
+import { mockTestRepository } from './server/repositories/MockTestRepository.js';
 import pool from './server/db/pool.js';
 import {
   recordQuestionAttempt,
@@ -32,6 +33,7 @@ import {
   ChatConversation,
   OCRJob,
   UserRole,
+  UserProfile,
 } from './src/types/index.js';
 
 import { processOcrDocument } from './server/ocr.js';
@@ -627,8 +629,106 @@ async function startServer() {
   });
 
   // Mock Tests Endpoints
-  app.get('/api/mock-tests', (req, res) => {
-    res.json(Array.from(db.mockTests.values()).filter(m => m.isPublished));
+  app.get('/api/mock-tests', async (req, res) => {
+    try {
+      const tests = await mockTestRepository.getPublishedTests();
+      res.json(tests);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch mock tests' });
+    }
+  });
+
+  app.get('/api/mock-tests/history', async (req, res) => {
+    try {
+      const user = await getAuthenticatedUser(req);
+      const userId = user ? user.id : ((req.query.userId as string) || 'usr_demo');
+
+      const history = await mockTestRepository.getUserHistory(userId);
+      res.json(history);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch mock test history' });
+    }
+  });
+
+  app.get('/api/mock-tests/:id', async (req, res) => {
+    try {
+      const test = await mockTestRepository.getTestById(req.params.id);
+      if (!test) return res.status(404).json({ error: 'Mock test not found' });
+      const questions = await mockTestRepository.getTestQuestions(req.params.id);
+      res.json({ ...test, questions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch mock test details' });
+    }
+  });
+
+  app.post('/api/mock-tests/:id/start', async (req, res) => {
+    try {
+      const user = await getAuthenticatedUser(req);
+      const userId = user ? user.id : (req.body.userId || 'usr_demo');
+
+      const test = await mockTestRepository.getTestById(req.params.id);
+      if (!test || !test.isPublished) {
+        return res.status(404).json({ error: 'Mock test not found or not published' });
+      }
+
+      const attempt = await mockTestRepository.startAttempt(userId, test.id);
+      const questions = await mockTestRepository.getTestQuestions(test.id);
+
+      res.json({ success: true, attempt, test, questions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to start attempt' });
+    }
+  });
+
+  app.get('/api/mock-tests/attempts/:attemptId', async (req, res) => {
+    try {
+      const user = await getAuthenticatedUser(req);
+      const userId = user ? user.id : ((req.query.userId as string) || 'usr_demo');
+
+      const attempt = await mockTestRepository.getAttempt(userId, req.params.attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: 'Attempt not found or unauthorized' });
+      }
+
+      const answers = await mockTestRepository.getAttemptAnswers(userId, req.params.attemptId);
+      const test = await mockTestRepository.getTestById(attempt.mockTestId);
+      const questions = test ? await mockTestRepository.getTestQuestions(test.id) : [];
+
+      res.json({ success: true, attempt, answers, test, questions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch attempt' });
+    }
+  });
+
+  app.post('/api/mock-tests/attempts/:attemptId/answer', async (req, res) => {
+    try {
+      const user = await getAuthenticatedUser(req);
+      const userId = user ? user.id : (req.body.userId || 'usr_demo');
+      const { questionId, userAnswer, timeSpentSeconds, markedForReview } = req.body;
+
+      if (!questionId) {
+        return res.status(400).json({ error: 'questionId is required' });
+      }
+
+      const attempt = await mockTestRepository.getAttempt(userId, req.params.attemptId);
+      if (!attempt) {
+        return res.status(404).json({ error: 'Attempt not found or unauthorized' });
+      }
+
+      if (attempt.status === 'SUBMITTED') {
+        return res.status(400).json({ error: 'Cannot update answer for submitted attempt' });
+      }
+
+      await mockTestRepository.saveAnswer(userId, req.params.attemptId, questionId, {
+        userAnswer,
+        timeSpentSeconds,
+        markedForReview,
+      });
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to save answer' });
+    }
   });
 
   app.post('/api/mock-tests/:id/submit', async (req, res) => {
@@ -837,7 +937,7 @@ async function startServer() {
       totalTopics: db.topics.size,
       totalConcepts: db.concepts.size,
       totalQuestions: questionCount,
-      totalMockTests: db.mockTests.size,
+      totalMockTests: await mockTestRepository.countTests(),
       totalCurrentAffairs: db.currentAffairs.size,
       totalResources: db.resources.size,
       totalAiDrafts: db.aiDrafts.size,
@@ -1205,7 +1305,7 @@ async function startServer() {
         totalQuestions: questionCount,
         totalOcrJobs: db.ocrJobs.size,
         totalAiDrafts: db.aiDrafts.size,
-        totalMockTests: db.mockTests.size,
+        totalMockTests: await mockTestRepository.countTests(),
         systemHealth: 'OPERATIONAL',
       },
       admins,
