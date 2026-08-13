@@ -220,6 +220,7 @@ export interface Question {
   ocrConfidence?: number;
   ocrMatchReason?: string;
   sourceJobId?: string;
+  currentAffairId?: string;
 
   // OCR V3 Accuracy & Sequence
   questionNum?: number;
@@ -296,21 +297,26 @@ export interface CurrentAffairArticle {
   id: string;
   title: string;
   date: string;
-  category: string; // 'Polity & Governance', 'Economy', 'International Relations', 'Environment', 'Science & Tech', 'Internal Security', 'Social Issues', 'Reports & Indices', 'Government Schemes', 'Bihar-Specific'
+  category: string; // 'Polity & Governance', 'Economy', 'International Relations', 'Environment', 'Science & Tech', 'Internal Security', 'Social Issues', 'Reports & Indices', 'Government Schemes', 'Bihar Current Affairs'
   subtopic?: string;
   summary: string;
-  background: string;
-  keyFacts: string[];
-  examRelevance?: string;
-  prelimsRelevance: string;
-  mainsRelevance: string;
+  background?: string;
+  keyFacts?: string[];
+  examRelevance?: 'UPSC' | 'BPSC' | 'BOTH';
+  prelimsRelevance?: string;
+  mainsRelevance?: string;
+  biharRelevance?: string;
+  prelimsPointers?: string[];
+  mainsDimensions?: Record<string, string>;
+  importantFacts?: string[];
   relatedSubject?: string;
-  relatedConceptIds: string[];
+  relatedConceptIds?: string[];
   keywords?: string[];
   source: string; // E.g. 'Press Information Bureau (PIB)', 'Supreme Court Judgment', 'RBI Bulletin'
   sourceUrl?: string;
   sourceType?: 'PRIMARY_GOVT' | 'SECONDARY_NEWS' | 'OFFICIAL_PORTAL';
-  publishedAt: string;
+  status?: 'INGESTED' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PUBLISHED' | 'REJECTED';
+  publishedAt?: string;
   retrievedAt?: string;
   isPublished: boolean;
   questions?: Question[];

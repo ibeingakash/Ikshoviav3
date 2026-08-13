@@ -22,10 +22,10 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   History,
-  Brain,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { IKBrandMark } from '../common/IKBrandMark.js';
 
 interface NavItem {
   id: NavigationSection;
@@ -66,6 +66,7 @@ export const Sidebar: React.FC = () => {
     { id: 'admin-content', label: 'Subjects & Concepts', icon: FileSpreadsheet, adminOnly: true },
     { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle, adminOnly: true },
     { id: 'admin-ocr', label: 'OCR Import Studio', icon: FileUp, adminOnly: true, badge: '4 Modes' },
+    { id: 'admin-current-affairs', label: 'Current Affairs Studio', icon: Newspaper, adminOnly: true, badge: 'Pipeline' },
     { id: 'admin-ai', label: 'AI Content Studio', icon: Sparkles, adminOnly: true, badge: 'Drafts' },
   ];
 
@@ -79,15 +80,15 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       id="app-sidebar"
-      className="hidden md:flex flex-col w-64 min-h-[calc(100vh-61px)] p-3 select-none bg-[#0B1933] border-r border-[#0B1933]/30 text-slate-300 shrink-0"
+      className="hidden md:flex flex-col w-64 min-h-[calc(100vh-61px)] p-3.5 select-none bg-[#0C1024] text-stone-300 border-r border-amber-500/20 shrink-0 font-sans-editorial"
     >
       <div className="space-y-6 flex-1">
         
         {/* Navigation Category Label */}
         <div>
-          <div className="text-[11px] font-bold tracking-wider uppercase px-3 mb-2 flex items-center justify-between text-[#E7A91A] font-serif">
-            <span>Learning Intelligence</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950 text-[#E7A91A] border border-amber-600/50 font-sans font-bold">
+          <div className="text-[10px] font-mono font-bold tracking-wider uppercase px-3 mb-2.5 flex items-center justify-between text-amber-400">
+            <span>LEARNING INTELLIGENCE</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono font-bold">
               v3.0
             </span>
           </div>
@@ -100,24 +101,24 @@ export const Sidebar: React.FC = () => {
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-[#E7A91A] text-[#0B1933] font-bold shadow-md'
-                      : 'hover:bg-slate-800/80 text-slate-300 hover:text-white'
+                      ? 'bg-[#35156B] text-amber-300 font-bold border-l-2 border-amber-400 shadow-xs'
+                      : 'hover:bg-[#121027] text-stone-300 hover:text-white font-medium'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#0B1933]' : 'text-slate-400'}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-stone-400'}`} />
                     <span>{item.label}</span>
                   </div>
                   {item.badge && (
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                         isActive
-                          ? 'bg-[#0B1933] text-[#E7A91A]'
+                          ? 'bg-amber-400 text-[#0C1024]'
                           : item.label === 'Revision'
-                          ? 'bg-amber-950 text-[#E7A91A] border border-amber-600/60'
-                          : 'bg-indigo-950 text-indigo-200 border border-indigo-700/60'
+                          ? 'bg-amber-900/60 text-amber-300 border border-amber-500/30'
+                          : 'bg-[#121027] text-stone-300 border border-stone-800'
                       }`}
                     >
                       {item.badge}
@@ -129,12 +130,12 @@ export const Sidebar: React.FC = () => {
           </nav>
         </div>
 
-        {/* Admin Navigation (Visible if user is ADMIN or SUPER_ADMIN) */}
+        {/* Admin Navigation */}
         {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
           <div className="border-t border-slate-800/80 pt-3">
-            <div className="text-[11px] font-bold text-rose-400 tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
+            <div className="text-[10px] font-mono font-bold text-rose-400 tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5" />
-              <span>Admin Studio</span>
+              <span>ADMIN STUDIO</span>
             </div>
             <nav className="space-y-1">
               {adminNavItems.map(item => {
@@ -147,7 +148,7 @@ export const Sidebar: React.FC = () => {
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                       isActive
                         ? 'bg-rose-600 text-white shadow-md font-semibold'
-                        : 'hover:bg-slate-800/80 text-slate-300 hover:text-white'
+                        : 'hover:bg-[#121027] text-stone-300 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
@@ -166,12 +167,12 @@ export const Sidebar: React.FC = () => {
           </div>
         )}
 
-        {/* Super Admin Console (Visible only if user is SUPER_ADMIN) */}
+        {/* Super Admin Console */}
         {user?.role === 'SUPER_ADMIN' && (
           <div className="border-t border-amber-500/30 pt-3">
-            <div className="text-[11px] font-bold text-[#E7A91A] tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 text-[#E7A91A]" />
-              <span>Super Admin Console</span>
+            <div className="text-[10px] font-mono font-bold text-amber-400 tracking-wider uppercase px-3 mb-1.5 flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>SUPER ADMIN CONSOLE</span>
             </div>
             <nav className="space-y-1">
               {superAdminNavItems.map(item => {
@@ -183,12 +184,12 @@ export const Sidebar: React.FC = () => {
                     onClick={() => setActiveSection(item.id)}
                     className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-[#E7A91A] text-[#0B1933] font-bold shadow-md'
-                        : 'hover:bg-slate-800/80 text-amber-200/80 hover:text-amber-100'
+                        ? 'bg-amber-400 text-[#0C1024] font-bold shadow-md'
+                        : 'hover:bg-[#121027] text-amber-200/80 hover:text-amber-100'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-[#0B1933]' : 'text-[#E7A91A]'}`} />
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-[#0C1024]' : 'text-amber-400'}`} />
                       <span>{item.label}</span>
                     </div>
                   </button>
@@ -199,16 +200,16 @@ export const Sidebar: React.FC = () => {
         )}
       </div>
 
-      {/* Footer System Info */}
+      {/* User Profile Card at Sidebar Bottom */}
       <div className="border-t border-slate-800/80 pt-3 mt-auto">
-        <div className="border border-slate-800 bg-slate-950/80 rounded-xl p-2.5 text-[11px] space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-[#E7A91A] font-serif">IKSHOVIA Engine</span>
-            <span className="text-emerald-400 font-extrabold text-[10px] uppercase">Active</span>
+        <div className="bg-[#121027] border border-amber-500/20 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#35156B] text-amber-300 border border-amber-500/30 font-bold flex items-center justify-center text-xs">
+            {user?.name?.[0] || 'A'}
           </div>
-          <p className="text-[10px] text-slate-400 leading-tight">
-            Personal Learning Intelligence Engine actively predicting retention decay.
-          </p>
+          <div className="overflow-hidden">
+            <div className="text-xs font-bold text-white truncate">{user?.name || 'Akash'}</div>
+            <div className="text-[10px] text-stone-400 truncate font-mono">{user?.targetExam || 'UPSC CSE 2026'}</div>
+          </div>
         </div>
       </div>
     </aside>

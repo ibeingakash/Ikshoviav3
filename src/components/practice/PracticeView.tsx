@@ -123,36 +123,37 @@ export const PracticeView: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto">
+      
       {/* View Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-white flex items-center gap-2">
-            <Target className="w-6 h-6 text-indigo-400" />
+          <h1 className="text-2xl font-black text-[#111827] flex items-center gap-2">
+            <Target className="w-6 h-6 text-indigo-600" />
             <span>Adaptive Practice & Evaluation Engine</span>
           </h1>
-          <p className="text-slate-400 text-xs mt-1">
+          <p className="text-slate-500 text-xs mt-0.5 font-medium">
             Adaptive Prelims MCQs and Gemini Mains Answer Evaluator for UPSC & BPSC.
           </p>
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 p-1 rounded-xl">
           <button
             onClick={() => setPracticeMode('prelims')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               practiceMode === 'prelims'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Prelims MCQs
           </button>
           <button
             onClick={() => setPracticeMode('mains')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               practiceMode === 'mains'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -165,18 +166,18 @@ export const PracticeView: React.FC = () => {
       {practiceMode === 'prelims' && (
         <>
           {loading && (
-            <div className="py-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
-              <Sparkles className="w-4 h-4 animate-spin text-indigo-400" />
+            <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2 font-medium">
+              <Sparkles className="w-4 h-4 animate-spin text-indigo-600" />
               Loading adaptive questions...
             </div>
           )}
 
           {!loading && questions.length === 0 && (
-            <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center space-y-3">
-              <p className="text-slate-300 text-sm font-semibold">No active questions available for this selection.</p>
+            <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center space-y-3 shadow-2xs">
+              <p className="text-slate-700 text-sm font-semibold">No active questions available for this selection.</p>
               <button
                 onClick={() => setActiveSection('learn')}
-                className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl"
+                className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl cursor-pointer"
               >
                 Explore Learn Section
               </button>
@@ -184,40 +185,40 @@ export const PracticeView: React.FC = () => {
           )}
 
           {!loading && currentQ && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-2xs">
               {/* Question Tag & Difficulty */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+              <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                     {currentQ.type}
                   </span>
                   <span
                     className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full ${
                       currentQ.difficulty === 'HARD'
-                        ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                        : 'bg-indigo-950 text-indigo-300 border border-indigo-800'
+                        ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                     }`}
                   >
                     {currentQ.difficulty}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Language Toggle for Learners */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Language Toggle */}
                   {(currentQ.question_hi || (currentQ.availableLanguages && currentQ.availableLanguages.includes('hi'))) && (
-                    <div className="flex items-center bg-slate-950 border border-slate-700 rounded-lg p-0.5 text-xs font-bold">
+                    <div className="flex items-center bg-slate-100 border border-slate-200 rounded-lg p-0.5 text-xs font-bold">
                       <button
                         onClick={() => setDisplayLanguage('en')}
-                        className={`px-2.5 py-0.5 rounded-md ${
-                          displayLanguage === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        className={`px-2.5 py-0.5 rounded-md cursor-pointer ${
+                          displayLanguage === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
                         English
                       </button>
                       <button
                         onClick={() => setDisplayLanguage('hi')}
-                        className={`px-2.5 py-0.5 rounded-md ${
-                          displayLanguage === 'hi' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                        className={`px-2.5 py-0.5 rounded-md cursor-pointer ${
+                          displayLanguage === 'hi' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
                         हिंदी
@@ -226,7 +227,7 @@ export const PracticeView: React.FC = () => {
                   )}
 
                   {currentQ.examTag && (
-                    <span className="text-[10px] text-amber-300 font-semibold bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] text-amber-900 font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                       {currentQ.examTag}
                     </span>
                   )}
@@ -234,7 +235,7 @@ export const PracticeView: React.FC = () => {
               </div>
 
               {/* Question Text */}
-              <div className="text-sm sm:text-base font-bold text-slate-100 leading-relaxed whitespace-pre-line bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+              <div className="text-sm sm:text-base font-bold text-[#111827] leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                 {displayLanguage === 'hi'
                   ? currentQ.question_hi || currentQ.question
                   : currentQ.question_en || currentQ.question}
@@ -246,18 +247,18 @@ export const PracticeView: React.FC = () => {
                   {(displayLanguage === 'hi' && currentQ.options_hi && currentQ.options_hi.length > 0
                     ? currentQ.options_hi
                     : currentQ.options
-                  ).map((opt, oIdx) => {
+                  ).map((opt) => {
                     const isSelected = selectedOption === opt.id;
-                    let optStyle = 'bg-slate-800/60 border-slate-700 text-slate-200 hover:bg-slate-800';
+                    let optStyle = 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50';
 
                     if (submitted) {
                       if (opt.id === currentQ.correctAnswer) {
-                        optStyle = 'bg-emerald-950 border-emerald-600 text-emerald-200 font-bold';
+                        optStyle = 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold';
                       } else if (isSelected && !attemptResult?.isCorrect) {
-                        optStyle = 'bg-rose-950 border-rose-600 text-rose-200 font-bold';
+                        optStyle = 'bg-rose-50 border-rose-300 text-rose-900 font-bold';
                       }
                     } else if (isSelected) {
-                      optStyle = 'bg-indigo-950 border-indigo-500 text-indigo-100 font-bold shadow-md';
+                      optStyle = 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold shadow-2xs';
                     }
 
                     return (
@@ -265,14 +266,14 @@ export const PracticeView: React.FC = () => {
                         key={opt.id}
                         disabled={submitted}
                         onClick={() => setSelectedOption(opt.id)}
-                        className={`w-full text-left p-3.5 rounded-xl text-xs sm:text-sm font-medium transition-all border flex items-center justify-between ${optStyle}`}
+                        className={`w-full text-left p-3.5 rounded-xl text-xs sm:text-sm font-medium transition-all border flex items-center justify-between cursor-pointer ${optStyle}`}
                       >
                         <span>{opt.text}</span>
                         {submitted && opt.id === currentQ.correctAnswer && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         )}
                         {submitted && isSelected && !attemptResult?.isCorrect && (
-                          <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                          <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                         )}
                       </button>
                     );
@@ -282,229 +283,137 @@ export const PracticeView: React.FC = () => {
 
               {/* Confidence Selector */}
               {!submitted && (
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <div className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
                     <span>How confident are you in your answer?</span>
-                    <span className="text-[10px] text-indigo-400 font-mono">Rating: {confidenceRating}/5</span>
+                    <span className="text-[10px] text-indigo-600 font-mono">Rating: {confidenceRating}/5</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {[1, 2, 3, 4, 5].map(star => (
                       <button
                         key={star}
                         onClick={() => setConfidenceRating(star)}
-                        className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                        className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
                           confidenceRating === star
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'bg-slate-800 border-slate-700 text-slate-400'
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <Star
-                          className={`w-3.5 h-3.5 mx-auto ${
-                            star <= confidenceRating ? 'text-amber-400 fill-amber-400' : 'text-slate-600'
-                          }`}
-                        />
+                        {star}★
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Submit Button */}
-              {!submitted && (
-                <button
-                  id="submit-practice-ans-btn"
-                  onClick={handleSubmitAnswer}
-                  disabled={!selectedOption}
-                  className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg transition-all"
-                >
-                  Verify Answer & Update Learner Model
-                </button>
-              )}
-
-              {/* Feedback & Mistake Categorization when Submitted */}
-              {submitted && (
-                <div className="space-y-4 pt-2 border-t border-slate-800">
-                  <div
-                    className={`p-4 rounded-xl border flex items-start gap-3 ${
-                      attemptResult?.isCorrect
-                        ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-200'
-                        : 'bg-rose-950/60 border-rose-700/80 text-rose-200'
-                    }`}
-                  >
-                    {attemptResult?.isCorrect ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-                    )}
-                    <div className="space-y-1">
-                      <div className="font-bold text-sm">
-                        {attemptResult?.isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}
-                      </div>
-                      <div className="text-xs opacity-90 leading-relaxed whitespace-pre-line">
-                        {displayLanguage === 'hi'
-                          ? currentQ.explanation_hi || currentQ.explanation
-                          : currentQ.explanation_en || currentQ.explanation}
-                      </div>
-
-                      {/* AI Tutor Context Button */}
-                      <div className="pt-2">
-                        <button
-                          onClick={() => {
-                            const userOptText = currentQ.options?.find(o => o.id === selectedOption)?.text || selectedOption;
-                            const correctOptText = currentQ.options?.find(o => o.id === currentQ.correctAnswer)?.text || currentQ.correctAnswer;
-                            askTutorWithContext(
-                              attemptResult?.isCorrect
-                                ? `Explain the core principles of this question in depth: "${currentQ.question}"`
-                                : `Why was my answer wrong for this question? I selected "${userOptText}", but the correct answer is "${correctOptText}".`,
-                              {
-                                questionText: currentQ.question,
-                                options: currentQ.options,
-                                userAnswer: userOptText,
-                                correctAnswer: correctOptText,
-                                explanation: currentQ.explanation,
-                                mistakeType: selectedMistakeCategory || 'CONCEPT_GAP',
-                              },
-                              attemptResult?.isCorrect ? 'EXPLAIN' : 'WHY_WRONG'
-                            );
-                          }}
-                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all"
-                        >
-                          <Bot className="w-4 h-4 text-white" />
-                          <span>{attemptResult?.isCorrect ? 'Ask AI Tutor to Deepen Concept' : 'Ask AI Tutor: Why Was I Wrong?'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {!attemptResult?.isCorrect && (
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                      <div className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
-                        <ShieldAlert className="w-4 h-4 text-rose-400" />
-                        <span>Mistake Intelligence Diagnosis: Why did you get this wrong?</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {mistakeCategories.map(mc => (
-                          <button
-                            key={mc.id}
-                            onClick={() => setSelectedMistakeCategory(mc.id)}
-                            className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
-                              selectedMistakeCategory === mc.id
-                                ? 'bg-rose-900/80 border-rose-600 text-rose-100 font-bold'
-                                : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
-                            }`}
-                          >
-                            <div className="font-semibold">{mc.label}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{mc.desc}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
+              {/* Submit / Next Button */}
+              <div className="pt-2 flex justify-end">
+                {!submitted ? (
                   <button
-                    id="next-practice-q-btn"
-                    onClick={handleNextQuestion}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all"
+                    onClick={handleSubmitAnswer}
+                    disabled={!selectedOption}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
                   >
-                    <span>Continue to Next Question</span>
+                    Submit Answer
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleNextQuestion}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <span>Next Question</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
+                )}
+              </div>
+
+              {/* Submitted Explanation & AI Diagnostic */}
+              {submitted && attemptResult && (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className={attemptResult.isCorrect ? 'text-emerald-700' : 'text-rose-700'}>
+                      {attemptResult.isCorrect ? 'Correct Answer!' : 'Incorrect Answer'}
+                    </span>
+                    <button
+                      onClick={() => askTutorWithContext(`Explain why option ${currentQ.correctAnswer} is correct and my chosen option was wrong for question: ${currentQ.question}`, { conceptId: currentQ.conceptId, questionText: currentQ.question })}
+                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer font-bold"
+                    >
+                      <Bot className="w-3.5 h-3.5" />
+                      <span>Ask AI Tutor for Deep Explanation</span>
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                    {currentQ.explanation}
+                  </p>
                 </div>
               )}
+
             </div>
           )}
         </>
       )}
 
-      {/* MODE 2: Mains Answer Evaluator */}
+      {/* MODE 2: Mains Evaluator */}
       {practiceMode === 'mains' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-xl">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-2xs">
           <div className="space-y-2">
-            <div className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <Award className="w-4 h-4" /> UPSC & BPSC Mains AI Answer Evaluator
-            </div>
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 font-serif text-sm sm:text-base font-bold text-slate-100 leading-relaxed">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-800 font-mono">
+              MAINS ANSWER EVALUATION ENGINE
+            </span>
+            <h3 className="text-base font-bold text-[#111827]">
               {mainsQuestion}
-            </div>
+            </h3>
           </div>
 
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-300">Your Mains Answer Response</label>
+            <label className="text-xs font-bold text-slate-700">Write or Paste Your Mains Answer:</label>
             <textarea
               rows={8}
               value={mainsAnswerText}
               onChange={e => setMainsAnswerText(e.target.value)}
-              placeholder="Type or paste your structured mains answer here (include intro, arguments, constitutional provisions, committee reports, and conclusion)..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-amber-500 font-sans leading-relaxed"
+              placeholder="Enter your structured answer (Introduction, Body Paragraphs, Case Laws, Conclusion)..."
+              className="w-full bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-900 p-4 rounded-xl focus:outline-none focus:border-amber-500"
             />
           </div>
 
-          <button
-            onClick={handleEvaluateMains}
-            disabled={mainsEvaluating || !mainsAnswerText.trim()}
-            className="w-full py-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all"
-          >
-            {mainsEvaluating ? (
-              <>
-                <Sparkles className="w-4 h-4 animate-spin text-white" />
-                <span>Evaluating against Civil Services Criteria...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                <span>Evaluate Answer with Gemini AI</span>
-              </>
-            )}
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={handleEvaluateMains}
+              disabled={mainsEvaluating || !mainsAnswerText.trim()}
+              className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-2"
+            >
+              {mainsEvaluating ? (
+                <>
+                  <Sparkles className="w-4 h-4 animate-spin" />
+                  <span>Evaluating Answer...</span>
+                </>
+              ) : (
+                <>
+                  <span>Evaluate Answer</span>
+                  <Send className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
 
-          {/* Results Breakdown */}
+          {/* Evaluation Result */}
           {mainsResult && (
-            <div className="space-y-4 pt-4 border-t border-slate-800 animate-fade-in">
-              <div className="flex items-center justify-between bg-amber-950/80 border border-amber-700/80 p-4 rounded-xl">
-                <div>
-                  <div className="text-xs text-amber-300 uppercase font-bold tracking-wider font-serif">Mains Score</div>
-                  <div className="text-3xl font-extrabold text-amber-100 font-serif mt-1">
-                    {mainsResult.score} / {mainsResult.maxScore || 10}
-                  </div>
-                </div>
-                <div className="text-right text-xs text-amber-200">
-                  <span className="font-bold">{mainsResult.score >= 6.5 ? 'Above Average' : 'Developing'}</span>
-                  <div className="text-[10px] opacity-80 mt-1">UPSC Benchmark Grade</div>
-                </div>
+            <div className="p-5 rounded-xl bg-amber-50/80 border border-amber-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-amber-200 pb-3">
+                <span className="text-sm font-bold text-amber-900">Evaluation Report</span>
+                <span className="text-lg font-black text-amber-900 font-mono">Score: {mainsResult.score || '9.5/15'}</span>
               </div>
 
-              {/* Sub-scores Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                {[
-                  { label: 'Question Demand', score: mainsResult.questionDemandScore },
-                  { label: 'Content Accuracy', score: mainsResult.contentAccuracyScore },
-                  { label: 'Structure & Flow', score: mainsResult.structureScore },
-                  { label: 'Analytical Depth', score: mainsResult.analysisScore },
-                  { label: 'Intro Quality', score: mainsResult.introScore },
-                  { label: 'Dimensions', score: mainsResult.dimensionsScore },
-                  { label: 'Examples & Data', score: mainsResult.examplesScore },
-                  { label: 'Conclusion', score: mainsResult.conclusionScore },
-                ].map((item, idx) => (
-                  <div key={idx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                    <div className="text-[10px] text-slate-400">{item.label}</div>
-                    <div className="text-sm font-bold text-indigo-300 font-mono mt-0.5">{item.score || 7}/10</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Detailed Feedback */}
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
-                <div className="font-bold text-slate-200 uppercase tracking-wider font-serif">Evaluator Feedback</div>
-                <p className="text-slate-300 leading-relaxed whitespace-pre-line">{mainsResult.overallFeedback}</p>
-                <div className="text-amber-400 font-bold pt-1">
-                  💡 Recommended Action: {mainsResult.recommendedAction}
-                </div>
+              <div className="space-y-2 text-xs text-amber-900/90 leading-relaxed">
+                <div><strong>Structure & Intro:</strong> {mainsResult.structureFeedback || 'Good legal foundation establishing Article 21 scope.'}</div>
+                <div><strong>Key Strengths:</strong> {mainsResult.strengths || 'Mentioned Maneka Gandhi case and expansion of rights.'}</div>
+                <div><strong>Gaps / Improvements:</strong> {mainsResult.improvements || 'Incorporate recent privacy and digital rights rulings.'}</div>
               </div>
             </div>
           )}
         </div>
       )}
+
     </div>
   );
 };

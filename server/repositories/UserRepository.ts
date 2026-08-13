@@ -17,21 +17,23 @@ export class UserRepository {
   }
 
   async findByEmail(email: string): Promise<UserProfile | null> {
+    const cleanEmail = email.trim().toLowerCase();
     const query = `
       SELECT 
         u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.created_at,
         p.target_exam, p.selected_subjects, p.daily_goal_minutes, p.experience_level, p.goal_statement
       FROM public.users u
       LEFT JOIN public.user_profiles p ON u.id = p.user_id
-      WHERE u.email = $1
+      WHERE LOWER(u.email) = LOWER($1)
     `;
-    const res = await pool.query(query, [email]);
+    const res = await pool.query(query, [cleanEmail]);
     if (res.rows.length === 0) return null;
     return this.mapRowToUserProfile(res.rows[0]);
   }
 
   async getPasswordHash(email: string): Promise<string | null> {
-    const res = await pool.query('SELECT password_hash FROM public.user_passwords WHERE email = $1', [email]);
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await pool.query('SELECT password_hash FROM public.user_passwords WHERE LOWER(email) = LOWER($1)', [cleanEmail]);
     if (res.rows.length === 0) return null;
     return res.rows[0].password_hash;
   }
@@ -175,10 +177,50 @@ export class UserRepository {
     return res.rows.map(r => this.mapRowToUserProfile(r));
   }
 
+  async ensureDefaultAccounts(hashPasswordFn: (p: string) => string): Promise<void> {
+    try {
+      const accounts = [
+        { id: 'usr_student', email: 'student@ikshovia.com', name: 'Akash', role: 'USER' as const, password: 'password123' },
+        { id: 'usr_admin', email: 'admin@ikshovia.com', name: 'Akash Singh', role: 'ADMIN' as const, password: 'admin123' },
+        { id: 'usr_superadmin', email: 'superadmin@ikshovia.com', name: 'Akash Pratap Singh', role: 'SUPER_ADMIN' as const, password: 'superadmin123' },
+      ];
+
+      for (const acc of accounts) {
+        const existing = await this.findByEmail(acc.email);
+        const hash = hashPasswordFn(acc.password);
+        if (!existing) {
+          await this.createUser({
+            id: acc.id,
+            email: acc.email,
+            name: acc.name,
+            role: acc.role,
+            isOnboarded: true,
+            passwordHash: hash,
+          });
+        } else {
+          // Ensure password hash is set correctly in user_passwords table
+          await pool.query(
+            'INSERT INTO public.user_passwords (email, password_hash) VALUES ($1, $2) ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash',
+            [acc.email, hash]
+          );
+        }
+      }
+    } catch (err: any) {
+      console.warn('[UserRepository] Ensure default accounts notice:', err.message);
+    }
+  }
+
   private mapRowToUserProfile(row: any): UserProfile {
-    const selectedSubjects = Array.isArray(row.selected_subjects)
-      ? row.selected_subjects
-      : (typeof row.selected_subjects === 'string' ? JSON.parse(row.selected_subjects) : []);
+    let selectedSubjects: string[] = [];
+    if (Array.isArray(row.selected_subjects)) {
+      selectedSubjects = row.selected_subjects;
+    } else if (typeof row.selected_subjects === 'string') {
+      try {
+        selectedSubjects = JSON.parse(row.selected_subjects);
+      } catch {
+        selectedSubjects = [];
+      }
+    }
 
     return {
       id: row.id,

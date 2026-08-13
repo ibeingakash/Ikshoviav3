@@ -24,21 +24,23 @@ import { ProfileView } from './components/profile/ProfileView.js';
 import { SettingsView } from './components/settings/SettingsView.js';
 import { AdminView } from './components/admin/AdminView.js';
 import { OCRStudioView } from './components/admin/OCRStudioView.js';
+import { CurrentAffairsAdminView } from './components/admin/CurrentAffairsAdminView.js';
 import { SuperAdminConsoleView } from './components/admin/SuperAdminConsoleView.js';
+import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
 const MainContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const { activeSection, appTheme } = useLearner();
+  const { activeSection, setActiveSection, appTheme } = useLearner();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0B1933] flex items-center justify-center text-white font-sans">
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center text-[#111827] font-sans">
         <div className="text-center space-y-3">
-          <div className="w-12 h-12 border-4 border-[#E7A91A] border-t-transparent rounded-full animate-spin mx-auto" />
-          <div className="text-sm font-bold tracking-wide text-slate-200 font-serif">
-            Initializing IKSHOVIA Intelligence...
+          <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <div className="text-xs font-bold tracking-wide text-slate-600 font-sans">
+            Loading IKSHOVIA Learning Intelligence...
           </div>
         </div>
       </div>
@@ -65,16 +67,7 @@ const MainContent: React.FC = () => {
   }
 
   const getThemeClass = () => {
-    switch (appTheme) {
-      case 'futuristic-glass':
-        return 'bg-[#FAF9F5] text-[#0B1933]';
-      case 'upsc-parchment':
-        return 'bg-upsc-parchment text-slate-800';
-      case 'bpsc-navy':
-        return 'bg-bpsc-navy text-slate-100';
-      default:
-        return 'bg-[#FAF9F5] text-[#0B1933]';
-    }
+    return 'bg-[#FAFAF8] text-[#111827]';
   };
 
   const renderSection = () => {
@@ -111,6 +104,8 @@ const MainContent: React.FC = () => {
         return <SettingsView />;
       case 'admin-ocr':
         return <OCRStudioView />;
+      case 'admin-current-affairs':
+        return <CurrentAffairsAdminView />;
       case 'admin-dashboard':
       case 'admin-users':
       case 'admin-content':
@@ -123,14 +118,16 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-[#D99A16] selection:text-white transition-colors duration-300`}>
+    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-indigo-600 selection:text-white transition-colors duration-300`}>
       {/* Accent Ribbon */}
-      <div className="h-1 w-full bg-gradient-to-r from-[#0B1933] via-[#D99A16] to-[#5B5CE2] shadow-sm" />
+      <div className="h-0.5 w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500" />
       <Header />
-      <div className="flex flex-1 max-w-[1700px] w-full mx-auto">
+      <div className="flex flex-1 max-w-[1700px] w-full mx-auto min-w-0">
         <Sidebar />
-        <main id="app-main-content" className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {renderSection()}
+        <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-3 pb-24 sm:p-6 sm:pb-8 lg:p-8 overflow-y-auto">
+          <ErrorBoundary key={activeSection} onReset={() => setActiveSection('dashboard')}>
+            {renderSection()}
+          </ErrorBoundary>
         </main>
       </div>
       <MobileNav />

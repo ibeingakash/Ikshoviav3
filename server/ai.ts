@@ -5,7 +5,7 @@ import { learnerRepository } from './repositories/LearnerRepository.js';
 
 let aiClient: GoogleGenAI | null = null;
 
-function getAIClient(): GoogleGenAI | null {
+export function getAIClient(): GoogleGenAI | null {
   if (!aiClient && process.env.GEMINI_API_KEY) {
     aiClient = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
@@ -117,21 +117,24 @@ STRICT MANDATES:
   }
 
   if (ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: promptMessage,
-        config: {
-          systemInstruction: systemContext,
-          temperature: 0.7,
-        },
-      });
+    const modelsToTry = ['gemini-3.6-flash', 'gemini-flash-latest'];
+    for (const model of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: promptMessage,
+          config: {
+            systemInstruction: systemContext,
+            temperature: 0.7,
+          },
+        });
 
-      if (response.text && response.text.trim().length > 20) {
-        return response.text.trim();
+        if (response.text && response.text.trim().length > 20) {
+          return response.text.trim();
+        }
+      } catch (err: any) {
+        console.warn(`Gemini API call throttled/failed for ${model}:`, err?.message || err);
       }
-    } catch (err: any) {
-      console.warn('Gemini API call throttled/failed:', err?.message || err);
     }
   }
 

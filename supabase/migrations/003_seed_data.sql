@@ -17,9 +17,9 @@ ON CONFLICT (id) DO UPDATE SET
 -- 2. USER PASSWORDS (Salted scrypt hashes)
 INSERT INTO public.user_passwords (email, password_hash)
 VALUES
-  ('student@ikshovia.com', 'a30366eb4b857dc4ceea1ec9f1f0a28f7fb7058becc2a35ae75be79ef5709ee09be374ea3d4dbe927a4e69b59b1285e68ec68bfe86ce294028ec1f99cddb6e2f'),
-  ('admin@ikshovia.com', 'a726ea72477174e99ef3ec0d69ef997edba1fbdc2ecbe11c34914a2a1bd71cc56d5cd4a22eeb38eb6ddbf5a88eec2e6c1df8aeaa15cd4b5b76eb154bb314fb50'),
-  ('superadmin@ikshovia.com', '7d4715f33ea4840d8aa536bca482c3f9ff7e9a8f4cfa189c45037d4f9bfefbe5332fcecb6390a78cb1be85aeefcdedef2cb2b429074b7c62bb9fb811aeb2b13b')
+  ('student@ikshovia.com', '5ebc040a279f7944d4d003cc9aef297a6a53281280793fc635fcd9b095514e6d782610ff1fcbdbe01b61479399d086da1fc3d3daafbcc51d2ef633e3300182a2'),
+  ('admin@ikshovia.com', '9b8ce7f79c4e613a9d54ca70273a47580a118b1cc80bd4632a72e4993caa8757cf75a767a2f59803b44c51e713f62a3107329849aa8de29f3bedb4d8cbdad668'),
+  ('superadmin@ikshovia.com', '3ae025a33cf55d8433cce91fbc444d169e4874b1c5abc07255de3cc28443f7f5f917960bc1376cac3267dfa3f1179a13e8f0b3ecee37027c68fcc04952fd8384')
 ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 -- 3. ADMIN PERMISSIONS
