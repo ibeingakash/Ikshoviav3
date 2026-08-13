@@ -732,58 +732,20 @@ async function startServer() {
   });
 
   app.post('/api/mock-tests/:id/submit', async (req, res) => {
-    const { userId, answers, timeTakenSeconds } = req.body;
-    const uid = userId || 'usr_demo';
-    const test = db.mockTests.get(req.params.id);
-    if (!test) return res.status(404).json({ error: 'Mock test not found' });
+    try {
+      const user = await getAuthenticatedUser(req);
+      const uid = user ? user.id : (req.body.userId || 'usr_demo');
+      const { answers, timeTakenSeconds } = req.body;
 
-    const allQuestions = await questionRepository.listAll();
-    const testQuestions = allQuestions.filter(q =>
-      test.subjectIds.includes(q.subjectId)
-    );
+      const mockAttempt = await mockTestRepository.submitAttempt(uid, req.params.id, {
+        answers,
+        timeTakenSeconds,
+      });
 
-    let score = 0;
-    let correctCount = 0;
-    const markPerQ = test.totalMarks / (testQuestions.length || 10);
-
-    for (const q of testQuestions) {
-      const userAns = answers?.[q.id];
-      if (userAns !== undefined) {
-        if (String(userAns) === String(q.correctAnswer)) {
-          score += markPerQ;
-          correctCount++;
-          await recordQuestionAttempt(uid, q.conceptId, true, 45, 4);
-        } else {
-          score -= markPerQ * test.negativeMarkingRate;
-          await recordQuestionAttempt(uid, q.conceptId, false, 45, 3, 'CONCEPT_GAP');
-        }
-      }
+      res.json({ success: true, mockAttempt });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to submit mock test' });
     }
-
-    score = Math.max(0, Math.round(score * 10) / 10);
-    const accuracy = testQuestions.length > 0 ? Math.round((correctCount / testQuestions.length) * 100) : 0;
-
-    const mockAttempt: MockAttempt = {
-      id: `matt_${Date.now()}`,
-      userId: uid,
-      mockTestId: test.id,
-      mockTitle: test.title,
-      score,
-      maxScore: test.totalMarks,
-      accuracy,
-      timeTakenSeconds: timeTakenSeconds || 600,
-      completedAt: new Date().toISOString(),
-      subjectScores: {
-        sub_polity: { total: 10, correct: correctCount, score },
-      },
-      weakConceptIds: ['c_fiscal_fed', 'c_art32'],
-      mistakeSummary: { CONCEPT_CONFUSION: 2, RECALL_FAILURE: 1 },
-    };
-
-    db.mockAttempts.push(mockAttempt);
-    await updateLearnerModel(uid);
-
-    res.json({ success: true, mockAttempt });
   });
 
   // Current Affairs & Resources Endpoints (Date-wise, topic-wise, source-backed)

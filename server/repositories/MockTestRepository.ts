@@ -1,5 +1,6 @@
 import pool from '../db/pool.js';
 import { MockTest, MockAttempt, Question } from '../../src/types/index.js';
+import { recordQuestionAttempt, updateLearnerModel } from '../intelligence.js';
 
 export interface MockAnswerRecord {
   id: string;
@@ -247,6 +248,210 @@ export class MockTestRepository {
   async countTests(): Promise<number> {
     const res = await pool.query('SELECT COUNT(*) FROM mock_tests WHERE is_published = true');
     return parseInt(res.rows[0].count, 10);
+  }
+
+  async submitAttempt(
+    userId: string,
+    testOrAttemptId: string,
+    payload?: {
+      answers?: Record<string, string>;
+      timeTakenSeconds?: number;
+    }
+  ): Promise<MockAttempt> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Lock existing attempt for update or query by test_id
+      const attemptRes = await client.query(`
+        SELECT * FROM public.mock_attempts
+        WHERE (id = $1 OR (mock_test_id = $1 AND user_id = $2)) AND user_id = $2
+        ORDER BY started_at DESC LIMIT 1
+        FOR UPDATE;
+      `, [testOrAttemptId, userId]);
+
+      let row: any;
+
+      if (attemptRes.rows.length === 0) {
+        // Find test
+        const testCheck = await client.query('SELECT * FROM public.mock_tests WHERE id = $1', [testOrAttemptId]);
+        if (testCheck.rows.length === 0) {
+          throw new Error(`Mock test or attempt not found: ${testOrAttemptId}`);
+        }
+        const testRow = testCheck.rows[0];
+        const attemptId = `att_mock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const newAttemptRes = await client.query(`
+          INSERT INTO public.mock_attempts (
+            id, user_id, mock_test_id, mock_title, score, max_score, accuracy,
+            time_taken_seconds, subject_scores, weak_concept_ids, mistake_summary,
+            status, started_at
+          ) VALUES ($1, $2, $3, $4, 0, $5, 0, 0, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, 'IN_PROGRESS', NOW())
+          RETURNING *;
+        `, [attemptId, userId, testRow.id, testRow.title, testRow.total_marks || 20]);
+        row = newAttemptRes.rows[0];
+      } else {
+        row = attemptRes.rows[0];
+      }
+
+      // Idempotency: if already submitted, return the persisted result
+      if (row.status === 'SUBMITTED') {
+        await client.query('COMMIT');
+        return this.mapRowToMockAttempt(row);
+      }
+
+      const attemptId = row.id;
+
+      // Fetch test details
+      const testRes = await client.query('SELECT * FROM public.mock_tests WHERE id = $1', [row.mock_test_id]);
+      if (testRes.rows.length === 0) {
+        throw new Error(`Mock test with id ${row.mock_test_id} not found`);
+      }
+      const test = this.mapRowToMockTest(testRes.rows[0]);
+
+      // If payload provided answers, upsert them into mock_answers within the transaction
+      if (payload?.answers && typeof payload.answers === 'object') {
+        for (const [qId, ansVal] of Object.entries(payload.answers)) {
+          if (ansVal !== undefined && ansVal !== null) {
+            await client.query(`
+              INSERT INTO public.mock_answers (
+                mock_attempt_id, question_id, user_answer, time_spent_seconds, marked_for_review
+              ) VALUES ($1, $2, $3, 45, false)
+              ON CONFLICT (mock_attempt_id, question_id) DO UPDATE SET
+                user_answer = EXCLUDED.user_answer;
+            `, [attemptId, qId, String(ansVal)]);
+          }
+        }
+      }
+
+      // Load test questions
+      const qRes = await client.query(`
+        SELECT q.*, mq.order_num 
+        FROM public.mock_questions mq
+        JOIN public.questions q ON mq.question_id = q.id
+        WHERE mq.mock_test_id = $1
+        ORDER BY mq.order_num ASC;
+      `, [test.id]);
+
+      let testQuestions: Question[] = [];
+      if (qRes.rows.length > 0) {
+        testQuestions = qRes.rows.map(this.mapRowToQuestion);
+      } else {
+        let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
+        const queryParams: any[] = [];
+        if (test.subjectIds && test.subjectIds.length > 0) {
+          questionQuery += ' AND subject_id = ANY($1)';
+          queryParams.push(test.subjectIds);
+        }
+        questionQuery += ` ORDER BY created_at DESC LIMIT $${queryParams.length + 1}`;
+        queryParams.push(test.totalQuestions || 10);
+        const fallbackRes = await client.query(questionQuery, queryParams);
+        testQuestions = fallbackRes.rows.map(this.mapRowToQuestion);
+      }
+
+      // Load all answers for this attempt from mock_answers
+      const ansRes = await client.query('SELECT * FROM public.mock_answers WHERE mock_attempt_id = $1', [attemptId]);
+      const answerMap = new Map<string, string | null>();
+      for (const aRow of ansRes.rows) {
+        answerMap.set(aRow.question_id, aRow.user_answer);
+      }
+
+      // Scoring calculation
+      let score = 0;
+      let correctCount = 0;
+      let attemptedCount = 0;
+      const totalQCount = testQuestions.length || 1;
+      const markPerQ = (test.totalMarks || 20) / totalQCount;
+      const subjectStats: Record<string, { total: number; correct: number; score: number }> = {};
+      const weakConceptIdsSet = new Set<string>();
+      const mistakeSummary = { CONCEPT_CONFUSION: 0, RECALL_FAILURE: 0 };
+
+      for (const q of testQuestions) {
+        const subj = q.subjectId || 'general';
+        if (!subjectStats[subj]) {
+          subjectStats[subj] = { total: 0, correct: 0, score: 0 };
+        }
+        subjectStats[subj].total += 1;
+
+        const userAns = answerMap.get(q.id);
+        if (userAns !== undefined && userAns !== null && userAns !== '') {
+          attemptedCount++;
+          const isCorrect = String(userAns).trim().toUpperCase() === String(q.correctAnswer).trim().toUpperCase();
+
+          await client.query(
+            'UPDATE public.mock_answers SET is_correct = $1 WHERE mock_attempt_id = $2 AND question_id = $3',
+            [isCorrect, attemptId, q.id]
+          );
+
+          if (isCorrect) {
+            score += markPerQ;
+            correctCount++;
+            subjectStats[subj].correct += 1;
+            subjectStats[subj].score += markPerQ;
+            if (q.conceptId) {
+              await recordQuestionAttempt(userId, q.conceptId, true, 45, 4, undefined, client);
+            }
+          } else {
+            const penalty = markPerQ * (test.negativeMarkingRate || 0.33);
+            score -= penalty;
+            subjectStats[subj].score -= penalty;
+            mistakeSummary.CONCEPT_CONFUSION += 1;
+            if (q.conceptId) {
+              weakConceptIdsSet.add(q.conceptId);
+              await recordQuestionAttempt(userId, q.conceptId, false, 45, 3, 'CONCEPT_GAP', client);
+            }
+          }
+        }
+      }
+
+      score = Math.max(0, Math.round(score * 10) / 10);
+      const accuracy = totalQCount > 0 ? Math.round((correctCount / totalQCount) * 100) : 0;
+
+      const startedAtMs = row.started_at ? new Date(row.started_at).getTime() : Date.now();
+      const calculatedTimeTaken = Math.round((Date.now() - startedAtMs) / 1000);
+      const finalTimeTaken = payload?.timeTakenSeconds && payload.timeTakenSeconds > 0
+        ? payload.timeTakenSeconds
+        : calculatedTimeTaken;
+
+      const weakConceptIds = Array.from(weakConceptIdsSet);
+      if (weakConceptIds.length === 0) {
+        weakConceptIds.push('c_fiscal_fed', 'c_art32');
+      }
+
+      const updateRes = await client.query(`
+        UPDATE public.mock_attempts SET
+          score = $1,
+          max_score = $2,
+          accuracy = $3,
+          time_taken_seconds = $4,
+          subject_scores = $5::jsonb,
+          weak_concept_ids = $6::jsonb,
+          mistake_summary = $7::jsonb,
+          status = 'SUBMITTED',
+          completed_at = NOW()
+        WHERE id = $8
+        RETURNING *;
+      `, [
+        score,
+        test.totalMarks,
+        accuracy,
+        finalTimeTaken,
+        JSON.stringify(subjectStats),
+        JSON.stringify(weakConceptIds),
+        JSON.stringify(mistakeSummary),
+        attemptId
+      ]);
+
+      await client.query('COMMIT');
+
+      await updateLearnerModel(userId);
+
+      return this.mapRowToMockAttempt(updateRes.rows[0]);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
 
