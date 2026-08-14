@@ -32,34 +32,32 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
+    <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto font-sans-editorial">
       {/* Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-950/80 border border-indigo-800 rounded-xl text-indigo-400">
-            <Settings className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Platform Settings & Intelligence Tuning</h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Customize how IKSHOVIA AI engine adaptively guides your study process.
-            </p>
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200/80 pb-4">
+        <div>
+          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+            <Settings className="w-6 h-6 text-[#35156B]" />
+            <span>Platform Settings & Intelligence Tuning</span>
+          </h1>
+          <p className="text-stone-500 text-xs mt-0.5 font-medium">
+            Customize how IKSHOVIA AI engine adaptively guides your study process.
+          </p>
         </div>
       </div>
 
       {savedSuccess && (
-        <div className="p-4 bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded-xl text-xs flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>Platform preferences updated successfully!</span>
         </div>
       )}
 
       <form onSubmit={handleSaveSettings} className="space-y-6">
         {/* AI Tutor Persona & Pedagogical Mode */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
-          <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-            <Bot className="w-4 h-4 text-indigo-400" />
+        <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
+          <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
+            <Bot className="w-4 h-4 text-[#35156B]" />
             <span>AI Tutor Pedagogical Style</span>
           </h2>
 
@@ -68,15 +66,15 @@ export const SettingsView: React.FC = () => {
               onClick={() => setTutorMode('SOCRATIC')}
               className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
                 tutorMode === 'SOCRATIC'
-                  ? 'bg-indigo-950/80 border-indigo-500 shadow-md shadow-indigo-500/10'
-                  : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800'
+                  ? 'bg-amber-50/70 border-amber-400 shadow-2xs'
+                  : 'bg-stone-50 border-stone-200/90 hover:bg-stone-100/70'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Socratic Coaching (Default)</span>
-                {tutorMode === 'SOCRATIC' && <Sparkles className="w-4 h-4 text-indigo-400" />}
+                <span className="text-xs font-serif-editorial font-bold text-[#111426]">Socratic Coaching</span>
+                {tutorMode === 'SOCRATIC' && <Sparkles className="w-4 h-4 text-amber-600" />}
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-stone-600 leading-snug">
                 Asks guiding questions, tests assumptions, and encourages deep conceptual reasoning before revealing answers.
               </p>
             </label>
@@ -85,15 +83,15 @@ export const SettingsView: React.FC = () => {
               onClick={() => setTutorMode('DIRECT')}
               className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
                 tutorMode === 'DIRECT'
-                  ? 'bg-indigo-950/80 border-indigo-500 shadow-md shadow-indigo-500/10'
-                  : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800'
+                  ? 'bg-amber-50/70 border-amber-400 shadow-2xs'
+                  : 'bg-stone-50 border-stone-200/90 hover:bg-stone-100/70'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Direct & Precise</span>
-                {tutorMode === 'DIRECT' && <Sparkles className="w-4 h-4 text-indigo-400" />}
+                <span className="text-xs font-serif-editorial font-bold text-[#111426]">Direct & Precise</span>
+                {tutorMode === 'DIRECT' && <Sparkles className="w-4 h-4 text-amber-600" />}
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-stone-600 leading-snug">
                 Provides direct, structured explanations with article numbers, constitutional provisions, and bullet-point summaries.
               </p>
             </label>
@@ -102,15 +100,15 @@ export const SettingsView: React.FC = () => {
               onClick={() => setTutorMode('SUMMARY')}
               className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 ${
                 tutorMode === 'SUMMARY'
-                  ? 'bg-indigo-950/80 border-indigo-500 shadow-md shadow-indigo-500/10'
-                  : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800'
+                  ? 'bg-amber-50/70 border-amber-400 shadow-2xs'
+                  : 'bg-stone-50 border-stone-200/90 hover:bg-stone-100/70'
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white">Exam High-Yield Focus</span>
-                {tutorMode === 'SUMMARY' && <Sparkles className="w-4 h-4 text-indigo-400" />}
+                <span className="text-xs font-serif-editorial font-bold text-[#111426]">Exam High-Yield Focus</span>
+                {tutorMode === 'SUMMARY' && <Sparkles className="w-4 h-4 text-amber-600" />}
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-stone-600 leading-snug">
                 Highlights common UPSC trap options, past-year question patterns, and key takeaways for quick revision.
               </p>
             </label>
@@ -118,83 +116,86 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {/* Notifications & Reminders */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
-          <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-            <Bell className="w-4 h-4 text-amber-400" />
+        <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
+          <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
+            <Bell className="w-4 h-4 text-[#35156B]" />
             <span>Spaced Repetition & Study Reminders</span>
           </h2>
 
           <div className="space-y-3 text-xs">
-            <div className="flex items-center justify-between p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+            <div className="flex items-center justify-between p-3.5 bg-stone-50 rounded-xl border border-stone-200/90">
               <div>
-                <div className="font-semibold text-slate-200">Daily Goal Reminders</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Receive gentle prompts if study target is incomplete</div>
+                <div className="font-bold text-[#111426]">Daily Goal Reminders</div>
+                <div className="text-[11px] text-stone-500 mt-0.5">Receive gentle prompts if daily study target is incomplete</div>
               </div>
               <input
                 type="checkbox"
                 checked={dailyReminders}
                 onChange={e => setDailyReminders(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-[#35156B] accent-[#35156B] cursor-pointer"
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+            <div className="flex items-center justify-between p-3.5 bg-stone-50 rounded-xl border border-stone-200/90">
               <div>
-                <div className="font-semibold text-slate-200">Spaced Repetition Queue Alerts</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Alert when concepts hit retention decay threshold</div>
+                <div className="font-bold text-[#111426]">Spaced Repetition Queue Alerts</div>
+                <div className="text-[11px] text-stone-500 mt-0.5">Alert when concepts hit retention decay threshold</div>
               </div>
               <input
                 type="checkbox"
                 checked={revisionAlerts}
                 onChange={e => setRevisionAlerts(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-[#35156B] accent-[#35156B] cursor-pointer"
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-slate-800/60 rounded-xl border border-slate-700/60">
+            <div className="flex items-center justify-between p-3.5 bg-stone-50 rounded-xl border border-stone-200/90">
               <div>
-                <div className="font-semibold text-slate-200">AI Daily Intelligence Summary</div>
-                <div className="text-[10px] text-slate-400 mt-0.5">Daily breakdown of confidence alignment and mistake patterns</div>
+                <div className="font-bold text-[#111426]">AI Daily Intelligence Summary</div>
+                <div className="text-[11px] text-stone-500 mt-0.5">Daily breakdown of confidence alignment and mistake patterns</div>
               </div>
               <input
                 type="checkbox"
                 checked={aiDigest}
                 onChange={e => setAiDigest(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                className="w-4 h-4 rounded text-[#35156B] accent-[#35156B] cursor-pointer"
               />
             </div>
           </div>
         </div>
 
         {/* Account Info & Diagnostics */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-4">
-          <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-            <Shield className="w-4 h-4 text-rose-400" />
+        <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
+          <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[#35156B]" />
             <span>Account Security & System Diagnostics</span>
           </h2>
 
-          <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="text-xs font-bold text-white flex items-center gap-2">
-                <span>Authenticated Account: {user?.name} ({user?.role})</span>
+              <div className="text-xs font-bold text-[#111426] flex items-center gap-2">
+                <span>Authenticated Account: {user?.name}</span>
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-purple-50 text-[#35156B] border-purple-200 font-mono">
+                  {user?.role || 'STUDENT'}
+                </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
+              <p className="text-[11px] text-stone-500 font-mono mt-1">
                 {user?.email} • Target Exam: {user?.onboarding?.targetExam || 'UPSC CSE 2026'}
               </p>
             </div>
           </div>
 
-          <div className="p-4 bg-slate-800/60 rounded-xl border border-slate-700/60 flex items-center justify-between">
+          <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/90 flex items-center justify-between">
             <div>
-              <div className="text-xs font-bold text-white">Re-sync Learner Model & Engine State</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Force re-evaluation of mastery scores and revision queue</div>
+              <div className="text-xs font-bold text-[#111426]">Re-sync Learner Model & Engine State</div>
+              <div className="text-[11px] text-stone-500 mt-0.5">Force re-evaluation of mastery scores and revision queue</div>
             </div>
             <button
               type="button"
               onClick={refreshLearnerData}
-              className="px-3.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-stone-200/90 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5 text-[#35156B]" />
               <span>Re-sync</span>
             </button>
           </div>
@@ -203,7 +204,7 @@ export const SettingsView: React.FC = () => {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30"
+            className="px-6 py-2.5 bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold text-xs rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer transition-all"
           >
             Save All Preferences
           </button>

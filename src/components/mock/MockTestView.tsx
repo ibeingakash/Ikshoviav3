@@ -24,8 +24,21 @@ export const MockTestView: React.FC = () => {
   const handleStartTest = async (test: MockTest) => {
     setActiveTest(test);
     setLoading(true);
-    const qs = await api.getPracticeQuestions(test.subjectIds[0], undefined, 10);
-    setTestQuestions(qs);
+    try {
+      const testDetails = await api.getMockTest(test.id);
+      let qs: Question[] = [];
+      if (testDetails && testDetails.questions && testDetails.questions.length > 0) {
+        qs = testDetails.questions;
+      } else {
+        const count = test.totalQuestions || 25;
+        qs = await api.getPracticeQuestions(test.subjectIds[0], undefined, count);
+      }
+      setTestQuestions(qs);
+    } catch (e) {
+      const count = test.totalQuestions || 25;
+      const qs = await api.getPracticeQuestions(test.subjectIds[0], undefined, count);
+      setTestQuestions(qs);
+    }
     setUserAnswers({});
     setInTest(true);
     setSubmittedResult(null);
@@ -159,18 +172,18 @@ export const MockTestView: React.FC = () => {
             <p className="text-xs text-stone-500 font-medium">{submittedResult.mockTitle}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-center">
+            <div className="bg-stone-50 p-3 sm:p-4 rounded-xl border border-stone-200">
               <div className="text-xs font-bold text-stone-500">Score</div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#35156B]">{submittedResult.score} / {submittedResult.maxScore}</div>
+              <div className="text-xl sm:text-2xl font-serif-editorial font-bold text-[#35156B]">{submittedResult.score} / {submittedResult.maxScore}</div>
             </div>
-            <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+            <div className="bg-stone-50 p-3 sm:p-4 rounded-xl border border-stone-200">
               <div className="text-xs font-bold text-stone-500">Accuracy</div>
-              <div className="text-2xl font-serif-editorial font-bold text-emerald-700">{submittedResult.accuracy}%</div>
+              <div className="text-xl sm:text-2xl font-serif-editorial font-bold text-emerald-700">{submittedResult.accuracy}%</div>
             </div>
-            <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+            <div className="bg-stone-50 p-3 sm:p-4 rounded-xl border border-stone-200">
               <div className="text-xs font-bold text-stone-500">Time Spent</div>
-              <div className="text-2xl font-serif-editorial font-bold text-amber-700">10 mins</div>
+              <div className="text-xl sm:text-2xl font-serif-editorial font-bold text-amber-700">10 mins</div>
             </div>
           </div>
 

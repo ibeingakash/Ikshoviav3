@@ -256,6 +256,11 @@ export const api = {
     return res.json();
   },
 
+  getMockTest: async (id: string): Promise<MockTest & { questions?: Question[] }> => {
+    const res = await fetch(`/api/mock-tests/${id}`);
+    return res.json();
+  },
+
   submitMockTest: async (mockTestId: string, answers: Record<string, string>, timeTakenSeconds: number, userId?: string) => {
     const res = await fetch(`/api/mock-tests/${mockTestId}/submit`, {
       method: 'POST',

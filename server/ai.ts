@@ -117,7 +117,7 @@ STRICT MANDATES:
   }
 
   if (ai) {
-    const modelsToTry = ['gemini-3.6-flash', 'gemini-flash-latest'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     for (const model of modelsToTry) {
       try {
         const response = await ai.models.generateContent({
@@ -161,7 +161,7 @@ Due Revision Count: ${learnerModel.dueRevisionCount}
 Mistakes: ${JSON.stringify(learnerModel.mistakeBreakdown)}
 `;
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         systemInstruction: 'You are IKSHOVIA AI Engine. Return a 2-sentence crisp learning health diagnosis and immediate recommended study action.',
@@ -209,7 +209,7 @@ Return JSON with exact structure:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -320,7 +320,7 @@ Return JSON strictly in this structure:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -385,10 +385,15 @@ export async function generateAIContentStudio(
     let systemInstruction = `You are IKSHOVIA AI Content Studio for UPSC CSE and State PSCs. Generate high-yield, exam-standard content.`;
     let userPrompt = `Type: ${type}\nSubject: ${subName}\nPrompt: ${promptText}\nDifficulty: ${difficulty}\n${sourceContext ? `Source Context: ${sourceContext}` : ''}`;
 
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    let lastErr: any = null;
+
     if (type === 'MCQ') {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: `${userPrompt}\nGenerate ${count} high-quality MCQs. Output strictly JSON array:
+      for (const model of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: `${userPrompt}\nGenerate ${count} high-quality MCQs. Output strictly JSON array:
 [
   {
     "question": "string",
@@ -400,17 +405,25 @@ export async function generateAIContentStudio(
     "sourceContext": "${sourceContext ? sourceContext.slice(0, 100) : 'Standard Syllabus'}"
   }
 ]`,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-        },
-      });
-      const parsed = JSON.parse(response.text || '[]');
-      return Array.isArray(parsed) ? parsed : [parsed];
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+            },
+          });
+          const parsed = JSON.parse(response.text || '[]');
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (mErr) {
+          lastErr = mErr;
+        }
+      }
+      console.warn('Gemini MCQ generation failed with models, using fallback generator:', lastErr?.message || lastErr);
+      return generateDemoAdminQuestions(promptText, subjectId, topicId || 'top_1', count);
     } else if (type === 'MAINS_QUESTION') {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: `${userPrompt}\nGenerate 1 Mains Question with answer framework. Output strictly JSON:
+      for (const model of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: `${userPrompt}\nGenerate 1 Mains Question with answer framework. Output strictly JSON:
 {
   "question": "string",
   "wordLimit": 250,
@@ -424,16 +437,35 @@ export async function generateAIContentStudio(
   "keyKeywords": ["string"],
   "relevantArticlesOrCases": ["string"]
 }`,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+            },
+          });
+          return JSON.parse(response.text || '{}');
+        } catch (mErr) {
+          lastErr = mErr;
+        }
+      }
+      return {
+        question: `Critically examine the constitutional and institutional framework governing ${promptText || 'Indian Federalism'}. (250 Words, 15 Marks)`,
+        wordLimit: 250,
+        marks: 15,
+        modelAnswerStructure: {
+          introduction: 'Define core concept and cite constitutional locus.',
+          bodyPoints: ['Dimension 1: Institutional dynamics', 'Dimension 2: Contemporary issues & judicial rulings'],
+          wayForward: 'Recommendations from Sarkaria & Punchhi Commissions',
+          conclusion: 'Balanced conclusion anchoring cooperative federalism.',
         },
-      });
-      return JSON.parse(response.text || '{}');
+        keyKeywords: ['Constitutionalism', 'Accountability', 'Federal Balance'],
+        relevantArticlesOrCases: ['S.R. Bommai v. Union of India', 'Article 246'],
+      };
     } else if (type === 'REVISION_NOTES') {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: `${userPrompt}\nGenerate high-yield bulleted revision notes. Output strictly JSON:
+      for (const model of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: `${userPrompt}\nGenerate high-yield bulleted revision notes. Output strictly JSON:
 {
   "topicTitle": "string",
   "coreSummary": "string",
@@ -442,32 +474,63 @@ export async function generateAIContentStudio(
   "mainsValueAdd": ["string"],
   "memoryTriggers": ["string"]
 }`,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-        },
-      });
-      return JSON.parse(response.text || '{}');
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+            },
+          });
+          return JSON.parse(response.text || '{}');
+        } catch (mErr) {
+          lastErr = mErr;
+        }
+      }
+      return {
+        topicTitle: promptText || 'High-Yield Revision Topic',
+        coreSummary: `Comprehensive revision overview for ${promptText}.`,
+        highYieldPoints: ['Core constitutional and administrative provisions', 'Key institutional responsibilities and mandates'],
+        prelimsTraps: ['Do not confuse statutory provisions with constitutional mandates'],
+        mainsValueAdd: ['Quote 2nd ARC and Law Commission recommendations'],
+        memoryTriggers: ['Article 32 & 226', 'Basic Structure Doctrine'],
+      };
     } else {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: `${userPrompt}\nGenerate a concept summary. Output strictly JSON:
+      for (const model of modelsToTry) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: `${userPrompt}\nGenerate a concept summary. Output strictly JSON:
 {
   "title": "string",
   "summary": "string",
   "keyPillars": ["string"],
   "landmarkCases": ["string"]
 }`,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-        },
-      });
-      return JSON.parse(response.text || '{}');
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+            },
+          });
+          return JSON.parse(response.text || '{}');
+        } catch (mErr) {
+          lastErr = mErr;
+        }
+      }
+      return {
+        title: promptText || 'Core Concept Overview',
+        summary: `Structured overview of ${promptText}.`,
+        keyPillars: ['Rule of Law', 'Constitutional Morality', 'Administrative Accountability'],
+        landmarkCases: ['Kesavananda Bharati v. State of Kerala (1973)', 'Minerva Mills v. Union of India (1980)'],
+      };
     }
   } catch (err: any) {
-    console.error('Error generating AI content studio item:', err);
-    throw err;
+    console.error('Error in generateAIContentStudio, falling back:', err);
+    if (type === 'MCQ') {
+      return generateDemoAdminQuestions(promptText, subjectId, topicId || 'top_1', count);
+    }
+    return {
+      title: `Generated Content: ${promptText.slice(0, 40)}`,
+      body: `Concept summary for ${promptText}.`,
+      status: 'READY_FOR_REVIEW',
+    };
   }
 }
 
@@ -674,8 +737,9 @@ function extractTopicFromPrompt(prompt: string): string {
   return 'Selected Study Topic';
 }
 
-function generateDemoAdminQuestions(promptText: string, subjectId: string, topicId: string, count: number): any[] {
-  return [
+function generateDemoAdminQuestions(promptText: string, subjectId: string, topicId: string, count: number = 3): any[] {
+  const targetCount = Math.max(1, count || 3);
+  const pool = [
     {
       question: `With reference to ${promptText || 'Fundamental Rights'}, which of the following statements is/are CORRECT?`,
       options: [
@@ -702,5 +766,55 @@ function generateDemoAdminQuestions(promptText: string, subjectId: string, topic
       difficulty: 'HARD',
       examTag: 'AI Generated Draft - UPSC Level',
     },
+    {
+      question: `Which of the following constitutional provisions directly reinforces the doctrine of separation of powers in relation to ${promptText || 'Indian Governance'}?`,
+      options: [
+        { id: 'opt1', text: 'Article 50 of the Directive Principles of State Policy' },
+        { id: 'opt2', text: 'Article 14 - Right to Equality' },
+        { id: 'opt3', text: 'Article 356 - President Rule' },
+        { id: 'opt4', text: 'Article 368 - Amendment of the Constitution' },
+      ],
+      correctAnswer: 'opt1',
+      explanation: 'Article 50 provides that the State shall take steps to separate the judiciary from the executive in the public services of the State.',
+      difficulty: 'MEDIUM',
+      examTag: 'AI Generated Draft - UPSC Level',
+    },
+    {
+      question: `With reference to institutional governance and ${promptText || 'Statutory Regulators'}, consider the following statements:`,
+      options: [
+        { id: 'opt1', text: 'Their statutory mandates operate under the overarching framework of administrative accountability.' },
+        { id: 'opt2', text: 'They are immune from judicial scrutiny under writ jurisdiction.' },
+        { id: 'opt3', text: 'They cannot issue binding circulars or notifications.' },
+        { id: 'opt4', text: 'They are solely created by Presidential ordinances.' },
+      ],
+      correctAnswer: 'opt1',
+      explanation: 'Statutory bodies derive authority from Acts of Parliament and remain subject to constitutional writ jurisdiction under Articles 32 and 226.',
+      difficulty: 'MEDIUM',
+      examTag: 'AI Generated Draft - UPSC Level',
+    },
+    {
+      question: `In the context of ${promptText || 'Fiscal & Economic Policy'}, which parameter is primarily targeted for long-term macroeconomic stability?`,
+      options: [
+        { id: 'opt1', text: 'Fiscal Deficit glide path under the FRBM framework' },
+        { id: 'opt2', text: 'Complete elimination of foreign exchange reserves' },
+        { id: 'opt3', text: 'Fixed pegging of exchange rates without central bank intervention' },
+        { id: 'opt4', text: 'Monetization of entire government debt via primary issuance' },
+      ],
+      correctAnswer: 'opt1',
+      explanation: 'The FRBM Act aims for fiscal consolidation and debt sustainability to anchor macroeconomic stability.',
+      difficulty: 'HARD',
+      examTag: 'AI Generated Draft - UPSC Level',
+    },
   ];
+
+  const results: any[] = [];
+  for (let i = 0; i < targetCount; i++) {
+    const item = pool[i % pool.length];
+    results.push({
+      ...item,
+      id: `ai_gen_${Date.now()}_${i + 1}`,
+      question: i >= pool.length ? `[Variant ${Math.floor(i / pool.length) + 1}] ${item.question}` : item.question,
+    });
+  }
+  return results;
 }

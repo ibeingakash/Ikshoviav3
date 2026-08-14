@@ -339,7 +339,9 @@ CREATE TABLE IF NOT EXISTS public.mock_attempts (
   subject_scores JSONB DEFAULT '{}'::jsonb,
   weak_concept_ids JSONB DEFAULT '[]'::jsonb,
   mistake_summary JSONB DEFAULT '{}'::jsonb,
-  completed_at TIMESTAMPTZ DEFAULT NOW()
+  status TEXT DEFAULT 'SUBMITTED',
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS public.mock_answers (
@@ -348,20 +350,27 @@ CREATE TABLE IF NOT EXISTS public.mock_answers (
   question_id TEXT NOT NULL REFERENCES public.questions(id) ON DELETE CASCADE,
   user_answer TEXT,
   is_correct BOOLEAN,
-  time_spent_seconds INT DEFAULT 0
+  time_spent_seconds INT DEFAULT 0,
+  marked_for_review BOOLEAN DEFAULT FALSE,
+  CONSTRAINT unique_attempt_question UNIQUE(mock_attempt_id, question_id)
 );
 
 -- 9. OCR PROCESSING ENGINE
 CREATE TABLE IF NOT EXISTS public.ocr_jobs (
   id TEXT PRIMARY KEY,
+  user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
   original_file_name TEXT NOT NULL,
   storage_key TEXT,
   file_size_bytes INT DEFAULT 0,
   page_count INT DEFAULT 1,
   strategy TEXT DEFAULT 'VISION_OCR',
-  status TEXT DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'UPLOADING', 'PROCESSING', 'VERIFIED', 'PUBLISHED', 'FAILED')),
+  exam TEXT DEFAULT 'UPSC CSE',
+  expected_question_count INT DEFAULT 100,
+  status TEXT DEFAULT 'PENDING',
   processed_pages INT DEFAULT 0,
   detected_questions_count INT DEFAULT 0,
+  approved_count INT DEFAULT 0,
+  rejected_count INT DEFAULT 0,
   confidence_score FLOAT DEFAULT 0.0,
   questions JSONB DEFAULT '[]'::jsonb,
   missing_question_numbers JSONB DEFAULT '[]'::jsonb,
@@ -371,6 +380,43 @@ CREATE TABLE IF NOT EXISTS public.ocr_jobs (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS public.ocr_extracted_questions (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES public.ocr_jobs(id) ON DELETE CASCADE,
+  question_num INT,
+  page_number INT DEFAULT 1,
+  question_text TEXT NOT NULL,
+  question_en TEXT,
+  question_hi TEXT,
+  options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  options_en JSONB DEFAULT '[]'::jsonb,
+  options_hi JSONB DEFAULT '[]'::jsonb,
+  correct_answer TEXT,
+  explanation TEXT,
+  explanation_en TEXT,
+  explanation_hi TEXT,
+  available_languages JSONB DEFAULT '["en"]'::jsonb,
+  subject_id TEXT,
+  topic_id TEXT,
+  concept_id TEXT,
+  difficulty TEXT DEFAULT 'MEDIUM',
+  exam_tag TEXT,
+  pyq_year INT,
+  source TEXT DEFAULT 'OCR_IMPORTED',
+  is_pyq BOOLEAN DEFAULT false,
+  has_visual_content BOOLEAN DEFAULT false,
+  field_confidence JSONB DEFAULT '{}'::jsonb,
+  ocr_confidence FLOAT DEFAULT 0.0,
+  status TEXT DEFAULT 'NEEDS_REVIEW',
+  destination TEXT DEFAULT 'PRACTICE_BANK',
+  validation_errors JSONB DEFAULT '[]'::jsonb,
+  duplicate_warning JSONB DEFAULT 'null'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_extracted_questions_job_id ON public.ocr_extracted_questions(job_id);
 
 -- 10. CURRENT AFFAIRS & SOURCES
 CREATE TABLE IF NOT EXISTS public.current_affairs (
@@ -384,16 +430,25 @@ CREATE TABLE IF NOT EXISTS public.current_affairs (
   key_facts JSONB DEFAULT '[]'::jsonb,
   prelims_relevance TEXT,
   mains_relevance TEXT,
+  exam_relevance TEXT DEFAULT 'BOTH',
+  bihar_relevance TEXT,
   related_subject TEXT,
   related_concept_ids JSONB DEFAULT '[]'::jsonb,
   keywords JSONB DEFAULT '[]'::jsonb,
+  prelims_pointers JSONB DEFAULT '[]'::jsonb,
+  mains_dimensions JSONB DEFAULT '{}'::jsonb,
+  important_facts JSONB DEFAULT '[]'::jsonb,
+  raw_content TEXT,
+  source_provenance JSONB DEFAULT '{}'::jsonb,
   source TEXT,
   source_url TEXT,
   source_type TEXT DEFAULT 'PRIMARY_GOVT',
+  status TEXT DEFAULT 'PUBLISHED',
   published_at TIMESTAMPTZ,
   retrieved_at TIMESTAMPTZ,
   is_published BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS public.current_affairs_sources (

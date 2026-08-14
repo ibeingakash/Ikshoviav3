@@ -11,11 +11,11 @@ export const Header: React.FC = () => {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   return (
-    <header id="app-header" className="sticky top-0 z-30 bg-[#FAF7F0]/95 backdrop-blur-md text-[#111426] border-b border-stone-200/80 px-3 sm:px-6 py-2.5 shadow-2xs font-sans-editorial">
-      <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-2 sm:gap-4">
+    <header id="app-header" className="sticky top-0 z-30 bg-[#FAF7F0]/95 backdrop-blur-md text-[#111426] border-b border-stone-200/80 px-2.5 sm:px-6 py-2 shadow-2xs font-sans-editorial overflow-x-clip">
+      <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-1.5 sm:gap-4">
         
         {/* Brand Logo & Wordmark */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
           <IKLogo
             onClick={() => setActiveSection('dashboard')}
             showTagline={true}
@@ -38,12 +38,12 @@ export const Header: React.FC = () => {
         </button>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
           
           {/* Mobile Search Button */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="md:hidden p-1.5 sm:p-2 rounded-xl bg-white text-stone-700 border border-stone-200 cursor-pointer"
+            className="md:hidden p-1.5 rounded-xl bg-white text-stone-700 border border-stone-200 cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
             aria-label="Search"
           >
             <Search className="w-4 h-4 text-amber-700" />
@@ -53,10 +53,10 @@ export const Header: React.FC = () => {
           {learnerModel && (
             <div
               onClick={() => setActiveSection('profile')}
-              className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 text-amber-900 text-[11px] sm:text-xs font-bold px-2.5 py-1 rounded-xl cursor-pointer hover:bg-amber-100/80 transition-colors shrink-0"
+              className="hidden min-[360px]:flex items-center gap-1 bg-amber-50 border border-amber-200/80 text-amber-900 text-[11px] sm:text-xs font-bold px-2 py-1 rounded-xl cursor-pointer hover:bg-amber-100/80 transition-colors shrink-0"
               title="Daily Study Streak"
             >
-              <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 fill-amber-500" />
+              <Flame className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
               <span>{learnerModel.currentStreak}d</span>
             </div>
           )}
@@ -64,7 +64,7 @@ export const Header: React.FC = () => {
           {/* Notifications Button */}
           <button
             onClick={() => setActiveSection('dashboard')}
-            className="relative p-1.5 sm:p-2 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 transition-colors cursor-pointer shrink-0"
+            className="relative p-1.5 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 transition-colors cursor-pointer shrink-0 min-h-[36px] min-w-[36px] flex items-center justify-center"
             title="Notifications"
           >
             <Bell className="w-4 h-4" />

@@ -13,11 +13,11 @@ export class LearnerRepository {
     if (res.rows.length === 0) {
       const defaultModel: LearnerModel = {
         userId,
-        overallScore: 60,
+        overallScore: 0,
         totalStudyTimeMinutes: 0,
-        currentStreak: 1,
-        highestStreak: 1,
-        activeDaysCount: 1,
+        currentStreak: 0,
+        highestStreak: 0,
+        activeDaysCount: 0,
         confidenceBias: 'BALANCED',
         mistakeBreakdown: {
           CONCEPT_GAP: 0,
@@ -77,17 +77,17 @@ export class LearnerRepository {
     `;
     const values = [
       model.userId,
-      model.overallScore || 60,
-      model.totalStudyTimeMinutes || 0,
-      model.currentStreak || 1,
-      model.highestStreak || 1,
-      model.activeDaysCount || 1,
+      model.overallScore ?? 0,
+      model.totalStudyTimeMinutes ?? 0,
+      model.currentStreak ?? 0,
+      model.highestStreak ?? 0,
+      model.activeDaysCount ?? 0,
       model.confidenceBias || 'BALANCED',
       JSON.stringify(model.mistakeBreakdown || {}),
       JSON.stringify(model.subjectMastery || {}),
-      model.masteredConceptsCount || 0,
-      model.weakConceptsCount || 0,
-      model.dueRevisionCount || 0,
+      model.masteredConceptsCount ?? 0,
+      model.weakConceptsCount ?? 0,
+      model.dueRevisionCount ?? 0,
     ];
 
     const res = await executor.query(query, values);

@@ -97,7 +97,7 @@ export const AnalyticsView: React.FC = () => {
                 <Target className="w-3.5 h-3.5 text-[#35156B] shrink-0" />
                 <span className="truncate">Understanding Score</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">{learnerModel?.overallScore || 72}%</div>
+              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">{learnerModel?.overallScore ?? 0}%</div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
@@ -105,7 +105,7 @@ export const AnalyticsView: React.FC = () => {
                 <Zap className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="truncate">Application Accuracy</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-emerald-700">{learnerModel?.accuracyRate || 68}%</div>
+              <div className="text-2xl font-serif-editorial font-bold text-emerald-700">{learnerModel?.accuracyRate ?? 0}%</div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
@@ -114,7 +114,7 @@ export const AnalyticsView: React.FC = () => {
                 <span className="truncate">Study Streak</span>
               </div>
               <div className="text-2xl font-serif-editorial font-bold text-amber-900 flex items-center gap-1">
-                {learnerModel?.currentStreak || 5}d
+                {learnerModel?.currentStreak ?? 0}d
               </div>
             </div>
 
@@ -124,7 +124,7 @@ export const AnalyticsView: React.FC = () => {
                 <span className="truncate">Avg Speed / Q</span>
               </div>
               <div className="text-2xl font-serif-editorial font-bold text-[#111426] font-mono">
-                {learnerModel?.avgTimePerQuestionSeconds || 32}s
+                {learnerModel?.avgTimePerQuestionSeconds ? `${learnerModel.avgTimePerQuestionSeconds}s` : '0s'}
               </div>
             </div>
           </div>
@@ -141,14 +141,14 @@ export const AnalyticsView: React.FC = () => {
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Retention Decay Index</div>
               <div className="text-sm font-bold text-amber-800 font-mono mt-1">
-                {learnerModel?.dueRevisionCount ? `${learnerModel.dueRevisionCount} Due` : 'Optimal (91%)'}
+                {learnerModel?.dueRevisionCount ? `${learnerModel.dueRevisionCount} Due` : 'Optimal (100%)'}
               </div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Total Practice Attempts</div>
               <div className="text-sm font-bold text-[#111426] font-mono mt-1">
-                {learnerModel?.totalAttempts || 14} Questions
+                {learnerModel?.totalAttempts ?? learnerModel?.totalQuestionsAttempted ?? 0} Questions
               </div>
             </div>
           </div>
