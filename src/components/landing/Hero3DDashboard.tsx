@@ -101,7 +101,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
             <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-stone-200/90 shadow-2xs">
               <div>
                 <div className="text-sm sm:text-base font-serif-editorial font-bold text-[#111426] flex items-center gap-1.5">
-                  <span>Good Morning, Akash!</span>
+                  <span>Good Morning, Aspirant!</span>
                   <span className="text-sm">👋</span>
                 </div>
                 <div className="text-[11px] text-stone-500">
