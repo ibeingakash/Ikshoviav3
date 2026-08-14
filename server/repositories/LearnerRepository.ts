@@ -42,6 +42,18 @@ export class LearnerRepository {
 
   async saveLearnerModel(model: LearnerModel, client?: PoolClient): Promise<LearnerModel> {
     const executor = client || pool;
+    // Ensure parent record exists in public.users to prevent foreign key violations
+    try {
+      await executor.query(
+        `INSERT INTO public.users (id, email, name, role, is_onboarded)
+         VALUES ($1, $2, $3, 'USER', false)
+         ON CONFLICT (id) DO NOTHING`,
+        [model.userId, `${model.userId}@ikshovia.local`, model.userId]
+      );
+    } catch (e: any) {
+      // Ignore conflict or notice
+    }
+
     const query = `
       INSERT INTO public.learner_models (
         user_id, overall_score, total_study_time_minutes, current_streak, highest_streak,
