@@ -208,10 +208,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 </div>
               </div>
               <div className="text-[11px] text-stone-600">
-                <div className="font-bold text-stone-900">Loved by 50,000+ learners</div>
+                <div className="font-bold text-stone-900">Dedicated AI Study Partner</div>
                 <div className="text-amber-700 font-bold flex items-center gap-1">
                   <span>★ ★ ★ ★ ★</span>
-                  <span>4.9/5</span>
+                  <span>4.9/5 Rating</span>
                 </div>
               </div>
             </div>
@@ -466,18 +466,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
-                  <div className="text-xl font-bold text-amber-400 font-mono">50K+</div>
-                  <div className="text-[10px] text-stone-300">Active Learners</div>
+                  <div className="text-xl font-bold text-amber-400 font-mono">100%</div>
+                  <div className="text-[10px] text-stone-300">Syllabus Coverage</div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
-                  <div className="text-xl font-bold text-amber-400 font-mono">2M+</div>
-                  <div className="text-[10px] text-stone-300">Questions Practiced</div>
+                  <div className="text-xl font-bold text-amber-400 font-mono">24/7</div>
+                  <div className="text-[10px] text-stone-300">AI Tutor Availability</div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
-                  <div className="text-xl font-bold text-amber-400 font-mono">97%</div>
-                  <div className="text-[10px] text-stone-300">Satisfaction Rate</div>
+                  <div className="text-xl font-bold text-amber-400 font-mono">100%</div>
+                  <div className="text-[10px] text-stone-300">Adaptive AI Intelligence</div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">

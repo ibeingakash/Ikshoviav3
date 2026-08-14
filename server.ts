@@ -107,16 +107,20 @@ async function startServer() {
   await userRepository.ensureDefaultAccounts(hashPassword);
   await currentAffairsRepository.ensureSeedArticles();
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // -------------------------------------------------------------
-  // API ROUTES
+  // API ROUTES & HEALTH CHECKS
   // -------------------------------------------------------------
 
-  // Health check
+  // Health checks
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', app: 'IKSHOVIA', timestamp: new Date().toISOString() });
+  });
+
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', app: 'IKSHOVIA', timestamp: new Date().toISOString() });
   });
@@ -281,7 +285,8 @@ async function startServer() {
     const concept = db.concepts.get(req.params.id);
     if (!concept) return res.status(404).json({ error: 'Concept not found' });
 
-    const userId = (req.query.userId as string) || 'usr_demo';
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     const mastery = await learnerRepository.getConceptMastery(userId, concept.id);
 
     const prerequisites = (concept.prerequisiteIds || []).map(id => db.concepts.get(id)).filter(Boolean);
@@ -467,14 +472,16 @@ async function startServer() {
 
   // Revision Queue Endpoint
   app.get('/api/revision/queue', async (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     const queue = await getRevisionQueue(userId);
     res.json(queue);
   });
 
   // Knowledge Graph Endpoint
   app.get('/api/graph', async (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     const userMasteries = await learnerRepository.getUserMasteries(userId);
     const masteryMap = new Map(userMasteries.map(m => [m.conceptId, m]));
 
@@ -507,7 +514,8 @@ async function startServer() {
 
   // Analytics Endpoint
   app.get('/api/analytics', async (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     const model = await learnerRepository.getLearnerModel(userId);
     const userAttempts = await practiceRepository.getUserAttempts(userId);
 
@@ -837,14 +845,16 @@ async function startServer() {
   });
 
   // Goals Endpoints
-  app.get('/api/goals', (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+  app.get('/api/goals', async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     res.json(Array.from(db.goals.values()).filter(g => g.userId === userId));
   });
 
-  app.post('/api/goals', (req, res) => {
+  app.post('/api/goals', async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
     const { userId, title, targetExam, targetDate, dailyStudyMinutes, subjects } = req.body;
-    const uid = userId || 'usr_demo';
+    const uid = authUser ? authUser.id : (userId || 'usr_demo');
     const goal: StudyGoal = {
       id: `goal_${Date.now()}`,
       userId: uid,
@@ -861,8 +871,9 @@ async function startServer() {
   });
 
   // Notifications Endpoint
-  app.get('/api/notifications', (req, res) => {
-    const userId = (req.query.userId as string) || 'usr_demo';
+  app.get('/api/notifications', async (req, res) => {
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
     res.json(db.notifications.get(userId) || []);
   });
 

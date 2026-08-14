@@ -315,11 +315,12 @@ export const AITutorView: React.FC = () => {
   };
 
   const compactQuickActions = [
-    { label: 'Explain', action: 'EXPLAIN' },
+    { label: 'Explain Concept', action: 'EXPLAIN' },
     { label: 'Simplify', action: 'SIMPLIFY' },
-    { label: 'Examples', action: 'EXAMPLE' },
+    { label: 'Give Examples', action: 'EXAMPLE' },
     { label: 'Compare', action: 'COMPARE' },
     { label: 'Test Me', action: 'TEST' },
+    { label: 'Why Was I Wrong?', action: 'DIAGNOSE_MISTAKE' },
   ];
 
   return (

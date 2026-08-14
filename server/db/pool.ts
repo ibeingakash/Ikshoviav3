@@ -10,8 +10,8 @@ const hasExplicitHost = Boolean(process.env.SQL_HOST || process.env.PGHOST);
 
 if (!connectionString && !hasExplicitHost) {
   if (process.env.NODE_ENV === 'production') {
-    console.error(
-      '[PostgreSQL Pool Error] CRITICAL: Neither DATABASE_URL, POSTGRES_URL, nor SQL_HOST/PGHOST is configured in production environment variables!'
+    throw new Error(
+      '[PostgreSQL Pool Error] CRITICAL: DATABASE_URL (or POSTGRES_URL/SUPABASE_DB_URL) is required in production environment! Production cannot connect without database credentials.'
     );
   } else {
     console.warn(

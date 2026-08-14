@@ -103,14 +103,14 @@ export const api = {
 
   getConceptDetail: async (id: string, userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/concepts/${id}?userId=${uid}`);
+    const res = await fetch(`/api/concepts/${id}?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Learner Intelligence
   getLearnerModel: async (userId?: string): Promise<{ model: LearnerModel; nextBestAction: NextBestAction; aiInsight: string }> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/learner/model?userId=${uid}`);
+    const res = await fetch(`/api/learner/model?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
@@ -178,21 +178,21 @@ export const api = {
   // Revision Engine
   getRevisionQueue: async (userId?: string): Promise<RevisionItem[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/revision/queue?userId=${uid}`);
+    const res = await fetch(`/api/revision/queue?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Knowledge Graph
   getKnowledgeGraph: async (userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/graph?userId=${uid}`);
+    const res = await fetch(`/api/graph?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Analytics
   getAnalytics: async (userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/analytics?userId=${uid}`);
+    const res = await fetch(`/api/analytics?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
@@ -380,7 +380,7 @@ export const api = {
   // Goals
   getGoals: async (userId?: string): Promise<StudyGoal[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/goals?userId=${uid}`);
+    const res = await fetch(`/api/goals?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
@@ -396,7 +396,7 @@ export const api = {
   // Notifications
   getNotifications: async (userId?: string): Promise<NotificationItem[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/notifications?userId=${uid}`);
+    const res = await fetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
