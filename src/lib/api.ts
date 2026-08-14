@@ -16,6 +16,87 @@ import {
   MistakeCategory,
 } from '../types/index.js';
 
+export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
+
+/**
+ * Detects if the current environment is running inside Capacitor (specifically Android native app).
+ */
+export function isCapacitorNative(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const win = window as any;
+
+  // 1. Explicit Capacitor object injected by native bridge
+  if (win.Capacitor) {
+    if (typeof win.Capacitor.isNativePlatform === 'function' && win.Capacitor.isNativePlatform()) {
+      return true;
+    }
+    if (typeof win.Capacitor.getPlatform === 'function') {
+      const platform = win.Capacitor.getPlatform();
+      if (platform === 'android' || platform === 'ios') {
+        return true;
+      }
+    }
+  }
+
+  // 2. Protocol check for native app WebView (e.g. capacitor://localhost or file:)
+  const protocol = window.location.protocol;
+  if (protocol === 'capacitor:' || protocol === 'ionic:' || protocol === 'file:') {
+    return true;
+  }
+
+  // 3. In Capacitor Android APK, the origin is usually https://localhost or http://localhost
+  // We distinguish this from desktop web development by checking Android WebView user-agent or capacitor indicators.
+  const isAndroidWebView =
+    /Android.*(wv|\.apk|Version\/[\d.]+).*Chrome/i.test(navigator.userAgent || '') ||
+    /Capacitor/i.test(navigator.userAgent || '');
+  if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && isAndroidWebView) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resolves the appropriate API base URL dynamically:
+ * - If VITE_API_BASE_URL is explicitly set, uses it.
+ * - If running inside Capacitor Android native APK, uses production backend https://ikshoviav3.onrender.com.
+ * - Otherwise (local development & web production), uses relative URL / same origin.
+ */
+export function getApiBaseUrl(): string {
+  const meta = import.meta as any;
+  const envUrl = (meta?.env?.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  if (isCapacitorNative()) {
+    return PRODUCTION_API_URL;
+  }
+
+  return '';
+}
+
+/**
+ * Builds a normalized API URL with the resolved base URL.
+ */
+export function apiUrl(endpoint: string): string {
+  if (!endpoint) return getApiBaseUrl();
+  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+    return endpoint;
+  }
+  const base = getApiBaseUrl();
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return base ? `${base}${normalizedEndpoint}` : normalizedEndpoint;
+}
+
+/**
+ * Centralized fetch wrapper ensuring all requests target the resolved base URL.
+ */
+export const apiFetch = (endpoint: string, init?: RequestInit): Promise<Response> => {
+  return fetch(apiUrl(endpoint), init);
+};
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('ikshovia_token');
   return {
@@ -27,7 +108,7 @@ const getAuthHeaders = () => {
 export const api = {
   // Auth
   login: async (email: string, password: string) => {
-    const res = await fetch('/api/auth/login', {
+    const res = await apiFetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -36,7 +117,7 @@ export const api = {
   },
 
   register: async (name: string, email: string, password: string) => {
-    const res = await fetch('/api/auth/register', {
+    const res = await apiFetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password }),
@@ -45,7 +126,7 @@ export const api = {
   },
 
   forgotPassword: async (email: string) => {
-    const res = await fetch('/api/auth/forgot-password', {
+    const res = await apiFetch('/api/auth/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -54,7 +135,7 @@ export const api = {
   },
 
   resetPassword: async (token: string, newPassword: string) => {
-    const res = await fetch('/api/auth/reset-password', {
+    const res = await apiFetch('/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, newPassword }),
@@ -63,12 +144,12 @@ export const api = {
   },
 
   getMe: async () => {
-    const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/auth/me', { headers: getAuthHeaders() });
     return res.json();
   },
 
   saveOnboarding: async (data: any) => {
-    const res = await fetch('/api/auth/onboarding', {
+    const res = await apiFetch('/api/auth/onboarding', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
@@ -77,7 +158,7 @@ export const api = {
   },
 
   updateUserPreferences: async (preferredLanguage: 'en' | 'hi') => {
-    const res = await fetch('/api/auth/preferences', {
+    const res = await apiFetch('/api/auth/preferences', {
       method: 'PATCH',
       headers: getAuthHeaders(),
       body: JSON.stringify({ preferredLanguage }),
@@ -87,35 +168,35 @@ export const api = {
 
   // Subjects & Content
   getSubjects: async (): Promise<Subject[]> => {
-    const res = await fetch('/api/subjects');
+    const res = await apiFetch('/api/subjects');
     return res.json();
   },
 
   getSubjectDetail: async (id: string) => {
-    const res = await fetch(`/api/subjects/${id}`);
+    const res = await apiFetch(`/api/subjects/${id}`);
     return res.json();
   },
 
   getTopics: async (subjectId: string): Promise<Topic[]> => {
-    const res = await fetch(`/api/subjects/${subjectId}/topics`);
+    const res = await apiFetch(`/api/subjects/${subjectId}/topics`);
     return res.json();
   },
 
   getConceptDetail: async (id: string, userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/concepts/${id}?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/concepts/${id}?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Learner Intelligence
   getLearnerModel: async (userId?: string): Promise<{ model: LearnerModel; nextBestAction: NextBestAction; aiInsight: string }> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/learner/model?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/learner/model?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   rateConceptConfidence: async (conceptId: string, confidenceRating: number, userId?: string) => {
-    const res = await fetch('/api/learner/mastery/rate', {
+    const res = await apiFetch('/api/learner/mastery/rate', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ userId, conceptId, confidenceRating }),
@@ -130,7 +211,7 @@ export const api = {
     if (conceptId) params.append('conceptId', conceptId);
     params.append('limit', String(limit));
 
-    const res = await fetch(`/api/practice/questions?${params.toString()}`);
+    const res = await apiFetch(`/api/practice/questions?${params.toString()}`);
     return res.json();
   },
 
@@ -142,7 +223,7 @@ export const api = {
     mistakeCategory?: MistakeCategory,
     userId?: string
   ) => {
-    const res = await fetch('/api/practice/attempt', {
+    const res = await apiFetch('/api/practice/attempt', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -158,7 +239,7 @@ export const api = {
   },
 
   analyzeMistakeWithAI: async (questionId: string, userAnswer: string, correctAnswer?: string, explanation?: string, conceptTitle?: string) => {
-    const res = await fetch('/api/ai/analyze-mistake', {
+    const res = await apiFetch('/api/ai/analyze-mistake', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ questionId, userAnswer, correctAnswer, explanation, conceptTitle }),
@@ -167,7 +248,7 @@ export const api = {
   },
 
   evaluateMainsAnswer: async (question: string, userAnswer: string, conceptTitle?: string) => {
-    const res = await fetch('/api/mains/evaluate', {
+    const res = await apiFetch('/api/mains/evaluate', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ question, userAnswer, conceptTitle }),
@@ -178,27 +259,27 @@ export const api = {
   // Revision Engine
   getRevisionQueue: async (userId?: string): Promise<RevisionItem[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/revision/queue?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/revision/queue?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Knowledge Graph
   getKnowledgeGraph: async (userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/graph?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/graph?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Analytics
   getAnalytics: async (userId?: string) => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/analytics?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/analytics?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // AI Tutor
   askAITutor: async (userPrompt: string, conceptId?: string, quickAction?: string, userId?: string, context?: any) => {
-    const res = await fetch('/api/ai/tutor', {
+    const res = await apiFetch('/api/ai/tutor', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ userId, userPrompt, conceptId, quickAction, context }),
@@ -207,7 +288,7 @@ export const api = {
   },
 
   getConversations: async (): Promise<ChatConversation[]> => {
-    const res = await fetch('/api/ai/conversations', {
+    const res = await apiFetch('/api/ai/conversations', {
       headers: getAuthHeaders(),
     });
     if (!res.ok) {
@@ -227,7 +308,7 @@ export const api = {
   },
 
   createConversation: async (title?: string, initialMessage?: any): Promise<ChatConversation> => {
-    const res = await fetch('/api/ai/conversations', {
+    const res = await apiFetch('/api/ai/conversations', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ title, initialMessage }),
@@ -239,7 +320,7 @@ export const api = {
   },
 
   sendChatMessage: async (conversationId: string, userText: string, conceptId?: string, quickAction?: string, context?: any) => {
-    const res = await fetch(`/api/ai/conversations/${conversationId}/messages`, {
+    const res = await apiFetch(`/api/ai/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ userText, conceptId, quickAction, context }),
@@ -252,17 +333,17 @@ export const api = {
 
   // Mock Tests
   getMockTests: async (): Promise<MockTest[]> => {
-    const res = await fetch('/api/mock-tests');
+    const res = await apiFetch('/api/mock-tests');
     return res.json();
   },
 
   getMockTest: async (id: string): Promise<MockTest & { questions?: Question[] }> => {
-    const res = await fetch(`/api/mock-tests/${id}`);
+    const res = await apiFetch(`/api/mock-tests/${id}`);
     return res.json();
   },
 
   submitMockTest: async (mockTestId: string, answers: Record<string, string>, timeTakenSeconds: number, userId?: string) => {
-    const res = await fetch(`/api/mock-tests/${mockTestId}/submit`, {
+    const res = await apiFetch(`/api/mock-tests/${mockTestId}/submit`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ userId, answers, timeTakenSeconds }),
@@ -281,17 +362,17 @@ export const api = {
     if (filters?.relevance) params.append('relevance', filters.relevance);
     if (filters?.biharOnly) params.append('biharOnly', 'true');
 
-    const res = await fetch(`/api/current-affairs?${params.toString()}`);
+    const res = await apiFetch(`/api/current-affairs?${params.toString()}`);
     return res.json();
   },
 
   getCurrentAffairById: async (id: string): Promise<CurrentAffairArticle> => {
-    const res = await fetch(`/api/current-affairs/${id}`);
+    const res = await apiFetch(`/api/current-affairs/${id}`);
     return res.json();
   },
 
   bookmarkCurrentAffairForRevision: async (id: string) => {
-    const res = await fetch(`/api/current-affairs/${id}/bookmark`, {
+    const res = await apiFetch(`/api/current-affairs/${id}/bookmark`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -299,23 +380,23 @@ export const api = {
   },
 
   getMyCurrentAffairsRevisions: async (): Promise<CurrentAffairArticle[]> => {
-    const res = await fetch(`/api/current-affairs/revisions/my`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/current-affairs/revisions/my`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   adminGetCurrentAffairsMetrics: async () => {
-    const res = await fetch(`/api/admin/current-affairs/metrics`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/admin/current-affairs/metrics`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   adminListCurrentAffairs: async (params?: any) => {
     const q = new URLSearchParams(params || {}).toString();
-    const res = await fetch(`/api/admin/current-affairs/list?${q}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/admin/current-affairs/list?${q}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   adminTriggerIngestion: async (providerCode?: string) => {
-    const res = await fetch(`/api/admin/current-affairs/ingest`, {
+    const res = await apiFetch(`/api/admin/current-affairs/ingest`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ providerCode }),
@@ -324,7 +405,7 @@ export const api = {
   },
 
   adminEnrichCurrentAffair: async (id: string) => {
-    const res = await fetch(`/api/admin/current-affairs/${id}/enrich`, {
+    const res = await apiFetch(`/api/admin/current-affairs/${id}/enrich`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -332,7 +413,7 @@ export const api = {
   },
 
   adminUpdateCurrentAffair: async (id: string, updates: any) => {
-    const res = await fetch(`/api/admin/current-affairs/${id}`, {
+    const res = await apiFetch(`/api/admin/current-affairs/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
@@ -341,7 +422,7 @@ export const api = {
   },
 
   adminPublishCurrentAffair: async (id: string) => {
-    const res = await fetch(`/api/admin/current-affairs/${id}/publish`, {
+    const res = await apiFetch(`/api/admin/current-affairs/${id}/publish`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -349,7 +430,7 @@ export const api = {
   },
 
   adminRejectCurrentAffair: async (id: string) => {
-    const res = await fetch(`/api/admin/current-affairs/${id}/reject`, {
+    const res = await apiFetch(`/api/admin/current-affairs/${id}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -357,7 +438,7 @@ export const api = {
   },
 
   adminGenerateQuestionFromCurrentAffair: async (id: string) => {
-    const res = await fetch(`/api/admin/current-affairs/${id}/generate-question`, {
+    const res = await apiFetch(`/api/admin/current-affairs/${id}/generate-question`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -373,24 +454,24 @@ export const api = {
     if (filters?.topicId) params.append('topicId', filters.topicId);
     if (filters?.search) params.append('search', filters.search);
 
-    const res = await fetch(`/api/pyqs?${params.toString()}`);
+    const res = await apiFetch(`/api/pyqs?${params.toString()}`);
     return res.json();
   },
 
   getResources: async (): Promise<LearningResource[]> => {
-    const res = await fetch('/api/resources');
+    const res = await apiFetch('/api/resources');
     return res.json();
   },
 
   // Goals
   getGoals: async (userId?: string): Promise<StudyGoal[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/goals?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/goals?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   createGoal: async (goalData: any) => {
-    const res = await fetch('/api/goals', {
+    const res = await apiFetch('/api/goals', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(goalData),
@@ -401,35 +482,35 @@ export const api = {
   // Notifications
   getNotifications: async (userId?: string): Promise<NotificationItem[]> => {
     const uid = userId || 'usr_demo';
-    const res = await fetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   // Global Search
   searchGlobal: async (query: string) => {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
     return res.json();
   },
 
   // Admin API
   getConcepts: async (topicId?: string): Promise<Concept[]> => {
     const url = topicId ? `/api/topics/${topicId}/concepts` : '/api/concepts';
-    const res = await fetch(url, { headers: getAuthHeaders() });
+    const res = await apiFetch(url, { headers: getAuthHeaders() });
     return res.json();
   },
 
   getAdminMetrics: async () => {
-    const res = await fetch('/api/admin/metrics', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/admin/metrics', { headers: getAuthHeaders() });
     return res.json();
   },
 
   getAdminUsers: async () => {
-    const res = await fetch('/api/admin/users', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/admin/users', { headers: getAuthHeaders() });
     return res.json();
   },
 
   createConcept: async (conceptData: any) => {
-    const res = await fetch('/api/admin/concepts', {
+    const res = await apiFetch('/api/admin/concepts', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(conceptData),
@@ -438,7 +519,7 @@ export const api = {
   },
 
   createQuestion: async (questionData: any) => {
-    const res = await fetch('/api/admin/questions', {
+    const res = await apiFetch('/api/admin/questions', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(questionData),
@@ -447,7 +528,7 @@ export const api = {
   },
 
   updateQuestion: async (id: string, questionData: any) => {
-    const res = await fetch(`/api/admin/questions/${id}`, {
+    const res = await apiFetch(`/api/admin/questions/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(questionData),
@@ -456,7 +537,7 @@ export const api = {
   },
 
   generateAdminAIQuestions: async (prompt: string, subjectId?: string, topicId?: string, count = 2) => {
-    const res = await fetch('/api/admin/ai/generate', {
+    const res = await apiFetch('/api/admin/ai/generate', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ prompt, subjectId, topicId, count }),
@@ -465,7 +546,7 @@ export const api = {
   },
 
   generateAIQuestions: async (prompt: string, subjectId?: string, topicId?: string, count = 2) => {
-    const res = await fetch('/api/admin/ai/generate', {
+    const res = await apiFetch('/api/admin/ai/generate', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ prompt, subjectId, topicId, count }),
@@ -474,17 +555,17 @@ export const api = {
   },
 
   getAdminAIDrafts: async () => {
-    const res = await fetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
     return res.json();
   },
 
   getAdminDrafts: async () => {
-    const res = await fetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
     return res.json();
   },
 
   approveAdminAIDraft: async (draftId: string) => {
-    const res = await fetch(`/api/admin/ai/drafts/${draftId}/approve`, {
+    const res = await apiFetch(`/api/admin/ai/drafts/${draftId}/approve`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -492,7 +573,7 @@ export const api = {
   },
 
   approveDraft: async (draftId: string) => {
-    const res = await fetch(`/api/admin/ai/drafts/${draftId}/approve`, {
+    const res = await apiFetch(`/api/admin/ai/drafts/${draftId}/approve`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -501,7 +582,7 @@ export const api = {
 
   // OCR Studio API
   processOcrImport: async (data: any) => {
-    const res = await fetch('/api/admin/ocr/process', {
+    const res = await apiFetch('/api/admin/ocr/process', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
@@ -510,17 +591,17 @@ export const api = {
   },
 
   getOcrJobs: async () => {
-    const res = await fetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
     return res.json();
   },
 
   getOcrJobDetails: async (id: string) => {
-    const res = await fetch(`/api/admin/ocr/jobs/${id}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/admin/ocr/jobs/${id}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   updateOcrQuestion: async (id: string, updates: any) => {
-    const res = await fetch(`/api/admin/ocr/questions/${id}`, {
+    const res = await apiFetch(`/api/admin/ocr/questions/${id}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
@@ -529,7 +610,7 @@ export const api = {
   },
 
   approveOcrQuestion: async (id: string, data?: any) => {
-    const res = await fetch(`/api/admin/ocr/questions/${id}/approve`, {
+    const res = await apiFetch(`/api/admin/ocr/questions/${id}/approve`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data || {}),
@@ -538,7 +619,7 @@ export const api = {
   },
 
   rejectOcrQuestion: async (id: string) => {
-    const res = await fetch(`/api/admin/ocr/questions/${id}/reject`, {
+    const res = await apiFetch(`/api/admin/ocr/questions/${id}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -546,7 +627,7 @@ export const api = {
   },
 
   bulkActionOcrQuestions: async (data: any) => {
-    const res = await fetch('/api/admin/ocr/questions/bulk-action', {
+    const res = await apiFetch('/api/admin/ocr/questions/bulk-action', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
@@ -556,17 +637,17 @@ export const api = {
 
   // Super Admin API
   getSuperAdminOverview: async () => {
-    const res = await fetch('/api/superadmin/overview', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/superadmin/overview', { headers: getAuthHeaders() });
     return res.json();
   },
 
   getSuperAdminAdmins: async () => {
-    const res = await fetch('/api/superadmin/admins', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/superadmin/admins', { headers: getAuthHeaders() });
     return res.json();
   },
 
   createSuperAdminAdmin: async (data: any) => {
-    const res = await fetch('/api/superadmin/admins', {
+    const res = await apiFetch('/api/superadmin/admins', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
@@ -575,7 +656,7 @@ export const api = {
   },
 
   toggleSuperAdminAdminStatus: async (adminId: string) => {
-    const res = await fetch(`/api/superadmin/admins/${adminId}/toggle-status`, {
+    const res = await apiFetch(`/api/superadmin/admins/${adminId}/toggle-status`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -583,7 +664,8 @@ export const api = {
   },
 
   getSuperAdminAuditLogs: async () => {
-    const res = await fetch('/api/superadmin/audit-logs', { headers: getAuthHeaders() });
+    const res = await apiFetch('/api/superadmin/audit-logs', { headers: getAuthHeaders() });
     return res.json();
   },
 };
+
