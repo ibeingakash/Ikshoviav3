@@ -60,7 +60,7 @@ export const IKLogo: React.FC<IKLogoProps> = ({
 
         {showTagline && (
           <span
-            className={`font-serif-editorial italic font-medium tracking-wide mt-0.5 ${
+            className={`font-serif-editorial italic font-medium tracking-wide mt-0.5 hidden sm:inline truncate max-w-[280px] ${
               taglineSizes[size]
             } ${isDark ? 'text-amber-300/90' : 'text-[#8A6721]'}`}
           >

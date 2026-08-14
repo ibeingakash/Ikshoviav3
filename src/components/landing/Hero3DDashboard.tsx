@@ -26,10 +26,10 @@ interface Hero3DDashboardProps {
 
 export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveClick }) => {
   return (
-    <div className="relative w-full max-w-4xl mx-auto perspective-container py-4">
-      {/* Golden Orbital Accent Rings */}
-      <div className="orbital-ring w-[110%] h-[110%] -top-[5%] -left-[5%] opacity-40 border-dashed border-amber-500/30 animate-spin-slow" />
-      <div className="orbital-ring w-[125%] h-[125%] -top-[12.5%] -left-[12.5%] opacity-20 border-purple-500/20" />
+    <div className="relative w-full max-w-full sm:max-w-4xl mx-auto md:perspective-container py-2 sm:py-4 overflow-hidden sm:overflow-visible">
+      {/* Golden Orbital Accent Rings (hidden on small viewports to prevent overflow) */}
+      <div className="hidden sm:block orbital-ring w-[105%] h-[105%] -top-[2.5%] -left-[2.5%] opacity-40 border-dashed border-amber-500/30 animate-spin-slow pointer-events-none" />
+      <div className="hidden sm:block orbital-ring w-[115%] h-[115%] -top-[7.5%] -left-[7.5%] opacity-20 border-purple-500/20 pointer-events-none" />
 
       {/* Dark Purple Floating Base Shadow Platform */}
       <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[85%] h-16 bg-[#0C1024]/40 rounded-full blur-2xl pointer-events-none" />
@@ -37,7 +37,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
       {/* 3D Tilted Floating Dashboard Container */}
       <div
         onClick={onInteractiveClick}
-        className="dashboard-3d-tilt bg-[#FBF9F4] border border-amber-500/30 rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 relative z-10 text-[#111426] cursor-pointer hover:border-amber-400 transition-all group overflow-hidden"
+        className="w-full md:dashboard-3d-tilt bg-[#FBF9F4] border border-amber-500/30 rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 relative z-10 text-[#111426] cursor-pointer hover:border-amber-400 transition-all group overflow-hidden"
       >
         {/* Top Window Glass Bar */}
         <div className="flex items-center justify-between border-b border-stone-200/80 pb-3 mb-3">
@@ -46,13 +46,13 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
             <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span className="text-[10px] font-mono text-stone-400 ml-2">
-              ikshovia.app / learning-intelligence
+              ikshovia.app / product-demo-preview
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              AI MODEL LIVE
+            <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              PRODUCT DEMO VISUALIZATION
             </span>
           </div>
         </div>

@@ -77,39 +77,17 @@ VALUES
   ('c_mpc', 'sub_economy', 'top_monetary', 'Monetary Policy Committee (MPC)', 'Statutory 6-member body under RBI Act 1934 responsible for setting policy repo rate to target inflation.', 'Formed following Urjit Patel Committee recommendations. Consists of 6 members: 3 from RBI and 3 external experts appointed by Govt.', 'INTERMEDIATE', 'HIGH', '["Economy", "RBI", "Monetary Policy"]'::jsonb)
 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title;
 
--- 7. LEARNER MODEL SEED
-INSERT INTO public.learner_models (user_id, overall_score, total_study_time_minutes, current_streak, highest_streak, active_days_count, confidence_bias, mistake_breakdown, subject_mastery, mastered_concepts_count, weak_concepts_count, due_revision_count)
-VALUES
-  ('usr_student', 71, 1420, 6, 12, 18, 'OVERCONFIDENT', '{"CONCEPT_CONFUSION": 6, "RECALL_FAILURE": 4, "CONCEPT_GAP": 3}'::jsonb, '{"sub_polity": 68, "sub_economy": 71}'::jsonb, 3, 4, 4)
-ON CONFLICT (user_id) DO NOTHING;
-
--- 8. CONCEPT MASTERY SEED
-INSERT INTO public.concept_mastery (user_id, concept_id, understanding, retention, application, accuracy, confidence, overall_mastery, attempts_count, correct_count, incorrect_count, time_spent_seconds, next_review_date)
-VALUES
-  ('usr_student', 'c_art21', 92, 85, 88, 90, 85, 88, 12, 11, 1, 1450, NOW() + INTERVAL '5 days'),
-  ('usr_student', 'c_art32', 78, 65, 60, 68, 90, 68, 10, 7, 3, 980, NOW() - INTERVAL '1 day'),
-  ('usr_student', 'c_art226', 72, 58, 55, 60, 82, 61, 8, 5, 3, 820, NOW() - INTERVAL '2 days'),
-  ('usr_student', 'c_fiscal_fed', 65, 52, 45, 50, 60, 52, 6, 3, 3, 1100, NOW() - INTERVAL '3 days'),
-  ('usr_student', 'c_mpc', 88, 82, 85, 86, 85, 85, 14, 12, 2, 1200, NOW() + INTERVAL '6 days')
-ON CONFLICT (user_id, concept_id) DO NOTHING;
-
--- 9. QUESTIONS SEED
+-- 7. QUESTIONS SEED (Official Verified PYQs)
 INSERT INTO public.questions (id, subject_id, topic_id, concept_id, type, question, options, correct_answer, explanation, difficulty, exam_tag, pyq_year, is_pyq, source, verified_status, is_published)
 VALUES
   ('q1', 'sub_polity', 'top_judiciary', 'c_art32', 'MCQ', 'Which of the following statements regarding Article 32 of the Indian Constitution is/are CORRECT?\n1. It is a fundamental right to move the Supreme Court directly.\n2. The Supreme Court can issue writs for enforcement of both fundamental rights and statutory rights.\n3. Article 32 cannot be suspended under any circumstances.', '[{"id": "opt1", "text": "1 only"}, {"id": "opt2", "text": "1 and 2 only"}, {"id": "opt3", "text": "1 and 3 only"}, {"id": "opt4", "text": "1, 2 and 3"}]'::jsonb, 'opt1', 'Statement 1 is CORRECT: Article 32 itself is a Fundamental Right in Part III.\nStatement 2 is INCORRECT: SC writ jurisdiction under Art 32 is strictly limited to Fundamental Rights.\nStatement 3 is INCORRECT: Article 32 can be suspended during a National Emergency.', 'HARD', 'UPSC CSE 2023 PYQ', 2023, true, 'Official UPSC CSE 2023 Prelims Question Paper', 'VERIFIED_PYQ', true),
   ('q2', 'sub_polity', 'top_judiciary', 'c_art226', 'MCQ', 'With reference to High Court writ jurisdiction under Article 226, consider the following statements:\n1. It is broader in scope than the Supreme Court’s writ jurisdiction under Article 32.\n2. A citizen can claim writ remedy under Article 226 as a guaranteed fundamental right.', '[{"id": "opt_a", "text": "1 only"}, {"id": "opt_b", "text": "2 only"}, {"id": "opt_c", "text": "Both 1 and 2"}, {"id": "opt_d", "text": "Neither 1 nor 2"}]'::jsonb, 'opt_a', 'Statement 1 is CORRECT: Article 226 covers Fundamental Rights AND any other legal purpose.\nStatement 2 is INCORRECT: Moving High Court under 226 is not a Fundamental Right itself.', 'MEDIUM', 'UPSC CSE 2021 PYQ', 2021, true, 'Official UPSC CSE 2021 Prelims Question Paper', 'VERIFIED_PYQ', true)
 ON CONFLICT (id) DO UPDATE SET question = EXCLUDED.question;
 
--- 10. MOCK TESTS SEED
+-- 8. MOCK TESTS SEED (Standard Exam Templates)
 INSERT INTO public.mock_tests (id, title, type, subject_ids, duration_minutes, total_questions, total_marks, negative_marking_rate, is_published)
 VALUES
   ('mock_quick_1', 'Polity & Economy Adaptive Sprint', 'QUICK', '["sub_polity", "sub_economy"]'::jsonb, 15, 10, 20, 0.66, true),
   ('mock_subj_polity', 'Indian Polity Sectional Mock Test', 'SUBJECT', '["sub_polity"]'::jsonb, 45, 30, 60, 0.66, true),
   ('mock_full_upsc', 'UPSC General Studies Paper-I Full Length Mock', 'FULL', '["sub_polity", "sub_economy", "sub_history", "sub_geography", "sub_ca"]'::jsonb, 120, 100, 200, 0.66, true)
-ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title;
-
--- 11. GOALS SEED
-INSERT INTO public.goals (id, user_id, title, target_exam, target_date, daily_study_minutes, subjects, status, progress_percentage)
-VALUES
-  ('goal_1', 'usr_student', 'Crack UPSC Civil Services Prelims 2026', 'UPSC CSE 2026', '2026-05-24', 120, '["sub_polity", "sub_economy", "sub_history", "sub_geography"]'::jsonb, 'ACTIVE', 64)
 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title;

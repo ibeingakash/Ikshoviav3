@@ -36,6 +36,8 @@ interface LandingPageProps {
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pricingCycle, setPricingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [subscribedEmail, setSubscribedEmail] = useState('');
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] text-[#111426] flex flex-col font-sans-editorial selection:bg-[#35156B] selection:text-amber-300">
@@ -194,24 +196,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </a>
             </div>
 
-            {/* Social Proof Strip */}
+            {/* Platform Trust & Capabilities Strip */}
             <div className="pt-3 border-t border-stone-200/80 flex items-center gap-3">
-              <div className="flex -space-x-2">
-                <div className="w-7 h-7 rounded-full bg-amber-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-amber-900">
-                  A
-                </div>
-                <div className="w-7 h-7 rounded-full bg-[#0C1024] border-2 border-white flex items-center justify-center text-[10px] font-bold text-white">
-                  R
-                </div>
-                <div className="w-7 h-7 rounded-full bg-stone-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-stone-800">
-                  P
-                </div>
+              <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-[#35156B]">
+                <Brain className="w-4 h-4 text-[#35156B]" />
               </div>
               <div className="text-[11px] text-stone-600">
-                <div className="font-bold text-stone-900">Dedicated AI Study Partner</div>
-                <div className="text-amber-700 font-bold flex items-center gap-1">
-                  <span>★ ★ ★ ★ ★</span>
-                  <span>4.9/5 Rating</span>
+                <div className="font-bold text-stone-900">Personalized Learning Intelligence</div>
+                <div className="text-stone-500 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>Spaced Repetition • Cognitive Tracking • AI Socratic Tutor</span>
                 </div>
               </div>
             </div>
@@ -749,18 +743,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               <p className="text-xs text-stone-400 leading-relaxed">
                 Get the latest updates and learning tips in your inbox.
               </p>
-              <div className="flex items-center gap-1 bg-[#121027] p-1.5 rounded-xl border border-slate-800">
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="bg-transparent px-2 text-xs text-white placeholder-stone-500 focus:outline-none w-full"
-                />
-                <button
-                  onClick={() => alert("Subscribed!")}
-                  className="p-2 bg-[#35156B] text-amber-300 rounded-lg hover:bg-[#4B1F78] cursor-pointer"
-                >
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              <div className="space-y-2">
+                {isSubscribed ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Thank you for subscribing!</span>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (subscribedEmail.trim()) {
+                        setIsSubscribed(true);
+                      }
+                    }}
+                    className="flex items-center gap-1 bg-[#121027] p-1.5 rounded-xl border border-slate-800"
+                  >
+                    <input
+                      type="email"
+                      required
+                      value={subscribedEmail}
+                      onChange={(e) => setSubscribedEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      className="bg-transparent px-2 text-xs text-white placeholder-stone-500 focus:outline-none w-full"
+                    />
+                    <button
+                      type="submit"
+                      className="p-2 bg-[#35156B] text-amber-300 rounded-lg hover:bg-[#4B1F78] cursor-pointer"
+                      aria-label="Subscribe"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
 

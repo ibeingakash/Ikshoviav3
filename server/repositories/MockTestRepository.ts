@@ -29,6 +29,9 @@ export class MockTestRepository {
   }
 
   async getTestQuestions(testId: string): Promise<Question[]> {
+    const test = await this.getTestById(testId);
+    const targetCount = test?.totalQuestions || 10;
+
     const res = await pool.query(`
       SELECT q.*, mq.order_num 
       FROM public.mock_questions mq
@@ -37,27 +40,34 @@ export class MockTestRepository {
       ORDER BY mq.order_num ASC;
     `, [testId]);
 
-    if (res.rows.length > 0) {
-      return res.rows.map(this.mapRowToQuestion);
+    const mappedQuestions = res.rows.map(this.mapRowToQuestion);
+    if (mappedQuestions.length >= targetCount || !test) {
+      return mappedQuestions.slice(0, targetCount);
     }
 
-    // Fallback if no specific mock_questions mappings exist: query published questions matching test subjects
-    const test = await this.getTestById(testId);
-    if (!test) return [];
-
+    // Supplement with questions matching test subjects if available
+    const existingIds = mappedQuestions.map(q => q.id);
     let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
     const queryParams: any[] = [];
 
     if (test.subjectIds && test.subjectIds.length > 0) {
-      questionQuery += ' AND subject_id = ANY($1)';
       queryParams.push(test.subjectIds);
+      questionQuery += ` AND subject_id = ANY($${queryParams.length})`;
     }
 
-    questionQuery += ` ORDER BY created_at DESC LIMIT $${queryParams.length + 1}`;
-    queryParams.push(test.totalQuestions || 10);
+    if (existingIds.length > 0) {
+      queryParams.push(existingIds);
+      questionQuery += ` AND id != ALL($${queryParams.length})`;
+    }
+
+    const needed = targetCount - mappedQuestions.length;
+    queryParams.push(needed);
+    questionQuery += ` ORDER BY created_at DESC LIMIT $${queryParams.length}`;
 
     const fallbackRes = await pool.query(questionQuery, queryParams);
-    return fallbackRes.rows.map(this.mapRowToQuestion);
+    const supplementalQuestions = fallbackRes.rows.map(this.mapRowToQuestion);
+
+    return [...mappedQuestions, ...supplementalQuestions];
   }
 
   async startAttempt(userId: string, testId: string): Promise<MockAttempt> {

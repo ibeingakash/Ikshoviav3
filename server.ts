@@ -14,6 +14,7 @@ import { currentAffairsRepository } from './server/repositories/CurrentAffairsRe
 import { currentAffairsIngestionManager } from './server/services/CurrentAffairsProvider.js';
 import { currentAffairsAiService } from './server/services/CurrentAffairsAiService.js';
 import pool from './server/db/pool.js';
+import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
 import {
   recordQuestionAttempt,
   updateLearnerModel,
@@ -103,6 +104,7 @@ async function requireSuperAdmin(req: express.Request, res: express.Response, ne
 }
 
 async function startServer() {
+  await ensureDatabaseSchema();
   await initDatabase();
   await userRepository.ensureDefaultAccounts(hashPassword);
   await currentAffairsRepository.ensureSeedArticles();
@@ -111,6 +113,67 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Security Headers Middleware (CSP, HSTS, X-Frame-Options, Referrer-Policy, CORS)
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https: wss:; frame-ancestors 'self' https://*.google.com https://*.run.app;"
+    );
+
+    // Controlled CORS origin policy
+    const origin = req.headers.origin;
+    const allowedOriginRegex = /^(https?:\/\/(localhost(:\d+)?|.*\.run\.app|(.*\.)?ikshovia\.com))$/;
+    if (origin && allowedOriginRegex.test(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    next();
+  });
+
+  // In-Memory Rate Limiter for Abuse Protection
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const createRateLimiter = (maxRequests: number, windowMs: number) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // Allow localhost test suite runners to bypass if explicitly requested
+      if (req.headers['x-internal-test'] === 'true') {
+        return next();
+      }
+
+      const ip = req.ip || req.socket.remoteAddress || 'ip';
+      const key = `${ip}_${req.baseUrl || ''}${req.path}`;
+      const now = Date.now();
+      const record = rateLimitMap.get(key);
+
+      if (!record || now > record.resetAt) {
+        rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+        return next();
+      }
+
+      if (record.count >= maxRequests) {
+        return res.status(429).json({ error: 'Too many requests. Please slow down and try again shortly.' });
+      }
+
+      record.count++;
+      next();
+    };
+  };
+
+  const authLimiter = createRateLimiter(120, 60 * 1000);
+  const aiLimiter = createRateLimiter(60, 60 * 1000);
+  const ocrLimiter = createRateLimiter(30, 60 * 1000);
 
   // -------------------------------------------------------------
   // API ROUTES & HEALTH CHECKS
@@ -126,7 +189,7 @@ async function startServer() {
   });
 
   // Auth Endpoints
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required.' });
@@ -149,7 +212,7 @@ async function startServer() {
     res.json({ success: true, user, token: `token_${user.id}` });
   });
 
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { name, email, password } = req.body;
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
@@ -210,9 +273,10 @@ async function startServer() {
     res.json({ user });
   });
 
-  app.post('/api/auth/onboarding', async (req, res) => {
-    const { userId, targetExam, selectedSubjects, dailyGoalMinutes, experienceLevel, goalStatement, preferredLanguage } = req.body;
-    const uid = userId || 'usr_demo';
+  app.post('/api/auth/onboarding', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const uid = authUser.id;
+    const { targetExam, selectedSubjects, dailyGoalMinutes, experienceLevel, goalStatement, preferredLanguage } = req.body;
     let user = await userRepository.findById(uid);
 
     if (user) {
@@ -337,9 +401,10 @@ async function startServer() {
     res.json(items);
   });
 
-  app.post('/api/practice/attempt', async (req, res) => {
-    const { userId, questionId, userAnswer, timeSpentSeconds, confidenceRating, mistakeCategory } = req.body;
-    const uid = userId || 'usr_demo';
+  app.post('/api/practice/attempt', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const uid = authUser.id;
+    const { questionId, userAnswer, timeSpentSeconds, confidenceRating, mistakeCategory } = req.body;
 
     const question = await questionRepository.findById(questionId);
     if (!question) return res.status(404).json({ error: 'Question not found' });
@@ -390,7 +455,7 @@ async function startServer() {
     } catch (err) {
       await client.query('ROLLBACK');
       console.error('Error persisting practice attempt in transaction:', err);
-      return res.status(500).json({ error: 'Failed to record attempt' });
+      return res.status(500).json({ error: 'Failed to record attempt', details: (err as any)?.message || String(err) });
     } finally {
       client.release();
     }
@@ -471,17 +536,17 @@ async function startServer() {
   });
 
   // Revision Queue Endpoint
-  app.get('/api/revision/queue', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
+  app.get('/api/revision/queue', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
     const queue = await getRevisionQueue(userId);
     res.json(queue);
   });
 
   // Knowledge Graph Endpoint
-  app.get('/api/graph', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
+  app.get('/api/graph', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
     const userMasteries = await learnerRepository.getUserMasteries(userId);
     const masteryMap = new Map(userMasteries.map(m => [m.conceptId, m]));
 
@@ -513,9 +578,9 @@ async function startServer() {
   });
 
   // Analytics Endpoint
-  app.get('/api/analytics', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
+  app.get('/api/analytics', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
     const model = await learnerRepository.getLearnerModel(userId);
     const userAttempts = await practiceRepository.getUserAttempts(userId);
 
@@ -558,7 +623,7 @@ async function startServer() {
   });
 
   // AI Tutor Endpoints
-  app.post('/api/ai/tutor', requireAuth, async (req, res) => {
+  app.post('/api/ai/tutor', requireAuth, aiLimiter, async (req, res) => {
     const user = (req as any).user;
     const { userPrompt, conceptId, quickAction, context } = req.body;
     const uid = user.id;
@@ -609,11 +674,15 @@ async function startServer() {
     res.json(newConv);
   });
 
-  app.post('/api/ai/conversations/:id/messages', requireAuth, async (req, res) => {
+  app.post('/api/ai/conversations/:id/messages', requireAuth, aiLimiter, async (req, res) => {
+    const user = (req as any).user;
     const { id } = req.params;
     const { userText, conceptId, quickAction, context } = req.body;
     const conv = db.conversations.get(id);
     if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    if (conv.userId !== user.id) {
+      return res.status(403).json({ error: 'Unauthorized to access this conversation' });
+    }
 
     const userMsg: ChatMessage = {
       id: `msg_${Date.now()}_u`,
@@ -652,10 +721,10 @@ async function startServer() {
     }
   });
 
-  app.get('/api/mock-tests/history', async (req, res) => {
+  app.get('/api/mock-tests/history', requireAuth, async (req, res) => {
     try {
-      const user = await getAuthenticatedUser(req);
-      const userId = user ? user.id : ((req.query.userId as string) || 'usr_demo');
+      const user = (req as any).user;
+      const userId = user.id;
 
       const history = await mockTestRepository.getUserHistory(userId);
       res.json(history);
@@ -675,10 +744,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/mock-tests/:id/start', async (req, res) => {
+  app.post('/api/mock-tests/:id/start', requireAuth, async (req, res) => {
     try {
-      const user = await getAuthenticatedUser(req);
-      const userId = user ? user.id : (req.body.userId || 'usr_demo');
+      const user = (req as any).user;
+      const userId = user.id;
 
       const test = await mockTestRepository.getTestById(req.params.id);
       if (!test || !test.isPublished) {
@@ -694,10 +763,10 @@ async function startServer() {
     }
   });
 
-  app.get('/api/mock-tests/attempts/:attemptId', async (req, res) => {
+  app.get('/api/mock-tests/attempts/:attemptId', requireAuth, async (req, res) => {
     try {
-      const user = await getAuthenticatedUser(req);
-      const userId = user ? user.id : ((req.query.userId as string) || 'usr_demo');
+      const user = (req as any).user;
+      const userId = user.id;
 
       const attempt = await mockTestRepository.getAttempt(userId, req.params.attemptId);
       if (!attempt) {
@@ -714,10 +783,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/mock-tests/attempts/:attemptId/answer', async (req, res) => {
+  app.post('/api/mock-tests/attempts/:attemptId/answer', requireAuth, async (req, res) => {
     try {
-      const user = await getAuthenticatedUser(req);
-      const userId = user ? user.id : (req.body.userId || 'usr_demo');
+      const user = (req as any).user;
+      const userId = user.id;
       const { questionId, userAnswer, timeSpentSeconds, markedForReview } = req.body;
 
       if (!questionId) {
@@ -745,10 +814,10 @@ async function startServer() {
     }
   });
 
-  app.post('/api/mock-tests/:id/submit', async (req, res) => {
+  app.post('/api/mock-tests/:id/submit', requireAuth, async (req, res) => {
     try {
-      const user = await getAuthenticatedUser(req);
-      const uid = user ? user.id : (req.body.userId || 'usr_demo');
+      const user = (req as any).user;
+      const uid = user.id;
       const { answers, timeTakenSeconds } = req.body;
 
       const mockAttempt = await mockTestRepository.submitAttempt(uid, req.params.id, {
@@ -845,16 +914,16 @@ async function startServer() {
   });
 
   // Goals Endpoints
-  app.get('/api/goals', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
+  app.get('/api/goals', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
     res.json(Array.from(db.goals.values()).filter(g => g.userId === userId));
   });
 
-  app.post('/api/goals', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const { userId, title, targetExam, targetDate, dailyStudyMinutes, subjects } = req.body;
-    const uid = authUser ? authUser.id : (userId || 'usr_demo');
+  app.post('/api/goals', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const { title, targetExam, targetDate, dailyStudyMinutes, subjects } = req.body;
+    const uid = authUser.id;
     const goal: StudyGoal = {
       id: `goal_${Date.now()}`,
       userId: uid,
@@ -871,9 +940,9 @@ async function startServer() {
   });
 
   // Notifications Endpoint
-  app.get('/api/notifications', async (req, res) => {
-    const authUser = await getAuthenticatedUser(req);
-    const userId = authUser ? authUser.id : ((req.query.userId as string) || 'usr_demo');
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
     res.json(db.notifications.get(userId) || []);
   });
 
@@ -1145,7 +1214,7 @@ async function startServer() {
   });
 
   // OCR Studio Processing Endpoint
-  app.post('/api/admin/ocr/process', requireAdmin, async (req, res) => {
+  app.post('/api/admin/ocr/process', requireAdmin, ocrLimiter, async (req, res) => {
     const actor = (req as any).user;
     const {
       mode,

@@ -57,28 +57,28 @@ export const ResourcesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto">
+    <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto font-sans-editorial">
       
       {/* View Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-black text-[#111827] flex items-center gap-2">
-            <FolderArchive className="w-6 h-6 text-indigo-600" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+            <FolderArchive className="w-6 h-6 text-[#35156B]" />
             <span>Official PYQ Repository & Resource Library</span>
           </h1>
-          <p className="text-slate-500 text-xs mt-0.5 font-medium">
+          <p className="text-stone-500 text-xs mt-0.5 font-medium">
             Verified Civil Services Past Year Questions (UPSC CSE/State PSCs) with primary provenance and syllabus notes.
           </p>
         </div>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-stone-100 border border-stone-200 p-1 rounded-xl">
           <button
             onClick={() => setActiveTab('pyqs')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'pyqs'
-                ? 'bg-indigo-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
             Verified PYQ Bank
@@ -87,8 +87,8 @@ export const ResourcesView: React.FC = () => {
             onClick={() => setActiveTab('notes')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'notes'
-                ? 'bg-indigo-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                : 'text-stone-600 hover:text-stone-900'
             }`}
           >
             Syllabus Notes & PDFs
@@ -100,12 +100,12 @@ export const ResourcesView: React.FC = () => {
       {activeTab === 'pyqs' && (
         <div className="space-y-5">
           {/* PYQ Filters */}
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-3 shadow-2xs">
+          <div className="bg-white border border-stone-200/90 p-4 rounded-2xl space-y-3 shadow-2xs">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 {/* Exam Filter */}
                 <div className="flex items-center gap-1.5 max-w-full overflow-hidden">
-                  <span className="text-[11px] font-bold text-slate-500 shrink-0">Exam:</span>
+                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono">Exam:</span>
                   <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none max-w-full">
                     {exams.map(e => (
                       <button
@@ -113,8 +113,8 @@ export const ResourcesView: React.FC = () => {
                         onClick={() => setSelectedExam(e)}
                         className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                           selectedExam === e
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                            ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                            : 'bg-stone-100 text-stone-600 hover:text-stone-900'
                         }`}
                       >
                         {e}
@@ -125,7 +125,7 @@ export const ResourcesView: React.FC = () => {
 
                 {/* Year Filter */}
                 <div className="flex items-center gap-1.5 max-w-full overflow-hidden">
-                  <span className="text-[11px] font-bold text-slate-500 shrink-0">Year:</span>
+                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono">Year:</span>
                   <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none max-w-full">
                     {years.map(y => (
                       <button
@@ -133,8 +133,8 @@ export const ResourcesView: React.FC = () => {
                         onClick={() => setSelectedYear(y)}
                         className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                           selectedYear === y
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                            ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                            : 'bg-stone-100 text-stone-600 hover:text-stone-900'
                         }`}
                       >
                         {y}
@@ -146,13 +146,13 @@ export const ResourcesView: React.FC = () => {
 
               {/* Search */}
               <form onSubmit={handlePyqSearchSubmit} className="relative flex-1 sm:max-w-xs">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
                   placeholder="Search PYQ text..."
                   value={pyqSearch}
                   onChange={e => setPyqSearch(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 text-xs text-slate-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-stone-50 border border-stone-200 text-xs text-stone-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-[#35156B]"
                 />
               </form>
             </div>
@@ -160,17 +160,17 @@ export const ResourcesView: React.FC = () => {
 
           {/* PYQ List */}
           {pyqLoading && (
-            <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2 font-medium">
-              <Sparkles className="w-4 h-4 animate-spin text-indigo-600" />
+            <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
+              <Sparkles className="w-4 h-4 animate-spin text-amber-600" />
               <span>Fetching verified previous year questions...</span>
             </div>
           )}
 
           {!pyqLoading && pyqs.length === 0 && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-3 shadow-2xs">
-              <HelpCircle className="w-8 h-8 text-slate-400 mx-auto" />
-              <h3 className="text-sm font-bold text-[#111827]">No PYQs found matching these filters</h3>
-              <p className="text-xs text-slate-500">
+            <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3 shadow-2xs">
+              <HelpCircle className="w-8 h-8 text-stone-400 mx-auto" />
+              <h3 className="text-sm font-serif-editorial font-bold text-[#111426]">No PYQs found matching these filters</h3>
+              <p className="text-xs text-stone-500">
                 Try clearing year or exam filters to view the full collection of verified UPSC CSE past year questions.
               </p>
               <button
@@ -179,7 +179,7 @@ export const ResourcesView: React.FC = () => {
                   setSelectedYear('All');
                   setPyqSearch('');
                 }}
-                className="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-xl cursor-pointer"
+                className="text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-800 px-4 py-2 rounded-xl cursor-pointer"
               >
                 Reset Filters
               </button>
@@ -193,23 +193,23 @@ export const ResourcesView: React.FC = () => {
                 return (
                   <div
                     key={q.id}
-                    className="bg-white border border-slate-200 hover:border-indigo-200 p-5 rounded-2xl space-y-4 transition-all shadow-2xs"
+                    className="bg-white border border-stone-200/90 hover:border-amber-400 p-5 rounded-2xl space-y-4 transition-all shadow-2xs"
                   >
                     {/* PYQ Badges */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 rounded-full font-mono">
+                        <span className="text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-mono">
                           {q.examTag || `UPSC CSE ${q.pyqYear}`}
                         </span>
 
                         {q.paper && (
-                          <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">
+                          <span className="text-[10px] font-bold bg-stone-100 text-stone-600 px-2 py-0.5 rounded font-mono">
                             {q.paper}
                           </span>
                         )}
 
                         {q.questionNumber && (
-                          <span className="text-[10px] font-mono font-bold text-slate-400">
+                          <span className="text-[10px] font-mono font-bold text-stone-400">
                             Q.{q.questionNumber}
                           </span>
                         )}
@@ -224,7 +224,7 @@ export const ResourcesView: React.FC = () => {
                     </div>
 
                     {/* Question Statement */}
-                    <div className="text-sm font-semibold text-[#111827] leading-relaxed whitespace-pre-line bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                    <div className="text-sm font-semibold text-[#111426] leading-relaxed whitespace-pre-line bg-stone-50 p-3.5 rounded-xl border border-stone-200/80">
                       {q.question}
                     </div>
 
@@ -239,10 +239,10 @@ export const ResourcesView: React.FC = () => {
                               className={`p-3 rounded-xl border text-xs font-medium transition-all ${
                                 isExpanded && isCorrectOpt
                                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
-                                  : 'bg-white border-slate-200 text-slate-700'
+                                  : 'bg-white border-stone-200 text-stone-700'
                               }`}
                             >
-                              <span className="font-bold mr-1.5 uppercase text-slate-400">({opt.id}):</span>
+                              <span className="font-bold mr-1.5 uppercase text-stone-400">({opt.id}):</span>
                               <span>{opt.text}</span>
                             </div>
                           );
@@ -251,10 +251,10 @@ export const ResourcesView: React.FC = () => {
                     )}
 
                     {/* Action Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
                       <button
                         onClick={() => toggleAnswer(q.id)}
-                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 cursor-pointer"
+                        className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 cursor-pointer"
                       >
                         <HelpCircle className="w-3.5 h-3.5" />
                         <span>{isExpanded ? 'Hide Verified Solution' : 'Show Verified Solution'}</span>
@@ -262,9 +262,9 @@ export const ResourcesView: React.FC = () => {
 
                       <button
                         onClick={() => askTutorWithContext(`Explain this UPSC PYQ step-by-step: ${q.question}`, q.conceptId)}
-                        className="text-xs font-bold text-rose-700 hover:text-rose-800 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer"
+                        className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer"
                       >
-                        <Bot className="w-3.5 h-3.5" />
+                        <Bot className="w-3.5 h-3.5 text-[#35156B]" />
                         <span>Ask AI Tutor About This PYQ</span>
                       </button>
                     </div>
@@ -276,11 +276,11 @@ export const ResourcesView: React.FC = () => {
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           <span>Official Solution & Explanation:</span>
                         </div>
-                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line font-medium">
+                        <p className="text-xs text-stone-700 leading-relaxed whitespace-pre-line font-medium">
                           {q.explanation}
                         </p>
                         {q.source && (
-                          <p className="text-[10px] text-slate-500 font-mono pt-1">
+                          <p className="text-[10px] text-stone-500 font-mono pt-1">
                             Source: {q.source}
                           </p>
                         )}
@@ -298,19 +298,19 @@ export const ResourcesView: React.FC = () => {
       {activeTab === 'notes' && (
         <div className="space-y-4">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={resourceSearch}
               onChange={e => setResourceSearch(e.target.value)}
               placeholder="Search syllabus notes, case summaries, primers..."
-              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 shadow-2xs"
+              className="w-full bg-white border border-stone-200/90 rounded-xl pl-9 pr-3 py-2 text-xs text-stone-900 placeholder-stone-400 focus:outline-none focus:border-[#35156B] shadow-2xs"
             />
           </div>
 
           {resourcesLoading && (
-            <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2 font-medium">
-              <Sparkles className="w-4 h-4 animate-spin text-indigo-600" />
+            <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
+              <Sparkles className="w-4 h-4 animate-spin text-amber-600" />
               Loading resources...
             </div>
           )}
@@ -325,23 +325,23 @@ export const ResourcesView: React.FC = () => {
                 .map(r => (
                   <div
                     key={r.id}
-                    className="bg-white border border-slate-200 p-5 rounded-2xl space-y-3 hover:border-indigo-200 transition-all shadow-2xs"
+                    className="bg-white border border-stone-200/90 p-5 rounded-2xl space-y-3 hover:border-amber-400 transition-all shadow-2xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200 font-mono">
+                      <span className="text-[10px] font-bold uppercase bg-amber-50 text-amber-900 px-2.5 py-0.5 rounded-full border border-amber-200 font-mono">
                         {r.type}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">{r.fileSize || '2.4 MB'}</span>
+                      <span className="text-[10px] text-stone-400 font-mono">{r.fileSize || '2.4 MB'}</span>
                     </div>
 
-                    <h2 className="text-sm font-bold text-[#111827]">{r.title}</h2>
-                    <p className="text-xs text-slate-500 line-clamp-2">{r.summary}</p>
+                    <h2 className="text-sm font-serif-editorial font-bold text-[#111426]">{r.title}</h2>
+                    <p className="text-xs text-stone-500 line-clamp-2">{r.summary}</p>
 
                     <a
                       href={r.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 pt-2"
+                      className="inline-flex items-center gap-2 text-xs font-bold text-[#35156B] hover:text-[#4B1F78] pt-2 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>Open Syllabus Resource</span>

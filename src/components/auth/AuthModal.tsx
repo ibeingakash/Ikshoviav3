@@ -44,7 +44,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (mode === 'login') {
         await login(email, password);
       } else if (mode === 'register') {
-        await register(name || 'Akash', email, password);
+        await register(name.trim() || email.split('@')[0] || 'Learner', email, password);
       } else if (mode === 'forgot') {
         const res = await api.forgotPassword(email);
         setMessage(res.message || 'Password reset link sent to your email address.');
