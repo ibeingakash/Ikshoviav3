@@ -12,8 +12,8 @@ export const Header: React.FC = () => {
   const unreadCount = safeNotifications.filter(n => n && !n.isRead).length;
 
   return (
-    <header id="app-header" className="sticky top-0 z-30 bg-[#FAF7F0]/95 backdrop-blur-md text-[#111426] border-b border-stone-200/80 px-2.5 sm:px-6 py-2 shadow-2xs font-sans-editorial overflow-x-clip">
-      <div className="max-w-[1700px] mx-auto flex items-center justify-between gap-1.5 sm:gap-4">
+    <header id="app-header" className="sticky top-0 z-30 bg-[#FAF7F0]/95 backdrop-blur-md text-[#111426] border-b border-stone-200/80 px-2.5 sm:px-6 py-2 shadow-2xs font-sans-editorial">
+      <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-4 min-w-0">
         
         {/* Brand Logo & Wordmark */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">

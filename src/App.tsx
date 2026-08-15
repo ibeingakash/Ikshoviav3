@@ -137,7 +137,7 @@ const MainContent: React.FC = () => {
       {/* Accent Ribbon */}
       <div className="h-0.5 w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500" />
       <Header />
-      <div className="flex flex-1 max-w-[1700px] w-full mx-auto min-w-0">
+      <div className="flex flex-1 w-full max-w-7xl mx-auto min-w-0">
         <Sidebar />
         <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-3 pb-24 sm:p-6 sm:pb-8 lg:p-8 overflow-y-auto">
           <ErrorBoundary key={activeSection} onReset={() => setActiveSection('dashboard')}>

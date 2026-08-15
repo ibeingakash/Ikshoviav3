@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import pool from './pool.js';
+import { ensureQuestionBankSeed } from './seedQuestions.js';
 
 export async function ensureDatabaseSchema(): Promise<void> {
   console.log('[DB Schema] Checking database schema status...');
@@ -66,7 +67,10 @@ export async function ensureDatabaseSchema(): Promise<void> {
       ALTER TABLE public.current_affairs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
     `);
 
-    // 3. Verify total tables
+    // 3. Ensure authentic question bank seeds exist
+    await ensureQuestionBankSeed();
+
+    // 4. Verify total tables
     const tableRes = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
