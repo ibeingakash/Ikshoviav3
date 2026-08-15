@@ -31,7 +31,10 @@ export const ResourcesView: React.FC = () => {
       year: selectedYear === 'All' ? undefined : Number(selectedYear),
       search: pyqSearch,
     }).then(list => {
-      setPyqs(list);
+      setPyqs(Array.isArray(list) ? list : []);
+      setPyqLoading(false);
+    }).catch(() => {
+      setPyqs([]);
       setPyqLoading(false);
     });
   };
@@ -42,7 +45,10 @@ export const ResourcesView: React.FC = () => {
 
   useEffect(() => {
     api.getResources().then(list => {
-      setResources(list);
+      setResources(Array.isArray(list) ? list : []);
+      setResourcesLoading(false);
+    }).catch(() => {
+      setResources([]);
       setResourcesLoading(false);
     });
   }, []);
@@ -317,10 +323,12 @@ export const ResourcesView: React.FC = () => {
 
           {!resourcesLoading && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {resources
+              {(Array.isArray(resources) ? resources : [])
                 .filter(r =>
-                  r.title.toLowerCase().includes(resourceSearch.toLowerCase()) ||
-                  r.summary.toLowerCase().includes(resourceSearch.toLowerCase())
+                  r && (
+                    (r.title || '').toLowerCase().includes(resourceSearch.toLowerCase()) ||
+                    (r.summary || '').toLowerCase().includes(resourceSearch.toLowerCase())
+                  )
                 )
                 .map(r => (
                   <div

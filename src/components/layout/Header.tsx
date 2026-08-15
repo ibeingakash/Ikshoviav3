@@ -8,7 +8,8 @@ export const Header: React.FC = () => {
   const { user, logout } = useAuth();
   const { learnerModel, notifications, setIsSearchOpen, setActiveSection } = useLearner();
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+  const unreadCount = safeNotifications.filter(n => n && !n.isRead).length;
 
   return (
     <header id="app-header" className="sticky top-0 z-30 bg-[#FAF7F0]/95 backdrop-blur-md text-[#111426] border-b border-stone-200/80 px-2.5 sm:px-6 py-2 shadow-2xs font-sans-editorial overflow-x-clip">
@@ -79,10 +80,12 @@ export const Header: React.FC = () => {
           {user?.role === 'SUPER_ADMIN' && (
             <button
               onClick={() => setActiveSection('super-admin-dashboard')}
-              className="hidden lg:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-xl border bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-all shadow-2xs cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold px-2 sm:px-3 py-1 rounded-xl border bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 transition-all shadow-2xs cursor-pointer"
+              title="Open Super Admin Console"
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Super Admin</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+              <span className="hidden sm:inline">Super Admin</span>
+              <span className="sm:hidden">Super</span>
             </button>
           )}
 
@@ -90,10 +93,12 @@ export const Header: React.FC = () => {
           {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
             <button
               onClick={() => setActiveSection('admin-dashboard')}
-              className="hidden lg:flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-xl border bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100 transition-all cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-semibold px-2 sm:px-2.5 py-1 rounded-xl border bg-rose-50 border-rose-200 text-rose-850 hover:bg-rose-100 transition-all cursor-pointer"
+              title="Open Admin Studio"
             >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Admin Studio</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden sm:inline">Admin Studio</span>
+              <span className="sm:hidden">Admin</span>
             </button>
           )}
 

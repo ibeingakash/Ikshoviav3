@@ -1,15 +1,61 @@
 import React, { useState } from 'react';
-import { Menu, X, ChevronRight } from 'lucide-react';
+import {
+  Menu,
+  X,
+  ChevronRight,
+  Shield,
+  ShieldAlert,
+  Users,
+  FileSpreadsheet,
+  HelpCircle,
+  FileUp,
+  Newspaper,
+  Sparkles,
+  History,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
-import { PRIMARY_MOBILE_ITEMS, MORE_MENU_CATEGORIES } from '../../config/navigation.js';
+import { useAuth } from '../../context/AuthContext.js';
+import { PRIMARY_MOBILE_ITEMS, MORE_MENU_CATEGORIES, NavItemConfig } from '../../config/navigation.js';
 import { IKLogo } from '../common/IKLogo.js';
 
 export const MobileNav: React.FC = () => {
   const { activeSection, setActiveSection, learnerModel } = useLearner();
+  const { user } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  // Build role-aware dynamic menu categories
+  const categories: { title: string; items: NavItemConfig[] }[] = [...MORE_MENU_CATEGORIES];
+
+  if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
+    categories.push({
+      title: 'ADMIN STUDIO',
+      items: [
+        { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+        { id: 'admin-users', label: 'User Directory', icon: Users },
+        { id: 'admin-content', label: 'Subjects & Concepts', icon: FileSpreadsheet },
+        { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle },
+        { id: 'admin-ocr', label: 'OCR Import Studio', icon: FileUp, badge: '4 Modes' },
+        { id: 'admin-current-affairs', label: 'Current Affairs Studio', icon: Newspaper, badge: 'Pipeline' },
+        { id: 'admin-ai', label: 'AI Content Studio', icon: Sparkles, badge: 'Drafts' },
+      ],
+    });
+  }
+
+  if (user?.role === 'SUPER_ADMIN') {
+    categories.push({
+      title: 'SUPER ADMIN CONSOLE',
+      items: [
+        { id: 'super-admin-dashboard', label: 'Console Overview', icon: ShieldAlert },
+        { id: 'super-admin-admins', label: 'Administrators & RBAC', icon: Users },
+        { id: 'super-admin-audit', label: 'Security Audit Logs', icon: History },
+        { id: 'super-admin-settings', label: 'System Settings', icon: SlidersHorizontal },
+      ],
+    });
+  }
+
   // Determine if activeSection is inside the More menu
-  const isMoreActive = MORE_MENU_CATEGORIES.some(cat =>
+  const isMoreActive = categories.some(cat =>
     cat.items.some(item => item.id === activeSection)
   );
 
@@ -87,7 +133,7 @@ export const MobileNav: React.FC = () => {
 
             {/* Categorized Menu Sections */}
             <div className="space-y-5">
-              {MORE_MENU_CATEGORIES.map(category => (
+              {categories.map(category => (
                 <div key={category.title} className="space-y-2">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-stone-500 font-mono px-1 flex items-center justify-between">
                     <span>{category.title}</span>

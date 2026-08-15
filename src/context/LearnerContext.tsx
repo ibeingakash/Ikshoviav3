@@ -60,7 +60,11 @@ const LearnerContext = createContext<LearnerContextType | undefined>(undefined);
 
 export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [activeSection, setActiveSection] = useState<NavigationSection>('dashboard');
+  const [activeSection, setActiveSection] = useState<NavigationSection>(() => {
+    if (user?.role === 'SUPER_ADMIN') return 'super-admin-dashboard';
+    if (user?.role === 'ADMIN') return 'admin-dashboard';
+    return 'dashboard';
+  });
   const [appTheme, setAppTheme] = useState<AppTheme>('upsc-parchment');
   const [learnerModel, setLearnerModel] = useState<LearnerModel | null>(null);
   const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
@@ -72,23 +76,66 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [aiContext, setAiContext] = useState<AiContextData | null>(null);
   const [pendingAiPrompt, setPendingAiPrompt] = useState<{ prompt: string; quickAction?: string } | null>(null);
 
+  const prevAuthUserRef = React.useRef<{ id: string; role: string } | null>(null);
+
   const refreshLearnerData = async () => {
     try {
-      const data = await api.getLearnerModel(user?.id);
-      setLearnerModel(data.model);
-      setNextBestAction(data.nextBestAction);
-      if (data.aiInsight) setAiInsight(data.aiInsight);
+      if (!user) {
+        setNotifications([]);
+        return;
+      }
+      const data = await api.getLearnerModel(user.id);
+      if (data && typeof data === 'object') {
+        if (data.model) setLearnerModel(data.model);
+        if (data.nextBestAction) setNextBestAction(data.nextBestAction);
+        if (data.aiInsight) setAiInsight(data.aiInsight);
+      }
 
-      const notifs = await api.getNotifications(user?.id);
-      setNotifications(notifs);
+      const notifs = await api.getNotifications(user.id);
+      setNotifications(Array.isArray(notifs) ? notifs : []);
     } catch (err) {
       console.error('Failed to load learner data:', err);
+      setNotifications([]);
     }
   };
 
   useEffect(() => {
-    refreshLearnerData();
-  }, [user]);
+    if (user) {
+      const isNewLoginOrSwitch =
+        !prevAuthUserRef.current ||
+        prevAuthUserRef.current.id !== user.id ||
+        prevAuthUserRef.current.role !== user.role;
+
+      if (isNewLoginOrSwitch) {
+        prevAuthUserRef.current = { id: user.id, role: user.role };
+        // Route directly to the role-appropriate initial screen
+        if (user.role === 'SUPER_ADMIN') {
+          setActiveSection('super-admin-dashboard');
+        } else if (user.role === 'ADMIN') {
+          setActiveSection('admin-dashboard');
+        } else {
+          setActiveSection('dashboard');
+        }
+      } else {
+        // Enforce RBAC bounds if user role does not allow current section
+        if (activeSection.startsWith('super-admin-') && user.role !== 'SUPER_ADMIN') {
+          setActiveSection(user.role === 'ADMIN' ? 'admin-dashboard' : 'dashboard');
+        } else if (
+          (activeSection.startsWith('admin-') || activeSection === 'admin-ocr' || activeSection === 'admin-current-affairs') &&
+          user.role !== 'ADMIN' &&
+          user.role !== 'SUPER_ADMIN'
+        ) {
+          setActiveSection('dashboard');
+        }
+      }
+
+      refreshLearnerData();
+    } else {
+      prevAuthUserRef.current = null;
+      setNotifications([]);
+      setActiveSection('dashboard');
+    }
+  }, [user?.id, user?.role]);
 
   // Handle Ctrl+K shortcut for global search
   useEffect(() => {

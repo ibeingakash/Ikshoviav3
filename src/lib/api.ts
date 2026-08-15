@@ -168,31 +168,117 @@ export const api = {
 
   // Subjects & Content
   getSubjects: async (): Promise<Subject[]> => {
-    const res = await apiFetch('/api/subjects');
-    return res.json();
+    try {
+      const res = await apiFetch('/api/subjects');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.subjects) ? data.subjects : []);
+    } catch {
+      return [];
+    }
   },
 
   getSubjectDetail: async (id: string) => {
-    const res = await apiFetch(`/api/subjects/${id}`);
-    return res.json();
+    try {
+      const res = await apiFetch(`/api/subjects/${id}`);
+      if (!res.ok) return { subject: null, topics: [], concepts: [] };
+      const data = await res.json();
+      return {
+        subject: data?.subject || null,
+        topics: Array.isArray(data?.topics) ? data.topics : [],
+        concepts: Array.isArray(data?.concepts) ? data.concepts : [],
+      };
+    } catch {
+      return { subject: null, topics: [], concepts: [] };
+    }
   },
 
   getTopics: async (subjectId: string): Promise<Topic[]> => {
-    const res = await apiFetch(`/api/subjects/${subjectId}/topics`);
-    return res.json();
+    try {
+      const res = await apiFetch(`/api/subjects/${subjectId}/topics`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.topics) ? data.topics : []);
+    } catch {
+      return [];
+    }
   },
 
   getConceptDetail: async (id: string, userId?: string) => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/concepts/${id}?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/concepts/${id}?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { concept: null, mastery: null, prerequisites: [], related: [] };
+      const data = await res.json();
+      return {
+        concept: data?.concept || null,
+        mastery: data?.mastery || null,
+        prerequisites: Array.isArray(data?.prerequisites) ? data.prerequisites : [],
+        related: Array.isArray(data?.related) ? data.related : [],
+      };
+    } catch {
+      return { concept: null, mastery: null, prerequisites: [], related: [] };
+    }
   },
 
   // Learner Intelligence
   getLearnerModel: async (userId?: string): Promise<{ model: LearnerModel; nextBestAction: NextBestAction; aiInsight: string }> => {
     const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/learner/model?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    const fallbackModel: LearnerModel = {
+      userId: uid,
+      overallScore: 0,
+      totalStudyTimeMinutes: 0,
+      currentStreak: 0,
+      highestStreak: 0,
+      activeDaysCount: 0,
+      confidenceBias: 'BALANCED',
+      mistakeBreakdown: {
+        CONCEPT_GAP: 0,
+        RECALL_FAILURE: 0,
+        CONCEPT_CONFUSION: 0,
+        MISINTERPRETATION: 0,
+        CARELESS_ERROR: 0,
+        TIME_PRESSURE: 0,
+      },
+      subjectMastery: {},
+      masteredConceptsCount: 0,
+      weakConceptsCount: 0,
+      dueRevisionCount: 0,
+      lastUpdated: new Date().toISOString(),
+    };
+    const fallbackNBA: NextBestAction = {
+      id: 'nba_default',
+      actionType: 'PRACTICE',
+      title: 'Begin Practice Session',
+      description: 'Explore fundamental concepts and diagnose your baseline mastery.',
+      reason: 'Diagnose your baseline mastery.',
+      estimatedMinutes: 15,
+      priority: 'MEDIUM',
+    };
+    const fallbackInsight = 'Start practicing to unlock personalized learning insights.';
+
+    try {
+      const res = await apiFetch(`/api/learner/model?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) {
+        return {
+          model: fallbackModel,
+          nextBestAction: fallbackNBA,
+          aiInsight: fallbackInsight,
+        };
+      }
+      const data = await res.json();
+      return {
+        model: data?.model || fallbackModel,
+        nextBestAction: data?.nextBestAction || fallbackNBA,
+        aiInsight: data?.aiInsight || fallbackInsight,
+      };
+    } catch {
+      return {
+        model: fallbackModel,
+        nextBestAction: fallbackNBA,
+        aiInsight: fallbackInsight,
+      };
+    }
   },
 
   rateConceptConfidence: async (conceptId: string, confidenceRating: number, userId?: string) => {
@@ -206,13 +292,19 @@ export const api = {
 
   // Practice & Questions
   getPracticeQuestions: async (subjectId?: string, conceptId?: string, limit = 10): Promise<Question[]> => {
-    const params = new URLSearchParams();
-    if (subjectId) params.append('subjectId', subjectId);
-    if (conceptId) params.append('conceptId', conceptId);
-    params.append('limit', String(limit));
+    try {
+      const params = new URLSearchParams();
+      if (subjectId) params.append('subjectId', subjectId);
+      if (conceptId) params.append('conceptId', conceptId);
+      params.append('limit', String(limit));
 
-    const res = await apiFetch(`/api/practice/questions?${params.toString()}`);
-    return res.json();
+      const res = await apiFetch(`/api/practice/questions?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.questions) ? data.questions : []);
+    } catch {
+      return [];
+    }
   },
 
   submitQuestionAttempt: async (
@@ -258,23 +350,43 @@ export const api = {
 
   // Revision Engine
   getRevisionQueue: async (userId?: string): Promise<RevisionItem[]> => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/revision/queue?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/revision/queue?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.queue) ? data.queue : []);
+    } catch {
+      return [];
+    }
   },
 
   // Knowledge Graph
   getKnowledgeGraph: async (userId?: string) => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/graph?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/graph?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { nodes: [], links: [] };
+      const data = await res.json();
+      return {
+        nodes: Array.isArray(data?.nodes) ? data.nodes : [],
+        links: Array.isArray(data?.links) ? data.links : [],
+      };
+    } catch {
+      return { nodes: [], links: [] };
+    }
   },
 
   // Analytics
   getAnalytics: async (userId?: string) => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/analytics?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/analytics?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   },
 
   // AI Tutor
@@ -288,23 +400,27 @@ export const api = {
   },
 
   getConversations: async (): Promise<ChatConversation[]> => {
-    const res = await apiFetch('/api/ai/conversations', {
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to load AI conversations (${res.status})`);
+    try {
+      const res = await apiFetch('/api/ai/conversations', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        return [];
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        return data;
+      }
+      if (data && Array.isArray(data.conversations)) {
+        return data.conversations;
+      }
+      if (data && Array.isArray(data.data)) {
+        return data.data;
+      }
+      return [];
+    } catch {
+      return [];
     }
-    const data = await res.json();
-    if (Array.isArray(data)) {
-      return data;
-    }
-    if (data && Array.isArray(data.conversations)) {
-      return data.conversations;
-    }
-    if (data && Array.isArray(data.data)) {
-      return data.data;
-    }
-    return [];
   },
 
   createConversation: async (title?: string, initialMessage?: any): Promise<ChatConversation> => {
@@ -333,13 +449,24 @@ export const api = {
 
   // Mock Tests
   getMockTests: async (): Promise<MockTest[]> => {
-    const res = await apiFetch('/api/mock-tests');
-    return res.json();
+    try {
+      const res = await apiFetch('/api/mock-tests');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.mockTests) ? data.mockTests : []);
+    } catch {
+      return [];
+    }
   },
 
   getMockTest: async (id: string): Promise<MockTest & { questions?: Question[] }> => {
     const res = await apiFetch(`/api/mock-tests/${id}`);
-    return res.json();
+    if (!res.ok) throw new Error('Mock test not found');
+    const data = await res.json();
+    return {
+      ...data,
+      questions: Array.isArray(data?.questions) ? data.questions : [],
+    };
   },
 
   submitMockTest: async (mockTestId: string, answers: Record<string, string>, timeTakenSeconds: number, userId?: string) => {
@@ -353,17 +480,23 @@ export const api = {
 
   // Current Affairs & Resources
   getCurrentAffairs: async (filters?: { category?: string; dateRange?: string; search?: string; subjectId?: string; exam?: string; relevance?: string; biharOnly?: boolean }): Promise<CurrentAffairArticle[]> => {
-    const params = new URLSearchParams();
-    if (filters?.category) params.append('category', filters.category);
-    if (filters?.dateRange) params.append('dateRange', filters.dateRange);
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.subjectId) params.append('subjectId', filters.subjectId);
-    if (filters?.exam) params.append('exam', filters.exam);
-    if (filters?.relevance) params.append('relevance', filters.relevance);
-    if (filters?.biharOnly) params.append('biharOnly', 'true');
+    try {
+      const params = new URLSearchParams();
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.dateRange) params.append('dateRange', filters.dateRange);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.relevance) params.append('relevance', filters.relevance);
+      if (filters?.biharOnly) params.append('biharOnly', 'true');
 
-    const res = await apiFetch(`/api/current-affairs?${params.toString()}`);
-    return res.json();
+      const res = await apiFetch(`/api/current-affairs?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.articles) ? data.articles : []);
+    } catch {
+      return [];
+    }
   },
 
   getCurrentAffairById: async (id: string): Promise<CurrentAffairArticle> => {
@@ -380,8 +513,14 @@ export const api = {
   },
 
   getMyCurrentAffairsRevisions: async (): Promise<CurrentAffairArticle[]> => {
-    const res = await apiFetch(`/api/current-affairs/revisions/my`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch(`/api/current-affairs/revisions/my`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
 
   adminGetCurrentAffairsMetrics: async () => {
@@ -446,28 +585,46 @@ export const api = {
   },
 
   getPYQs: async (filters?: { exam?: string; year?: number; paper?: string; subjectId?: string; topicId?: string; search?: string }): Promise<Question[]> => {
-    const params = new URLSearchParams();
-    if (filters?.exam) params.append('exam', filters.exam);
-    if (filters?.year) params.append('year', String(filters.year));
-    if (filters?.paper) params.append('paper', filters.paper);
-    if (filters?.subjectId) params.append('subjectId', filters.subjectId);
-    if (filters?.topicId) params.append('topicId', filters.topicId);
-    if (filters?.search) params.append('search', filters.search);
+    try {
+      const params = new URLSearchParams();
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.year) params.append('year', String(filters.year));
+      if (filters?.paper) params.append('paper', filters.paper);
+      if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+      if (filters?.topicId) params.append('topicId', filters.topicId);
+      if (filters?.search) params.append('search', filters.search);
 
-    const res = await apiFetch(`/api/pyqs?${params.toString()}`);
-    return res.json();
+      const res = await apiFetch(`/api/pyqs?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.questions) ? data.questions : []);
+    } catch {
+      return [];
+    }
   },
 
   getResources: async (): Promise<LearningResource[]> => {
-    const res = await apiFetch('/api/resources');
-    return res.json();
+    try {
+      const res = await apiFetch('/api/resources');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.resources) ? data.resources : []);
+    } catch {
+      return [];
+    }
   },
 
   // Goals
   getGoals: async (userId?: string): Promise<StudyGoal[]> => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/goals?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/goals?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.goals) ? data.goals : []);
+    } catch {
+      return [];
+    }
   },
 
   createGoal: async (goalData: any) => {
@@ -481,22 +638,46 @@ export const api = {
 
   // Notifications
   getNotifications: async (userId?: string): Promise<NotificationItem[]> => {
-    const uid = userId || 'usr_demo';
-    const res = await apiFetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const uid = userId || 'usr_demo';
+      const res = await apiFetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.notifications) ? data.notifications : []);
+    } catch {
+      return [];
+    }
   },
 
   // Global Search
   searchGlobal: async (query: string) => {
-    const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
-    return res.json();
+    try {
+      const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] };
+      const data = await res.json();
+      return {
+        subjects: Array.isArray(data?.subjects) ? data.subjects : [],
+        concepts: Array.isArray(data?.concepts) ? data.concepts : [],
+        questions: Array.isArray(data?.questions) ? data.questions : [],
+        currentAffairs: Array.isArray(data?.currentAffairs) ? data.currentAffairs : [],
+        resources: Array.isArray(data?.resources) ? data.resources : [],
+      };
+    } catch {
+      return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] };
+    }
   },
 
   // Admin API
   getConcepts: async (topicId?: string): Promise<Concept[]> => {
-    const url = topicId ? `/api/topics/${topicId}/concepts` : '/api/concepts';
-    const res = await apiFetch(url, { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const url = topicId ? `/api/topics/${topicId}/concepts` : '/api/concepts';
+      const res = await apiFetch(url, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.concepts) ? data.concepts : []);
+    } catch {
+      return [];
+    }
   },
 
   getAdminMetrics: async () => {
@@ -505,8 +686,14 @@ export const api = {
   },
 
   getAdminUsers: async () => {
-    const res = await apiFetch('/api/admin/users', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/admin/users', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.users) ? data.users : []);
+    } catch {
+      return [];
+    }
   },
 
   createConcept: async (conceptData: any) => {
@@ -555,13 +742,25 @@ export const api = {
   },
 
   getAdminAIDrafts: async () => {
-    const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.drafts) ? data.drafts : []);
+    } catch {
+      return [];
+    }
   },
 
   getAdminDrafts: async () => {
-    const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/admin/ai/drafts', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.drafts) ? data.drafts : []);
+    } catch {
+      return [];
+    }
   },
 
   approveAdminAIDraft: async (draftId: string) => {
@@ -591,8 +790,14 @@ export const api = {
   },
 
   getOcrJobs: async () => {
-    const res = await apiFetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.jobs) ? data.jobs : []);
+    } catch {
+      return [];
+    }
   },
 
   getOcrJobDetails: async (id: string) => {
@@ -642,8 +847,14 @@ export const api = {
   },
 
   getSuperAdminAdmins: async () => {
-    const res = await apiFetch('/api/superadmin/admins', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/superadmin/admins', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.admins) ? data.admins : []);
+    } catch {
+      return [];
+    }
   },
 
   createSuperAdminAdmin: async (data: any) => {
@@ -664,8 +875,14 @@ export const api = {
   },
 
   getSuperAdminAuditLogs: async () => {
-    const res = await apiFetch('/api/superadmin/audit-logs', { headers: getAuthHeaders() });
-    return res.json();
+    try {
+      const res = await apiFetch('/api/superadmin/audit-logs', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (Array.isArray(data?.auditLogs) ? data.auditLogs : []);
+    } catch {
+      return [];
+    }
   },
 };
 

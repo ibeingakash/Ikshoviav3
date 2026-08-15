@@ -43,7 +43,10 @@ export const CurrentAffairsView: React.FC = () => {
       biharOnly,
       search: searchQuery,
     }).then(list => {
-      setArticles(list);
+      setArticles(Array.isArray(list) ? list : []);
+      setLoading(false);
+    }).catch(() => {
+      setArticles([]);
       setLoading(false);
     });
   };
@@ -209,9 +212,9 @@ export const CurrentAffairsView: React.FC = () => {
         </div>
       )}
 
-      {!loading && articles.length > 0 && (
+      {!loading && (Array.isArray(articles) ? articles : []).length > 0 && (
         <div className="space-y-4">
-          {articles.map(art => (
+          {(Array.isArray(articles) ? articles : []).map(art => (
             <div
               key={art.id}
               className="bg-white border border-stone-200 hover:border-amber-400/60 p-5 rounded-2xl space-y-4 transition-all shadow-2xs"

@@ -22,11 +22,17 @@ export const KnowledgeGraphView: React.FC = () => {
 
   useEffect(() => {
     api.getKnowledgeGraph().then(data => {
-      setNodes(data.nodes || []);
-      setRelationships(data.relationships || []);
-      if (data.nodes?.length > 0) {
-        setSelectedNode(data.nodes[0]);
+      const safeNodes = Array.isArray(data?.nodes) ? data.nodes : [];
+      const safeLinks = Array.isArray((data as any)?.relationships) ? (data as any).relationships : (Array.isArray(data?.links) ? data.links : []);
+      setNodes(safeNodes);
+      setRelationships(safeLinks);
+      if (safeNodes.length > 0) {
+        setSelectedNode(safeNodes[0]);
       }
+      setLoading(false);
+    }).catch(() => {
+      setNodes([]);
+      setRelationships([]);
       setLoading(false);
     });
   }, []);
