@@ -71,8 +71,23 @@ const MainContent: React.FC = () => {
   };
 
   const renderSection = () => {
+    // Super Admin Route Guard
     if (activeSection.startsWith('super-admin-')) {
+      if (user?.role !== 'SUPER_ADMIN') {
+        return user?.role === 'ADMIN' ? <AdminView /> : <DashboardView />;
+      }
       return <SuperAdminConsoleView />;
+    }
+
+    // Admin Route Guard
+    if (
+      activeSection.startsWith('admin-') ||
+      activeSection === 'admin-ocr' ||
+      activeSection === 'admin-current-affairs'
+    ) {
+      if (user?.role !== 'ADMIN' && user?.role !== 'SUPER_ADMIN') {
+        return <DashboardView />;
+      }
     }
 
     switch (activeSection) {
@@ -139,10 +154,12 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LearnerProvider>
-        <MainContent />
-      </LearnerProvider>
-    </AuthProvider>
+    <ErrorBoundary fallbackTitle="IKSHOVIA Application Error">
+      <AuthProvider>
+        <LearnerProvider>
+          <MainContent />
+        </LearnerProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

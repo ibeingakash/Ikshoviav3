@@ -19,12 +19,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchMe = async () => {
     try {
+      const token = localStorage.getItem('ikshovia_token');
+      if (!token) {
+        setUser(null);
+        return;
+      }
       const res = await api.getMe();
-      if (res.user) {
+      if (res && res.user) {
         setUser(res.user);
+      } else {
+        localStorage.removeItem('ikshovia_token');
+        setUser(null);
       }
     } catch (err) {
       console.error('Failed to fetch user auth:', err);
+      localStorage.removeItem('ikshovia_token');
+      setUser(null);
     } finally {
       setLoading(false);
     }

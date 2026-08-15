@@ -14,23 +14,32 @@ export const GoalsView: React.FC = () => {
 
   useEffect(() => {
     api.getGoals().then(list => {
-      setGoals(list);
+      setGoals(Array.isArray(list) ? list : []);
+      setLoading(false);
+    }).catch(() => {
+      setGoals([]);
       setLoading(false);
     });
   }, []);
 
   const handleCreateGoal = async () => {
     if (!title.trim()) return;
-    const newG = await api.createGoal({
-      title,
-      targetExam,
-      targetDate,
-      dailyStudyMinutes: dailyMinutes,
-      subjects: ['sub_polity', 'sub_economy'],
-    });
-    setGoals(prev => [...prev, newG]);
-    setTitle('');
-    setShowCreate(false);
+    try {
+      const newG = await api.createGoal({
+        title,
+        targetExam,
+        targetDate,
+        dailyStudyMinutes: dailyMinutes,
+        subjects: ['sub_polity', 'sub_economy'],
+      });
+      if (newG && newG.id) {
+        setGoals(prev => [...(Array.isArray(prev) ? prev : []), newG]);
+      }
+      setTitle('');
+      setShowCreate(false);
+    } catch (err) {
+      console.error('Failed to create goal:', err);
+    }
   };
 
   return (

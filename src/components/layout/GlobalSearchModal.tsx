@@ -31,9 +31,16 @@ export const GlobalSearchModal: React.FC = () => {
       setLoading(true);
       try {
         const res = await api.searchGlobal(query);
-        setResults(res);
+        setResults({
+          subjects: Array.isArray(res?.subjects) ? res.subjects : [],
+          concepts: Array.isArray(res?.concepts) ? res.concepts : [],
+          questions: Array.isArray(res?.questions) ? res.questions : [],
+          currentAffairs: Array.isArray(res?.currentAffairs) ? res.currentAffairs : [],
+          resources: Array.isArray(res?.resources) ? res.resources : [],
+        });
       } catch (err) {
         console.error('Search failed:', err);
+        setResults({ subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] });
       } finally {
         setLoading(false);
       }

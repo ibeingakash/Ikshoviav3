@@ -99,7 +99,7 @@ export const LearnView: React.FC = () => {
 
       {/* Subject Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {subjects.map(s => (
+        {(Array.isArray(subjects) ? subjects : []).map(s => (
           <button
             key={s.id}
             onClick={() => setActiveSubjectId(s.id)}
@@ -122,11 +122,12 @@ export const LearnView: React.FC = () => {
         <div className="lg:col-span-4 bg-white border border-stone-200 rounded-2xl p-4 space-y-4 max-h-[75vh] overflow-y-auto shadow-2xs">
           <div className="text-xs font-bold text-stone-500 uppercase tracking-wider font-mono flex items-center justify-between border-b border-stone-100 pb-2">
             <span>Syllabus Hierarchy</span>
-            <span className="text-[10px] text-[#35156B] font-mono font-bold">{concepts.length} Concepts</span>
+            <span className="text-[10px] text-[#35156B] font-mono font-bold">{(Array.isArray(concepts) ? concepts : []).length} Concepts</span>
           </div>
 
-          {topics.map(t => {
-            const topicConcepts = concepts.filter(c => c.topicId === t.id);
+          {(Array.isArray(topics) ? topics : []).map(t => {
+            const safeConcepts = Array.isArray(concepts) ? concepts : [];
+            const topicConcepts = safeConcepts.filter(c => c && c.topicId === t.id);
             return (
               <div key={t.id} className="space-y-1.5">
                 <div className="text-xs font-bold text-[#111426] flex items-center gap-1.5 pt-1">
