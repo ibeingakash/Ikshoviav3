@@ -55,18 +55,18 @@ export const OCRStudioView: React.FC = () => {
   // Step 2: Local File Upload States
   const [questionFile, setQuestionFile] = useState<UploadFileState>({
     file: null,
-    name: 'UPSC_Prelims_2025_GS1.pdf',
-    sizeBytes: 2450000,
+    name: '',
+    sizeBytes: 0,
     base64: '',
-    status: 'READY',
+    status: 'IDLE',
   });
 
   const [answerFile, setAnswerFile] = useState<UploadFileState>({
     file: null,
-    name: 'UPSC_Prelims_2025_GS1_AnswerKey.pdf',
-    sizeBytes: 1120000,
+    name: '',
+    sizeBytes: 0,
     base64: '',
-    status: 'READY',
+    status: 'IDLE',
   });
 
   const questionFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -441,7 +441,7 @@ export const OCRStudioView: React.FC = () => {
   const lowConfidenceCount = extractedQuestions.filter(q => q.ocrConfidence !== undefined && q.ocrConfidence < 70).length;
 
   return (
-    <div className="space-y-6 max-w-[1700px] mx-auto pb-16">
+    <div className="space-y-6 w-full max-w-7xl mx-auto pb-16 min-w-0 font-sans">
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/60 rounded-2xl p-6 shadow-xl relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">

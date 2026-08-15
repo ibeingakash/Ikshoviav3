@@ -13,6 +13,7 @@ import { ocrRepository } from './server/repositories/OcrRepository.js';
 import { currentAffairsRepository } from './server/repositories/CurrentAffairsRepository.js';
 import { currentAffairsIngestionManager } from './server/services/CurrentAffairsProvider.js';
 import { currentAffairsAiService } from './server/services/CurrentAffairsAiService.js';
+import { ensureFastApiBridgeStarted, proxyFastApiHealth, proxyFastApiRequest } from './server/services/fastapiBridge.js';
 import pool from './server/db/pool.js';
 import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
 import {
@@ -108,6 +109,7 @@ async function startServer() {
   await initDatabase();
   await userRepository.ensureDefaultAccounts(hashPassword);
   await currentAffairsRepository.ensureSeedArticles();
+  ensureFastApiBridgeStarted().catch((err) => console.warn('[FastAPI Bridge Startup Warning]', err));
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -186,6 +188,115 @@ async function startServer() {
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', app: 'IKSHOVIA', timestamp: new Date().toISOString() });
+  });
+
+  // FastAPI Data API Proxy Bridge (Isolated to /api/v1/data/*)
+  app.get('/api/v1/data/health', async (req, res) => {
+    await proxyFastApiHealth(req, res);
+  });
+
+  // Sources Proxy Endpoints
+  app.get('/api/v1/data/sources', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/sources');
+  });
+
+  app.post('/api/v1/data/sources', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/sources');
+  });
+
+  app.get('/api/v1/data/sources/:source_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/sources/${encodeURIComponent(req.params.source_id)}`);
+  });
+
+  // Resources Proxy Endpoints
+  app.get('/api/v1/data/resources', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/resources');
+  });
+
+  app.post('/api/v1/data/resources', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/resources');
+  });
+
+  app.get('/api/v1/data/resources/:resource_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/resources/${encodeURIComponent(req.params.resource_id)}`);
+  });
+
+  // Documents Proxy Endpoints
+  app.get('/api/v1/data/documents', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/documents');
+  });
+
+  app.post('/api/v1/data/documents', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/documents');
+  });
+
+  app.get('/api/v1/data/documents/:document_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/documents/${encodeURIComponent(req.params.document_id)}`);
+  });
+
+  // Chunks Proxy Endpoints
+  app.get('/api/v1/data/chunks', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/chunks');
+  });
+
+  app.post('/api/v1/data/chunks', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/chunks');
+  });
+
+  app.get('/api/v1/data/chunks/:chunk_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/chunks/${encodeURIComponent(req.params.chunk_id)}`);
+  });
+
+  // Ingestion Jobs Proxy Endpoints
+  app.get('/api/v1/data/jobs', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/jobs');
+  });
+
+  app.post('/api/v1/data/jobs', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/jobs');
+  });
+
+  app.get('/api/v1/data/jobs/:job_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/jobs/${encodeURIComponent(req.params.job_id)}`);
+  });
+
+  app.patch('/api/v1/data/jobs/:job_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/jobs/${encodeURIComponent(req.params.job_id)}`);
+  });
+
+  // Questions Proxy Endpoints
+  app.get('/api/v1/data/questions', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/questions');
+  });
+
+  app.post('/api/v1/data/questions/bulk', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/questions/bulk');
+  });
+
+  app.post('/api/v1/data/questions', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/questions');
+  });
+
+  app.get('/api/v1/data/questions/:question_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/questions/${encodeURIComponent(req.params.question_id)}`);
+  });
+
+  // Tags Proxy Endpoints
+  app.get('/api/v1/data/tags', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/tags');
+  });
+
+  app.post('/api/v1/data/tags', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/tags');
+  });
+
+  app.get('/api/v1/data/tags/:tag_id', async (req, res) => {
+    await proxyFastApiRequest(req, res, `/api/v1/tags/${encodeURIComponent(req.params.tag_id)}`);
+  });
+
+  // Ingestion Pipeline Proxy Endpoints
+  app.post('/api/v1/data/ingestion/run', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/ingestion/run');
   });
 
   // Auth Endpoints
@@ -741,6 +852,31 @@ async function startServer() {
       res.json({ ...test, questions });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to fetch mock test details' });
+    }
+  });
+
+  app.post('/api/mock-tests/generate', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { title, subjectIds, totalQuestions, durationMinutes, difficulty, type, examTag } = req.body;
+
+      const requestedCount = Number(totalQuestions) || 10;
+      const testTitle = title || `Custom ${requestedCount}-Question Sprint (${new Date().toLocaleDateString('en-IN')})`;
+
+      const result = await mockTestRepository.createCustomMockTest({
+        userId: user.id,
+        title: testTitle,
+        type: type || (requestedCount >= 50 ? 'FULL' : requestedCount >= 20 ? 'SUBJECT' : 'QUICK'),
+        subjectIds: Array.isArray(subjectIds) ? subjectIds : ['sub_polity', 'sub_economy'],
+        totalQuestions: requestedCount,
+        durationMinutes: Number(durationMinutes) || Math.round(requestedCount * 1.2),
+        difficulty: difficulty || 'MEDIUM',
+        examTag: examTag || 'UPSC CSE Mock',
+      });
+
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to generate custom mock test' });
     }
   });
 

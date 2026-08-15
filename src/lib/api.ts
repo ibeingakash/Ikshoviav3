@@ -8,6 +8,7 @@ import {
   Question,
   RevisionItem,
   MockTest,
+  MockAttempt,
   CurrentAffairArticle,
   LearningResource,
   StudyGoal,
@@ -466,6 +467,42 @@ export const api = {
     return {
       ...data,
       questions: Array.isArray(data?.questions) ? data.questions : [],
+    };
+  },
+
+  createCustomMockTest: async (params: {
+    title?: string;
+    subjectIds?: string[];
+    totalQuestions: number;
+    durationMinutes?: number;
+    difficulty?: string;
+    examTag?: string;
+  }): Promise<{ success: boolean; test: MockTest; questions: Question[] }> => {
+    const res = await apiFetch('/api/mock-tests/generate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) throw new Error('Failed to generate mock test');
+    const data = await res.json();
+    return {
+      success: true,
+      test: data.test,
+      questions: Array.isArray(data.questions) ? data.questions : [],
+    };
+  },
+
+  startMockAttempt: async (mockTestId: string): Promise<{ attempt: MockAttempt; test: MockTest; questions: Question[] }> => {
+    const res = await apiFetch(`/api/mock-tests/${mockTestId}/start`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to start mock test attempt');
+    const data = await res.json();
+    return {
+      attempt: data.attempt,
+      test: data.test,
+      questions: Array.isArray(data.questions) ? data.questions : [],
     };
   },
 

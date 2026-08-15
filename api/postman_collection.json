@@ -1,0 +1,911 @@
+{
+  "info": {
+    "name": "IKSHOVIA Data Ingestion & Knowledge API",
+    "_postman_id": "ikshovia-data-api-v2",
+    "description": "Provider-independent Foundation & Knowledge Pipeline API for IKSHOVIA (Sources, Resources, Documents, Chunks, Jobs, Questions, Tags).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "source_id",
+      "value": "src_default",
+      "type": "string"
+    },
+    {
+      "key": "resource_id",
+      "value": "res_default",
+      "type": "string"
+    },
+    {
+      "key": "document_id",
+      "value": "doc_default",
+      "type": "string"
+    },
+    {
+      "key": "chunk_id",
+      "value": "chk_default",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "job_default",
+      "type": "string"
+    },
+    {
+      "key": "question_id",
+      "value": "dq_default",
+      "type": "string"
+    },
+    {
+      "key": "tag_id",
+      "value": "tag_default",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health Checks",
+      "item": [
+        {
+          "name": "Liveness Probe (/health)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Deep Database Health (/api/v1/health)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health"]
+            }
+          }
+        },
+        {
+          "name": "Proxy Node-to-FastAPI Bridge Health (/api/v1/data/health)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Data Sources",
+      "item": [
+        {
+          "name": "List Sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/sources?is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "sources"],
+              "query": [
+                { "key": "is_active", "value": "true" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PIB Press Information Bureau\",\n  \"slug\": \"pib-gov-in\",\n  \"base_url\": \"https://pib.gov.in\",\n  \"source_type\": \"GOVERNMENT\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/sources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "sources"]
+            }
+          }
+        },
+        {
+          "name": "Get Source",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/sources/{{source_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "sources", "{{source_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate Source Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PIB Duplicate Entry\",\n  \"slug\": \"pib-gov-in\",\n  \"base_url\": \"https://pib.gov.in\",\n  \"source_type\": \"GOVERNMENT\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/sources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "sources"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Sources (/api/v1/sources)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sources?is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sources"],
+              "query": [
+                { "key": "is_active", "value": "true" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Data Resources",
+      "item": [
+        {
+          "name": "List Resources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources"]
+            }
+          }
+        },
+        {
+          "name": "Create Resource",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_id\": \"{{source_id}}\",\n  \"title\": \"Cabinet Approves National Green Hydrogen Mission\",\n  \"url\": \"https://pib.gov.in/PressReleasePage.aspx?PRID=1888798\",\n  \"resource_type\": \"ARTICLE\",\n  \"status\": \"DISCOVERED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources"]
+            }
+          }
+        },
+        {
+          "name": "Get Resource",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources/{{resource_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources", "{{resource_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Filter Resources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources?source_id={{source_id}}&resource_type=ARTICLE&status=DISCOVERED",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources"],
+              "query": [
+                { "key": "source_id", "value": "{{source_id}}" },
+                { "key": "resource_type", "value": "ARTICLE" },
+                { "key": "status", "value": "DISCOVERED" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagination Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources?page=1&page_size=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "5" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Duplicate Resource Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_id\": \"{{source_id}}\",\n  \"title\": \"Cabinet Approves National Green Hydrogen Mission Duplicate\",\n  \"url\": \"https://pib.gov.in/PressReleasePage.aspx?PRID=1888798\",\n  \"resource_type\": \"ARTICLE\",\n  \"status\": \"DISCOVERED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/resources",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "resources"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Resources (/api/v1/resources)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/resources?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "resources"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Data Documents",
+      "item": [
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "documents"]
+            }
+          }
+        },
+        {
+          "name": "Create Document",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource_id\": \"{{resource_id}}\",\n  \"clean_text\": \"The Union Cabinet approved the National Green Hydrogen Mission with an outlay of Rs. 19,744 crore to make India a Global Hub for production, utilization and export of Green Hydrogen and its derivatives.\",\n  \"mime_type\": \"text/plain\",\n  \"language\": \"en\",\n  \"extraction_status\": \"EXTRACTED\",\n  \"extraction_method\": \"DIRECT_TEXT\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "documents"]
+            }
+          }
+        },
+        {
+          "name": "Get Document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/documents/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "documents", "{{document_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Document Validation Test",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource_id\": \"invalid-resource-uuid-format\",\n  \"clean_text\": \"Test text without valid resource\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "documents"]
+            }
+          }
+        },
+        {
+          "name": "Missing Document Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/documents/00000000-0000-0000-0000-000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "documents", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Documents (/api/v1/documents)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/documents",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "documents"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Data Chunks",
+      "item": [
+        {
+          "name": "List Chunks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/chunks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "chunks"]
+            }
+          }
+        },
+        {
+          "name": "Create Chunk",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document_id\": \"{{document_id}}\",\n  \"chunk_index\": 0,\n  \"content\": \"Preamble secures Justice, Liberty, Equality, and Fraternity for all citizens.\",\n  \"heading\": \"Preamble to the Constitution of India\",\n  \"section\": \"Part I\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/chunks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "chunks"]
+            }
+          }
+        },
+        {
+          "name": "Get Chunk",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/chunks/{{chunk_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "chunks", "{{chunk_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Chunk Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/chunks?search=Justice",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "chunks"],
+              "query": [{ "key": "search", "value": "Justice" }]
+            }
+          }
+        },
+        {
+          "name": "Missing Chunk Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/chunks/00000000-0000-0000-0000-000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "chunks", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Chunks (/api/v1/chunks)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chunks?search=Hydrogen",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chunks"],
+              "query": [{ "key": "search", "value": "Hydrogen" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Data Ingestion Jobs",
+      "item": [
+        {
+          "name": "List Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Create Job",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job_type\": \"EXTRACTION\",\n  \"meta_info\": {\"target\": \"pib_daily_feed\"}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Get Job",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Job Status Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs?status=PENDING&page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs"],
+              "query": [
+                { "key": "status", "value": "PENDING" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Missing Job Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs/00000000-0000-0000-0000-000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Validation Test",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_id\": \"invalid-uuid-format\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Update Job Progress",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RUNNING\",\n  \"progress_percentage\": 75,\n  \"items_processed\": 15,\n  \"total_items\": 20\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Jobs (/api/v1/jobs)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "jobs"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Data Questions",
+      "item": [
+        {
+          "name": "List Questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Question",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam\": \"UPSC_CSE\",\n  \"year\": 2023,\n  \"paper\": \"GS1\",\n  \"subject\": \"POLITY\",\n  \"topic\": \"Constitutional Framework\",\n  \"question_type\": \"MCQ\",\n  \"question_text\": \"Consider the following statements regarding the Attorney General of India:\\n1. Appointed by the President.\\n2. Has the right of audience in all courts in India.\",\n  \"options\": [\n    {\"id\": \"A\", \"text\": \"1 only\"},\n    {\"id\": \"B\", \"text\": \"2 only\"},\n    {\"id\": \"C\", \"text\": \"Both 1 and 2\"},\n    {\"id\": \"D\", \"text\": \"Neither 1 nor 2\"}\n  ],\n  \"correct_answer\": \"C\",\n  \"explanation\": \"According to Article 76, the Attorney General is appointed by the President and has audience rights across all Indian courts.\",\n  \"difficulty\": \"MEDIUM\",\n  \"marks\": 2.0,\n  \"negative_marks\": 0.66,\n  \"tags\": [\"Polity\", \"Constitutional Bodies\", \"Article 76\"],\n  \"is_pyq\": true,\n  \"is_verified\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions"]
+            }
+          }
+        },
+        {
+          "name": "Get Question",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions/{{question_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions", "{{question_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Filter Questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions?exam=UPSC_CSE&year=2023&subject=POLITY",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions"],
+              "query": [
+                { "key": "exam", "value": "UPSC_CSE" },
+                { "key": "year", "value": "2023" },
+                { "key": "subject", "value": "POLITY" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bulk Questions",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questions\": [\n    {\n      \"exam\": \"UPSC_CSE\",\n      \"year\": 2022,\n      \"paper\": \"GS1\",\n      \"subject\": \"ECONOMY\",\n      \"question_type\": \"MCQ\",\n      \"question_text\": \"In India, which one of the following is responsible for maintaining price stability by controlling inflation?\",\n      \"options\": [\n        {\"id\": \"A\", \"text\": \"Department of Consumer Affairs\"},\n        {\"id\": \"B\", \"text\": \"Ministry of Finance\"},\n        {\"id\": \"C\", \"text\": \"Reserve Bank of India\"},\n        {\"id\": \"D\", \"text\": \"NITI Aayog\"}\n      ],\n      \"correct_answer\": \"C\",\n      \"explanation\": \"Under the Reserve Bank of India Act, 1934, the primary objective of monetary policy is to maintain price stability.\",\n      \"is_pyq\": true\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions/bulk",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions", "bulk"]
+            }
+          }
+        },
+        {
+          "name": "Validation Test",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exam\": \"UPSC_CSE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions"]
+            }
+          }
+        },
+        {
+          "name": "Missing Question Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/questions/00000000-0000-0000-0000-000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "questions", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Questions (/api/v1/questions)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/questions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "questions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Data Tags",
+      "item": [
+        {
+          "name": "List Tags",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags"]
+            }
+          }
+        },
+        {
+          "name": "Create Tag",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fundamental Rights\",\n  \"slug\": \"fundamental-rights\",\n  \"category\": \"SYLLABUS_SECTION\",\n  \"description\": \"Part III of Constitution (Articles 12-35)\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags"]
+            }
+          }
+        },
+        {
+          "name": "Get Tag",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags/{{tag_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags", "{{tag_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Category Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags?category=SYLLABUS_SECTION",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags"],
+              "query": [
+                { "key": "category", "value": "SYLLABUS_SECTION" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validation Test",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Missing required fields\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags"]
+            }
+          }
+        },
+        {
+          "name": "Missing Tag Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/tags/00000000-0000-0000-0000-000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "tags", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI List Tags (/api/v1/tags)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tags",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tags"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Ingestion Pipeline",
+      "item": [
+        {
+          "name": "Run Ingestion — Valid Test URL",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/press-release-sample\",\n  \"source_id\": null,\n  \"chunk_size\": 500,\n  \"chunk_overlap\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ingestion", "run"]
+            }
+          }
+        },
+        {
+          "name": "Invalid URL",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"not-a-valid-url-format\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ingestion", "run"]
+            }
+          }
+        },
+        {
+          "name": "Unsupported Scheme",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"file:///etc/passwd\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ingestion", "run"]
+            }
+          }
+        },
+        {
+          "name": "Localhost/Private IP Rejection",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"http://localhost:3000/secret-admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ingestion", "run"]
+            }
+          }
+        },
+        {
+          "name": "Duplicate Ingestion Test",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://example.com/press-release-sample\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ingestion", "run"]
+            }
+          }
+        },
+        {
+          "name": "Direct FastAPI Run Ingestion (/api/v1/ingestion/run)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://pib.gov.in/PressReleasePage.aspx?PRID=1888798\",\n  \"source_id\": null,\n  \"chunk_size\": 500,\n  \"chunk_overlap\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ingestion/run",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ingestion", "run"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
