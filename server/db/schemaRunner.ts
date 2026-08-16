@@ -48,6 +48,16 @@ export async function ensureDatabaseSchema(): Promise<void> {
 
     // 2. Ensure any optional incremental columns/tables exist
     await pool.query(`
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question_en TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question_hi TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS options_en JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS options_hi JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS explanation_en TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS explanation_hi TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS available_languages JSONB DEFAULT '["en"]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS exam TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS paper TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question_number INT;
       ALTER TABLE public.mock_attempts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SUBMITTED';
       ALTER TABLE public.mock_attempts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE public.mock_answers ADD COLUMN IF NOT EXISTS marked_for_review BOOLEAN DEFAULT FALSE;

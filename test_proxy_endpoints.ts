@@ -740,6 +740,36 @@ async function runTests() {
     }
   });
 
+  // 58. POST /api/v1/data/ai/tutor (Validation of empty message)
+  await assertTest('58. POST /api/v1/data/ai/tutor rejects empty/missing message with 422', async () => {
+    const resEmpty = await request('POST', '/api/v1/data/ai/tutor', { message: '   ' });
+    if (resEmpty.status !== 422 && resEmpty.status !== 400) {
+      throw new Error(`Expected 422/400 for empty message, got ${resEmpty.status}`);
+    }
+  });
+
+  // 59. POST /api/v1/data/ai/tutor (AI Tutor Query & Grounding Execution)
+  await assertTest('59. POST /api/v1/data/ai/tutor processes academic question and returns structured grounding', async () => {
+    const res = await request('POST', '/api/v1/data/ai/tutor', {
+      message: 'Explain the Basic Structure Doctrine in Indian Constitutional Law',
+      exam: 'UPSC CSE',
+      subject: 'Polity',
+      provider: 'mock',
+    });
+    if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+    if (res.data?.success !== true) throw new Error(`Expected success=true, got ${JSON.stringify(res.data)}`);
+    if (typeof res.data?.answer !== 'string' || !res.data?.answer) {
+      throw new Error('Expected valid non-empty answer string');
+    }
+    if (!res.data?.knowledge || typeof res.data?.knowledge?.used !== 'boolean') {
+      throw new Error('Expected knowledge metadata object in response');
+    }
+    if (!res.data?.ai || typeof res.data?.ai?.used !== 'boolean') {
+      throw new Error('Expected ai metadata object in response');
+    }
+  });
+
+
 
   console.log('\n====================================================');
   console.log(`📊 Summary: ${passed} Passed, ${failed} Failed`);

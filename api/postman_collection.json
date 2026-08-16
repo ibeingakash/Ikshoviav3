@@ -1185,6 +1185,158 @@
           }
         }
       ]
+    },
+    {
+      "name": "11. AI Tutor",
+      "item": [
+        {
+          "name": "Knowledge-Backed Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Which landmark judgment established the Basic Structure Doctrine in Indian Constitutional Law?\",\n  \"exam\": \"UPSC CSE\",\n  \"subject\": \"Polity\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "Weak-Context Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Explain the scientific and geopolitical significance of lunar south pole exploration\",\n  \"exam\": \"UPSC CSE\",\n  \"subject\": \"Science & Technology\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "No-Context Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Explain the principle of comparative advantage in international economics\",\n  \"exam\": \"UPSC CSE\",\n  \"subject\": \"Economy\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "Exam-Filtered Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Discuss the role of Governor in State legislature under Article 163\",\n  \"exam\": \"UPSC CSE\",\n  \"subject\": \"Polity\",\n  \"topic\": \"Governor\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "Subject-Filtered Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What are the monetary policy transmission channels in India?\",\n  \"subject\": \"Economy\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "Provider Unavailable Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Chandrayaan-3 lunar landing mission achievements\",\n  \"provider\": \"mock\",\n  \"force_ai\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        },
+        {
+          "name": "Validation Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"   \"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/ai/tutor",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "ai", "tutor"]
+            }
+          }
+        }
+      ]
     }
   ]
 }

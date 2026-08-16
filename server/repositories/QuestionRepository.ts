@@ -159,15 +159,17 @@ export class QuestionRepository {
   async create(data: Question): Promise<Question> {
     const query = `
       INSERT INTO public.questions (
-        id, subject_id, topic_id, concept_id, type, question, options,
-        correct_answer, explanation, difficulty, exam_tag, pyq_year,
+        id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
+        options, options_en, options_hi, correct_answer, explanation, explanation_en, explanation_hi,
+        available_languages, difficulty, exam_tag, pyq_year,
         exam, paper, question_number, is_pyq, source, verified_status,
         is_published, status
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12,
-        $13, $14, $15, $16, $17, $18,
-        $19, $20
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14, $15,
+        $16, $17, $18, $19,
+        $20, $21, $22, $23, $24, $25,
+        $26, $27
       )
       ON CONFLICT (id) DO UPDATE SET
         subject_id = EXCLUDED.subject_id,
@@ -175,9 +177,16 @@ export class QuestionRepository {
         concept_id = EXCLUDED.concept_id,
         type = EXCLUDED.type,
         question = EXCLUDED.question,
+        question_en = EXCLUDED.question_en,
+        question_hi = EXCLUDED.question_hi,
         options = EXCLUDED.options,
+        options_en = EXCLUDED.options_en,
+        options_hi = EXCLUDED.options_hi,
         correct_answer = EXCLUDED.correct_answer,
         explanation = EXCLUDED.explanation,
+        explanation_en = EXCLUDED.explanation_en,
+        explanation_hi = EXCLUDED.explanation_hi,
+        available_languages = EXCLUDED.available_languages,
         difficulty = EXCLUDED.difficulty,
         exam_tag = EXCLUDED.exam_tag,
         pyq_year = EXCLUDED.pyq_year,
@@ -200,9 +209,16 @@ export class QuestionRepository {
       data.conceptId || 'concept_preamble',
       data.type || 'MCQ',
       data.question,
+      data.question_en || data.question,
+      data.question_hi || null,
       data.options ? JSON.stringify(data.options) : null,
+      data.options_en ? JSON.stringify(data.options_en) : (data.options ? JSON.stringify(data.options) : null),
+      data.options_hi ? JSON.stringify(data.options_hi) : null,
       data.correctAnswer,
       data.explanation || '',
+      data.explanation_en || data.explanation || null,
+      data.explanation_hi || null,
+      data.availableLanguages ? JSON.stringify(data.availableLanguages) : JSON.stringify(['en']),
       data.difficulty || 'MEDIUM',
       data.examTag || null,
       data.pyqYear || null,
@@ -238,6 +254,18 @@ export class QuestionRepository {
       ? row.options
       : (typeof row.options === 'string' ? JSON.parse(row.options) : undefined);
 
+    const options_en = Array.isArray(row.options_en)
+      ? row.options_en
+      : (typeof row.options_en === 'string' ? JSON.parse(row.options_en) : undefined);
+
+    const options_hi = Array.isArray(row.options_hi)
+      ? row.options_hi
+      : (typeof row.options_hi === 'string' ? JSON.parse(row.options_hi) : undefined);
+
+    const availableLanguages = Array.isArray(row.available_languages)
+      ? row.available_languages
+      : (typeof row.available_languages === 'string' ? JSON.parse(row.available_languages) : undefined);
+
     return {
       id: row.id,
       subjectId: row.subject_id,
@@ -245,9 +273,16 @@ export class QuestionRepository {
       conceptId: row.concept_id,
       type: row.type,
       question: row.question,
+      question_en: row.question_en || undefined,
+      question_hi: row.question_hi || undefined,
       options,
+      options_en,
+      options_hi,
       correctAnswer: row.correct_answer,
       explanation: row.explanation,
+      explanation_en: row.explanation_en || undefined,
+      explanation_hi: row.explanation_hi || undefined,
+      availableLanguages,
       difficulty: row.difficulty,
       examTag: row.exam_tag || undefined,
       pyqYear: row.pyq_year || undefined,
