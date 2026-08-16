@@ -720,6 +720,26 @@ async function runTests() {
     }
   });
 
+  // 56. GET /api/v1/data/search (Knowledge Search Validation)
+  await assertTest('56. GET /api/v1/data/search rejects empty/missing queries with 422', async () => {
+    const resMissing = await request('GET', '/api/v1/data/search');
+    if (resMissing.status !== 422) throw new Error(`Expected 422 for missing query, got ${resMissing.status}`);
+
+    const resEmpty = await request('GET', '/api/v1/data/search?q=');
+    if (resEmpty.status !== 422) throw new Error(`Expected 422 for empty query, got ${resEmpty.status}`);
+  });
+
+  // 57. GET /api/v1/data/search (Basic Knowledge Search & Pagination)
+  await assertTest('57. GET /api/v1/data/search executes query and returns structured response', async () => {
+    const res = await request('GET', '/api/v1/data/search?q=India&page=1&page_size=10');
+    if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}: ${JSON.stringify(res.data)}`);
+    if (res.data?.success !== true) throw new Error(`Expected success=true, got ${JSON.stringify(res.data)}`);
+    if (!Array.isArray(res.data?.results)) throw new Error('Expected results to be an array');
+    if (!res.data?.pagination || typeof res.data.pagination.total !== 'number') {
+      throw new Error('Expected pagination object with total count');
+    }
+  });
+
 
   console.log('\n====================================================');
   console.log(`📊 Summary: ${passed} Passed, ${failed} Failed`);

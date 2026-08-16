@@ -1,4 +1,6 @@
 from typing import AsyncGenerator
+from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -6,6 +8,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from app.config import settings
+from app.core.exceptions import DataAPIException
 from app.core.logging import logger
 
 # Configure async engine with pooling
@@ -35,7 +38,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         except Exception as err:
             await session.rollback()
-            logger.error(f"Database session rolled back due to error: {err}")
+            # Only log as ERROR for unhandled 5xx server exceptions; 4xx client/validation errors are normal handled cases
+            if isinstance(err, (DataAPIException, RequestValidationError, HTTPException)):
+                status_code = getattr(err, "status_code", 400)
+                if status_code < 500:
+                    logger.debug(f"Database session rolled back on handled client response ({status_code}): {err}")
+                else:
+                    logger.error(f"Database session rolled back due to error ({status_code}): {err}")
+            else:
+                logger.error(f"Database session rolled back due to unexpected error: {err}")
             raise
         finally:
             await session.close()
+

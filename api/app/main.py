@@ -12,7 +12,7 @@ from app.core.exceptions import (
     validation_exception_handler,
 )
 from app.core.logging import RequestLoggingMiddleware, logger
-from app.routers import chunks, documents, health, ingestion, jobs, questions, resources, sources, tags
+from app.routers import chunks, documents, health, ingestion, jobs, questions, resources, search, sources, tags
 
 
 @asynccontextmanager
@@ -78,3 +78,4 @@ app.include_router(jobs.router, prefix=settings.API_V1_PREFIX)
 app.include_router(questions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(tags.router, prefix=settings.API_V1_PREFIX)
 app.include_router(ingestion.router, prefix=settings.API_V1_PREFIX)
+app.include_router(search.router, prefix=settings.API_V1_PREFIX)

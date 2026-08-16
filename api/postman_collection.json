@@ -906,6 +906,285 @@
           }
         }
       ]
+    },
+    {
+      "name": "10. Knowledge Search",
+      "item": [
+        {
+          "name": "Basic Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Constitution",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Constitution"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Question Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Amendment&content_type=question",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Amendment"
+                },
+                {
+                  "key": "content_type",
+                  "value": "question"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Document Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Parliament&content_type=document",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Parliament"
+                },
+                {
+                  "key": "content_type",
+                  "value": "document"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Chunk Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Legislatures&content_type=chunk",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Legislatures"
+                },
+                {
+                  "key": "content_type",
+                  "value": "chunk"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tag Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Constitutional&content_type=tag",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Constitutional"
+                },
+                {
+                  "key": "content_type",
+                  "value": "tag"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Exact Phrase Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=Constitutional%20Amendment",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "Constitutional%20Amendment"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Exam Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=India&exam=UPSC_CSE",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "India"
+                },
+                {
+                  "key": "exam",
+                  "value": "UPSC_CSE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Year Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=India&year=2023",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "India"
+                },
+                {
+                  "key": "year",
+                  "value": "2023"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Subject Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=President&subject=POLITY",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "President"
+                },
+                {
+                  "key": "subject",
+                  "value": "POLITY"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PYQ Filter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=President&is_pyq=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "President"
+                },
+                {
+                  "key": "is_pyq",
+                  "value": "true"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=India&page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "India"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "No Results",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=nonexistentqueryxyz999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "nonexistentqueryxyz999"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Empty Query Validation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/data/search?q=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "data", "search"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

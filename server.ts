@@ -299,6 +299,11 @@ async function startServer() {
     await proxyFastApiRequest(req, res, '/api/v1/ingestion/run');
   });
 
+  // Knowledge Search Proxy Endpoint
+  app.get('/api/v1/data/search', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/search');
+  });
+
   // Auth Endpoints
   app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { email, password } = req.body;
