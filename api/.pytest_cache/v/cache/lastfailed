@@ -1,0 +1,10 @@
+{
+  "tests/test_niti_adapter.py::test_niti_report_parsing": true,
+  "tests/test_moefcc_adapter.py::test_moefcc_hindi_parsing": true,
+  "tests/test_dst_adapter.py::test_dst_scheme_parsing": true,
+  "tests/test_dst_adapter.py::test_dst_hindi_parsing": true,
+  "tests/test_isro_adapter.py::test_isro_hindi_parsing": true,
+  "tests/test_indiagov_adapter.py::test_indiagov_hindi_parsing": true,
+  "tests/test_pib_adapter.py::test_pib_adapter_registry_resolution": true,
+  "tests/test_upsc_adapter.py::test_upsc_adapter_registry_resolution": true
+}

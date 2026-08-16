@@ -163,13 +163,19 @@ class KnowledgeSearchService:
 
         # Apply schema filters
         if filters.exam:
-            stmt = stmt.where(DataQuestion.exam == filters.exam.upper().strip())
+            clean_exam = filters.exam.upper().strip()
+            exam_variants = {clean_exam, clean_exam.replace(" ", "_"), clean_exam.replace("_", " ")}
+            stmt = stmt.where(DataQuestion.exam.in_(exam_variants))
         if filters.year is not None:
             stmt = stmt.where(DataQuestion.year == filters.year)
         if filters.paper:
-            stmt = stmt.where(DataQuestion.paper == filters.paper.upper().strip())
+            clean_paper = filters.paper.upper().strip()
+            paper_variants = {clean_paper, clean_paper.replace(" ", "_"), clean_paper.replace("_", " ")}
+            stmt = stmt.where(DataQuestion.paper.in_(paper_variants))
         if filters.subject:
-            stmt = stmt.where(DataQuestion.subject == filters.subject.upper().strip())
+            clean_subj = filters.subject.upper().strip()
+            subj_variants = {clean_subj, clean_subj.replace(" ", "_"), clean_subj.replace("_", " ")}
+            stmt = stmt.where(or_(DataQuestion.subject.in_(subj_variants), DataQuestion.subject.ilike(f"%{filters.subject.strip()}%")))
         if filters.topic:
             stmt = stmt.where(DataQuestion.topic.ilike(f"%{filters.topic.strip()}%"))
         if filters.question_type:

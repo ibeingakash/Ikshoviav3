@@ -30,6 +30,39 @@ class Settings(BaseSettings):
         validation_alias="SYNC_DATABASE_URL",
     )
 
+    # -------------------------------------------------------------
+    # AI Gateway & Tutor Settings (Provider-Agnostic)
+    # -------------------------------------------------------------
+    AI_PROVIDER: str = Field(default="gemini", validation_alias="AI_PROVIDER")
+    GEMINI_API_KEY: Optional[str] = Field(default=None, validation_alias="GEMINI_API_KEY")
+    GEMINI_MODEL: str = Field(default="gemini-flash-lite-latest", validation_alias="GEMINI_MODEL")
+    GEMINI_API_BASE_URL: str = Field(
+        default="https://generativelanguage.googleapis.com/v1beta",
+        validation_alias="GEMINI_API_BASE_URL",
+    )
+
+    # Knowledge Retrieval Confidence & Context Bounding Thresholds
+    KNOWLEDGE_STRONG_SCORE_THRESHOLD: float = Field(
+        default=0.65,
+        validation_alias="KNOWLEDGE_STRONG_SCORE_THRESHOLD",
+    )
+    KNOWLEDGE_WEAK_SCORE_THRESHOLD: float = Field(
+        default=0.30,
+        validation_alias="KNOWLEDGE_WEAK_SCORE_THRESHOLD",
+    )
+    KNOWLEDGE_MIN_RESULTS_FOR_STRONG: int = Field(
+        default=1,
+        validation_alias="KNOWLEDGE_MIN_RESULTS_FOR_STRONG",
+    )
+    KNOWLEDGE_MAX_CONTEXT_ITEMS: int = Field(
+        default=5,
+        validation_alias="KNOWLEDGE_MAX_CONTEXT_ITEMS",
+    )
+    KNOWLEDGE_MAX_SNIPPET_LENGTH: int = Field(
+        default=450,
+        validation_alias="KNOWLEDGE_MAX_SNIPPET_LENGTH",
+    )
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_async_db_url(cls, v: Optional[str]) -> str:

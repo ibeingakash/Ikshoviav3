@@ -304,6 +304,12 @@ async function startServer() {
     await proxyFastApiRequest(req, res, '/api/v1/search');
   });
 
+  // AI Tutor Proxy Endpoint (Grounded Retrieval-First AI Mentoring)
+  app.post('/api/v1/data/ai/tutor', async (req, res) => {
+    await proxyFastApiRequest(req, res, '/api/v1/ai/tutor');
+  });
+
+
   // Auth Endpoints
   app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { email, password } = req.body;

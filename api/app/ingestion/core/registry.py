@@ -1,5 +1,11 @@
 from typing import Dict, List, Optional
+from app.ingestion.adapters.dst_adapter import DSTAdapter
+from app.ingestion.adapters.indiagov_adapter import IndiaGovAdapter
+from app.ingestion.adapters.isro_adapter import ISROAdapter
+from app.ingestion.adapters.moefcc_adapter import MoEFCCAdapter
+from app.ingestion.adapters.niti_adapter import NITIAdapter
 from app.ingestion.adapters.pib_adapter import PIBAdapter
+from app.ingestion.adapters.rbi_adapter import RBIAdapter
 from app.ingestion.adapters.upsc_adapter import UPSCAdapter
 from app.ingestion.contracts.models import (
     FetchResponse,
@@ -74,8 +80,8 @@ class AdapterRegistry:
     """
     Registry for source adapters.
     
-    Allows dynamic registration of domain-specific adapters (PIB, UPSC, ISRO,
-    Gazette, Open Repositories) while keeping the core ingestion engine clean.
+    Allows dynamic registration of domain-specific adapters (PIB, UPSC, RBI, NITI,
+    MoEFCC, DST, ISRO, IndiaGov) while keeping the core ingestion engine clean.
     """
 
     def __init__(self):
@@ -83,9 +89,15 @@ class AdapterRegistry:
         self._fallback_adapter = GenericHttpAdapter()
         # Register default fallback adapter
         self.register(self._fallback_adapter)
-        # Register domain-specific adapters
+        # Register domain-specific official government & institutional adapters
         self.register(PIBAdapter())
         self.register(UPSCAdapter())
+        self.register(RBIAdapter())
+        self.register(NITIAdapter())
+        self.register(MoEFCCAdapter())
+        self.register(DSTAdapter())
+        self.register(ISROAdapter())
+        self.register(IndiaGovAdapter())
 
     def register(self, adapter: SourceAdapter) -> None:
         """Registers a source adapter."""

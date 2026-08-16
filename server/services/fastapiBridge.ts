@@ -56,7 +56,7 @@ export async function ensureFastApiBridgeStarted(): Promise<void> {
       ['-m', 'uvicorn', 'app.main:app', '--host', FASTAPI_HOST, '--port', String(FASTAPI_PORT)],
       {
         cwd: apiDir,
-        env: { ...process.env },
+        env: { ...process.env, PYTHONPATH: apiDir },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );

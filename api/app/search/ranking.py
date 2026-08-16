@@ -140,16 +140,18 @@ def calculate_relevance_score(
     elif entity_type == "tag":
         score += 0.02
 
+    clean_phrase = re.sub(r"[?!.,;:\"']+$", "", clean_query).strip()
+
     # 1. Exact Match on whole title
-    if title_str.strip() == clean_query:
+    if title_str.strip() == clean_query or (clean_phrase and title_str.strip() == clean_phrase):
         score += 0.20
 
     # 2. Exact Phrase Match
-    if clean_query in title_str:
+    if clean_query in title_str or (clean_phrase and clean_phrase in title_str):
         score += 0.40
-    elif clean_query in body_str:
+    elif clean_query in body_str or (clean_phrase and clean_phrase in body_str):
         score += 0.25
-    elif meta_str and clean_query in meta_str:
+    elif meta_str and (clean_query in meta_str or (clean_phrase and clean_phrase in meta_str)):
         score += 0.15
 
     # 3. Token Coverage
