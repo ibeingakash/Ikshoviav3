@@ -30,8 +30,6 @@ export async function askAITutor(
   const learnerModel = await learnerRepository.getLearnerModel(userId);
   const concept = conceptId ? db.concepts.get(conceptId) : null;
 
-  const ai = getAIClient();
-
   const targetExam = user?.onboarding?.targetExam || 'UPSC CSE';
   const expLevel = user?.onboarding?.experienceLevel || 'Intermediate';
   const masteryScore = learnerModel?.overallScore || 70;
@@ -41,6 +39,41 @@ export async function askAITutor(
   const activeConceptSummary = context?.conceptSummary || concept?.summary || '';
   const subjectName = context?.subjectName || '';
   const topicName = context?.topicName || '';
+
+  // 1. First attempt retrieval-first grounded AI Tutor service from internal FastAPI backend
+  try {
+    const fastApiHost = process.env.FASTAPI_HOST || '127.0.0.1';
+    const fastApiPort = process.env.FASTAPI_PORT || 8001;
+    const fastApiUrl = `http://${fastApiHost}:${fastApiPort}/api/v1/ai/tutor`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const fastApiRes = await fetch(fastApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        message: userPrompt,
+        exam: targetExam,
+        subject: subjectName || undefined,
+        topic: topicName || activeConceptTitle || undefined,
+        mode: quickAction || 'tutor',
+      }),
+    });
+    clearTimeout(timeoutId);
+
+    if (fastApiRes.ok) {
+      const data = await fastApiRes.json();
+      if (data && data.answer && typeof data.answer === 'string' && data.answer.trim().length > 0) {
+        return data.answer.trim();
+      }
+    }
+  } catch (err: any) {
+    // Graceful fallback to direct model generation if FastAPI is initializing
+  }
+
+  const ai = getAIClient();
 
   let questionContextStr = '';
   if (context?.questionText) {

@@ -392,12 +392,34 @@ export const api = {
 
   // AI Tutor
   askAITutor: async (userPrompt: string, conceptId?: string, quickAction?: string, userId?: string, context?: any) => {
-    const res = await apiFetch('/api/ai/tutor', {
+    try {
+      const res = await apiFetch('/api/v1/data/ai/tutor', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          message: userPrompt,
+          userPrompt,
+          conceptId,
+          quickAction,
+          exam: context?.targetExam,
+          subject: context?.subjectName,
+          topic: context?.topicName || context?.conceptTitle,
+          mode: quickAction || 'tutor',
+        }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+
+    const fallbackRes = await apiFetch('/api/ai/tutor', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ userId, userPrompt, conceptId, quickAction, context }),
     });
-    return res.json();
+    return fallbackRes.json();
   },
 
   getConversations: async (): Promise<ChatConversation[]> => {
