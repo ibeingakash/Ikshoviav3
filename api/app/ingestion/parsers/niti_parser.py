@@ -17,12 +17,34 @@ def detect_language(text: str) -> str:
     return "en"
 
 
+HINDI_MONTH_MAP = {
+    "जनवरी": 1,
+    "फ़रवरी": 2,
+    "फरवरी": 2,
+    "मार्च": 3,
+    "अप्रैल": 4,
+    "अप्रेल": 4,
+    "मई": 5,
+    "जून": 6,
+    "जुलाई": 7,
+    "अगस्त": 8,
+    "सितंबर": 9,
+    "सितम्बर": 9,
+    "अक्टूबर": 10,
+    "अक्तूबर": 10,
+    "नवंबर": 11,
+    "नवम्बर": 11,
+    "दिसंबर": 12,
+    "दिसम्बर": 12,
+}
+
+
 def parse_niti_date(raw_text: str) -> Optional[datetime]:
     if not raw_text:
         return None
 
     clean = re.sub(r"\s+", " ", raw_text).strip()
-    clean = re.sub(r"^(?:Date|Published Date|प्रकाशन तिथि)\s*[:\-]?\s*", "", clean, flags=re.I).strip()
+    clean = re.sub(r"^(?:Date|Published Date|प्रकाशन तिथि|दिनांक)\s*[:\-]?\s*", "", clean, flags=re.I).strip()
 
     # Pattern 1: Mon DD, YYYY or Month DD, YYYY (e.g. July 12, 2024)
     m1 = re.search(r"([A-Za-z]{3,9})\s+(\d{1,2})[,\s]+(\d{4})", clean)
@@ -34,7 +56,7 @@ def parse_niti_date(raw_text: str) -> Optional[datetime]:
         except Exception:
             pass
 
-    # Pattern 2: DD Mon YYYY (e.g. 12 July 2024 or 17 जुलाई 2023)
+    # Pattern 2: DD Mon YYYY (e.g. 12 July 2024)
     m2 = re.search(r"(\d{1,2})\s+([A-Za-z]{3,9})[,\s]+(\d{4})", clean)
     if m2:
         d, mon, y = m2.groups()
@@ -44,7 +66,18 @@ def parse_niti_date(raw_text: str) -> Optional[datetime]:
         except Exception:
             pass
 
-    # Pattern 3: DD/MM/YYYY
+    # Pattern 3: Hindi DD Month YYYY (e.g. 17 जुलाई 2023)
+    m_hi = re.search(r"(\d{1,2})\s+([\u0900-\u097F]+)\s+(\d{4})", clean)
+    if m_hi:
+        d, mon_str, y = m_hi.groups()
+        mon_num = HINDI_MONTH_MAP.get(mon_str)
+        if mon_num:
+            try:
+                return datetime(int(y), mon_num, int(d))
+            except Exception:
+                pass
+
+    # Pattern 4: DD/MM/YYYY
     m3 = re.search(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})", clean)
     if m3:
         d, m, y = m3.groups()
@@ -188,6 +221,7 @@ class NITIHTMLStreamingParser(HTMLParser):
             self.doc_title_chunks.append(cleaned)
         elif self._in_h1:
             self.h1_chunks.append(cleaned)
+            self.body_chunks.append(f" {cleaned} ")
         else:
             self.body_chunks.append(f" {cleaned} ")
 
@@ -262,9 +296,13 @@ class NITIParser(BaseParser):
         # 3. Extract Publication Date
         published_at = None
         date_patterns = [
-            r"(?:Date|Published Date|प्रकाशन तिथि)\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2}[,\s]+\d{4})",
-            r"(?:Date|Published Date)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,9}[,\s]+\d{4})",
+            r"(?:Date|Published Date|प्रकाशन तिथि|दिनांक)\s*[:\-]?\s*([A-Za-z]{3,9}\s+\d{1,2}[,\s]+\d{4})",
+            r"(?:Date|Published Date|प्रकाशन तिथि|दिनांक)\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,9}[,\s]+\d{4})",
+            r"(?:Date|Published Date|प्रकाशन तिथि|दिनांक)\s*[:\-]?\s*(\d{1,2}\s+[\u0900-\u097F]+\s+\d{4})",
             r"(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})",
+            r"([A-Za-z]{3,9}\s+\d{1,2}[,\s]+\d{4})",
+            r"(\d{1,2}\s+[A-Za-z]{3,9}[,\s]+\d{4})",
+            r"(\d{1,2}\s+[\u0900-\u097F]+\s+\d{4})",
         ]
         for dp in date_patterns:
             dm = re.search(dp, raw_html, re.I)

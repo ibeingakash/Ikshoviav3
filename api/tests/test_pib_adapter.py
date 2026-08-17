@@ -245,7 +245,7 @@ def test_pib_adapter_registry_resolution():
     assert pib_adapter.source_identifier == "pib"
     assert isinstance(pib_adapter, PIBAdapter)
 
-    generic_adapter = adapter_registry.resolve_for_url("https://www.isro.gov.in/")
+    generic_adapter = adapter_registry.resolve_for_url("https://example.com/some/random/page")
     assert generic_adapter.source_identifier == "generic_http"
 
 
