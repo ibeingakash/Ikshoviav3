@@ -1,11 +1,13 @@
 from typing import Dict, List, Optional
 from app.ingestion.adapters.dst_adapter import DSTAdapter
 from app.ingestion.adapters.indiagov_adapter import IndiaGovAdapter
+from app.ingestion.adapters.indian_express_adapter import IndianExpressAdapter
 from app.ingestion.adapters.isro_adapter import ISROAdapter
 from app.ingestion.adapters.moefcc_adapter import MoEFCCAdapter
 from app.ingestion.adapters.niti_adapter import NITIAdapter
 from app.ingestion.adapters.pib_adapter import PIBAdapter
 from app.ingestion.adapters.rbi_adapter import RBIAdapter
+from app.ingestion.adapters.the_hindu_adapter import TheHinduAdapter
 from app.ingestion.adapters.upsc_adapter import UPSCAdapter
 from app.ingestion.contracts.models import (
     FetchResponse,
@@ -98,6 +100,9 @@ class AdapterRegistry:
         self.register(DSTAdapter())
         self.register(ISROAdapter())
         self.register(IndiaGovAdapter())
+        # Register verified newspaper intelligence adapters
+        self.register(TheHinduAdapter())
+        self.register(IndianExpressAdapter())
 
     def register(self, adapter: SourceAdapter) -> None:
         """Registers a source adapter."""

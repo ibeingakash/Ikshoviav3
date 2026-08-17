@@ -1001,6 +1001,44 @@ async function startServer() {
     }
   });
 
+  // Dedicated Editorial & Opinion Intelligence Feed
+  app.get('/api/current-affairs/editorials', async (req, res) => {
+    try {
+      const { source, gsPaper, articleType, search, limit, offset } = req.query;
+      const list = await currentAffairsRepository.listEditorials({
+        source: source as string,
+        gsPaper: gsPaper as string,
+        articleType: articleType as string,
+        search: search as string,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list editorials' });
+    }
+  });
+
+  // Multi-Source Topic Clusters & Perspectives
+  app.get('/api/current-affairs/topic-clusters', async (req, res) => {
+    try {
+      const clusters = await currentAffairsRepository.listTopicClusters();
+      res.json(clusters);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list topic clusters' });
+    }
+  });
+
+  app.get('/api/current-affairs/topic-clusters/:id', async (req, res) => {
+    try {
+      const details = await currentAffairsRepository.getTopicClusterDetails(req.params.id);
+      if (!details) return res.status(404).json({ error: 'Topic cluster not found' });
+      res.json(details);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get topic cluster details' });
+    }
+  });
+
   app.get('/api/current-affairs/revisions/my', requireAuth, async (req, res) => {
     try {
       const uid = (req as any).user.id;
@@ -1231,6 +1269,25 @@ async function startServer() {
       res.json({ success: true, ...result });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Ingestion failed' });
+    }
+  });
+
+  app.get('/api/admin/current-affairs/ingestion-runs', requireAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 30;
+      const runs = await currentAffairsRepository.listIngestionRuns(limit);
+      res.json(runs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list ingestion runs' });
+    }
+  });
+
+  app.get('/api/admin/current-affairs/source-freshness', requireAdmin, async (req, res) => {
+    try {
+      const freshness = await currentAffairsRepository.getSourceFreshnessList();
+      res.json(freshness);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get source freshness list' });
     }
   });
 

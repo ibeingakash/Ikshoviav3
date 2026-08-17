@@ -221,6 +221,14 @@ export interface Question {
   ocrMatchReason?: string;
   sourceJobId?: string;
   currentAffairId?: string;
+  sourceProvenance?: {
+    sourceId?: string;
+    resourceId?: string;
+    sourceName?: string;
+    sourceType?: string;
+    adapter?: string;
+    contentHash?: string;
+  };
 
   // OCR V3 Accuracy & Sequence
   questionNum?: number;
@@ -293,6 +301,97 @@ export interface MockAttempt {
   startedAt?: string;
 }
 
+export type ArticleType = 'EDITORIAL' | 'OPINION' | 'EXPLAINER' | 'UPSC_GUIDE' | 'CURRENT_AFFAIR';
+
+export interface PyqLinkage {
+  id?: string;
+  exam: string; // e.g. 'UPSC CSE', 'BPSC 70th CCE'
+  year: number;
+  paper: string; // e.g. 'GS Paper II', 'GS Paper III', 'Prelims Paper I'
+  questionNumber?: number;
+  questionText?: string;
+  topic: string;
+  relevanceScore?: number;
+}
+
+export interface MainsModelQuestion {
+  question: string;
+  marks: 10 | 15 | 20 | 38;
+  wordCount: 150 | 250 | 400;
+  gsPaper: string;
+  approachOutline: string[];
+  keyKeywords: string[];
+  modelAnswerSummary?: string;
+}
+
+export interface EditorialAnalysis {
+  argumentsFor?: string[];
+  argumentsAgainst?: string[];
+  constitutionalDimensions?: string[];
+  policyImplications?: string[];
+  counterarguments?: string[];
+  theHinduPerspective?: string;
+  indianExpressPerspective?: string;
+  prelimsTakeaways?: string[];
+  mainsModelQuestions?: MainsModelQuestion[];
+  pyqLinkages?: PyqLinkage[];
+  expertQuotes?: string[];
+  internationalComparisons?: string[];
+}
+
+export interface TopicCluster {
+  id: string;
+  title: string;
+  category: string;
+  summary: string;
+  articlesCount: number;
+  editorialsCount: number;
+  lastUpdated: string;
+  keyDebatePoints: string[];
+  primarySources: string[];
+  articles: CurrentAffairArticle[];
+}
+
+export interface IngestionRunRecord {
+  id: string;
+  sourceIdentifier: string;
+  displayName?: string;
+  jobType: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
+  startedAt: string;
+  completedAt?: string;
+  resourcesDiscovered: number;
+  resourcesFetched: number;
+  resourcesSkipped: number;
+  documentsCreated: number;
+  documentsUpdated: number;
+  duplicatesCount: number;
+  currentAffairsPublished: number;
+  editorialsPublished: number;
+  errors?: string[];
+  durationMs: number;
+  freshnessStatus?: string;
+  latestArticleDate?: string;
+  latestArticleTitle?: string;
+}
+
+export interface SourceFreshnessRecord {
+  sourceIdentifier: string;
+  displayName: string;
+  sourceType: string;
+  isActive: boolean;
+  scheduleDescription?: string;
+  lastAttemptedRun?: string;
+  lastSuccessfulRun?: string;
+  latestDiscoveredArticle?: string;
+  latestPublishedArticle?: string;
+  latestArticleDate?: string;
+  failureCount: number;
+  freshnessStatus: 'HEALTHY' | 'SYNC_SUCCESSFUL' | 'PENDING' | 'WARNING' | 'FAILED';
+  lastError?: string;
+  updatedAt?: string;
+}
+
 export interface CurrentAffairArticle {
   id: string;
   title: string;
@@ -300,8 +399,16 @@ export interface CurrentAffairArticle {
   category: string; // 'Polity & Governance', 'Economy', 'International Relations', 'Environment', 'Science & Tech', 'Internal Security', 'Social Issues', 'Reports & Indices', 'Government Schemes', 'Bihar Current Affairs'
   subtopic?: string;
   summary: string;
+  whyInNews?: string;
+  whatHappened?: string;
   background?: string;
+  keyConcepts?: string[];
   keyFacts?: string[];
+  whyItMatters?: string;
+  implications?: string;
+  issuesAndChallenges?: string[];
+  wayForward?: string[];
+  gsPaper?: string;
   examRelevance?: 'UPSC' | 'BPSC' | 'BOTH';
   prelimsRelevance?: string;
   mainsRelevance?: string;
@@ -312,9 +419,21 @@ export interface CurrentAffairArticle {
   relatedSubject?: string;
   relatedConceptIds?: string[];
   keywords?: string[];
-  source: string; // E.g. 'Press Information Bureau (PIB)', 'Supreme Court Judgment', 'RBI Bulletin'
+  source: string; // E.g. 'The Hindu', 'The Indian Express', 'Supreme Court of India', 'Reserve Bank of India (RBI)'
   sourceUrl?: string;
   sourceType?: 'PRIMARY_GOVT' | 'SECONDARY_NEWS' | 'OFFICIAL_PORTAL';
+  primarySource?: string;
+  documentType?: string;
+  secondarySource?: string;
+  editorialSource?: string;
+  articleType?: ArticleType;
+  editorialAnalysis?: EditorialAnalysis;
+  topicClusterId?: string;
+  topicClusterTitle?: string;
+  relatedEditorialIds?: string[];
+  relatedCurrentAffairIds?: string[];
+  relatedPyqIds?: string[];
+  sourceProvenance?: Record<string, any>;
   status?: 'INGESTED' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PUBLISHED' | 'REJECTED';
   publishedAt?: string;
   retrievedAt?: string;

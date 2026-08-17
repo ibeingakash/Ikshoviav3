@@ -25,135 +25,165 @@ export interface PYQListParams {
   offset?: number;
 }
 
+const SUBJECT_ID_TO_ENUMS: Record<string, string[]> = {
+  sub_polity: ['POLITY', 'INDIAN POLITY', 'POLITY & GOVERNANCE'],
+  sub_economy: ['ECONOMY', 'INDIAN ECONOMY', 'ECONOMICS', 'BANKING'],
+  sub_history: ['HISTORY', 'INDIAN HISTORY', 'ANCIENT HISTORY', 'MODERN HISTORY', 'ART & CULTURE'],
+  sub_geography: ['GEOGRAPHY', 'ENVIRONMENT', 'ECOLOGY', 'INDIAN GEOGRAPHY'],
+  sub_ca: ['CURRENT_AFFAIRS', 'CURRENT AFFAIRS', 'SCIENCE_TECH', 'SCIENCE & TECHNOLOGY', 'GOVERNANCE'],
+};
+
+const ENUM_TO_SUBJECT_ID: Record<string, string> = {
+  POLITY: 'sub_polity',
+  'INDIAN POLITY': 'sub_polity',
+  'POLITY & GOVERNANCE': 'sub_polity',
+  ECONOMY: 'sub_economy',
+  'INDIAN ECONOMY': 'sub_economy',
+  ECONOMICS: 'sub_economy',
+  BANKING: 'sub_economy',
+  HISTORY: 'sub_history',
+  'INDIAN HISTORY': 'sub_history',
+  'ANCIENT HISTORY': 'sub_history',
+  'MODERN HISTORY': 'sub_history',
+  'ART & CULTURE': 'sub_history',
+  GEOGRAPHY: 'sub_geography',
+  'INDIAN GEOGRAPHY': 'sub_geography',
+  ENVIRONMENT: 'sub_geography',
+  ECOLOGY: 'sub_geography',
+  CURRENT_AFFAIRS: 'sub_ca',
+  'CURRENT AFFAIRS': 'sub_ca',
+  SCIENCE_TECH: 'sub_ca',
+  'SCIENCE & TECHNOLOGY': 'sub_ca',
+};
+
+const DEFAULT_TOPIC_CONCEPT_BY_SUBJECT: Record<string, { topicId: string; conceptId: string }> = {
+  sub_polity: { topicId: 'top_const', conceptId: 'c_art32' },
+  sub_economy: { topicId: 'top_monetary', conceptId: 'c_mpc' },
+  sub_history: { topicId: 'top_modern', conceptId: 'c_non_coop' },
+  sub_geography: { topicId: 'top_phys_geo', conceptId: 'c_himalayas' },
+  sub_ca: { topicId: 'top_nat_affairs', conceptId: 'c_ca_general' },
+};
+
+function normalizeText(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getQuestionDedupKey(q: {
+  question?: string;
+  pyqYear?: number;
+  exam?: string;
+  examTag?: string;
+  paper?: string;
+}): string {
+  const normText = normalizeText(q.question || '').slice(0, 75);
+  const yearNorm = q.pyqYear || '';
+  return `${normText}::${yearNorm}`;
+}
+
 export class QuestionRepository {
   async findById(id: string): Promise<Question | null> {
     const res = await pool.query('SELECT * FROM public.questions WHERE id = $1', [id]);
-    if (res.rows.length === 0) return null;
-    return this.mapRowToQuestion(res.rows[0]);
+    if (res.rows.length > 0) {
+      return this.mapRowToQuestion(res.rows[0]);
+    }
+
+    const dqRes = await pool.query(`
+      SELECT 
+        dq.*,
+        dr.title as resource_title,
+        dr.url as resource_url,
+        dr.status as resource_status,
+        ds.id as source_id,
+        ds.name as source_name,
+        ds.slug as source_slug,
+        ds.source_type as source_type_enum
+      FROM data_questions dq
+      LEFT JOIN data_resources dr ON dq.resource_id = dr.id
+      LEFT JOIN data_sources ds ON dr.source_id = ds.id
+      WHERE dq.id = $1
+      LIMIT 1;
+    `, [id]);
+
+    if (dqRes.rows.length > 0) {
+      return this.mapDataQuestionRowToQuestion(dqRes.rows[0]);
+    }
+
+    return null;
   }
 
   async count(): Promise<number> {
-    const res = await pool.query('SELECT COUNT(*) as total FROM public.questions');
-    return parseInt(res.rows[0]?.total || '0', 10);
+    const all = await this.listAll();
+    return all.length;
   }
 
   async list(params: QuestionListParams = {}): Promise<{ items: Question[]; total: number }> {
-    let whereConditions: string[] = [];
-    let values: any[] = [];
-    let idx = 1;
+    // 1. Fetch curated questions
+    const curatedQuestions = await this.fetchCuratedQuestions(params);
 
-    if (params.subjectId) {
-      whereConditions.push(`subject_id = $${idx++}`);
-      values.push(params.subjectId);
-    }
-    if (params.topicId) {
-      whereConditions.push(`topic_id = $${idx++}`);
-      values.push(params.topicId);
-    }
-    if (params.conceptId) {
-      whereConditions.push(`concept_id = $${idx++}`);
-      values.push(params.conceptId);
-    }
-    if (params.isPyq !== undefined) {
-      whereConditions.push(`is_pyq = $${idx++}`);
-      values.push(params.isPyq);
-    }
-    if (params.isPublished !== undefined) {
-      whereConditions.push(`is_published = $${idx++}`);
-      values.push(params.isPublished);
-    }
-    if (params.status) {
-      whereConditions.push(`status = $${idx++}`);
-      values.push(params.status);
-    }
-    if (params.difficulty) {
-      whereConditions.push(`difficulty = $${idx++}`);
-      values.push(params.difficulty);
-    }
-    if (params.examTag) {
-      whereConditions.push(`exam_tag ILIKE $${idx++}`);
-      values.push(`%${params.examTag}%`);
-    }
-    if (params.searchQuery) {
-      whereConditions.push(`(question ILIKE $${idx} OR explanation ILIKE $${idx})`);
-      values.push(`%${params.searchQuery}%`);
-      idx++;
-    }
+    // 2. Fetch official data questions
+    const officialQuestions = await this.fetchOfficialQuestions(params);
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    // 3. Merge and deduplicate deterministically
+    const merged = this.mergeAndDeduplicate(curatedQuestions, officialQuestions);
 
-    const countRes = await pool.query(`SELECT COUNT(*) as total FROM public.questions ${whereClause}`, values);
-    const total = parseInt(countRes.rows[0]?.total || '0', 10);
+    // 4. Sort results
+    merged.sort((a, b) => {
+      const yearA = a.pyqYear || 0;
+      const yearB = b.pyqYear || 0;
+      if (yearB !== yearA) return yearB - yearA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
 
+    const total = merged.length;
     const limit = params.limit || 50;
     const offset = params.offset || 0;
-
-    const dataQuery = `
-      SELECT * FROM public.questions 
-      ${whereClause} 
-      ORDER BY created_at DESC 
-      LIMIT $${idx++} OFFSET $${idx++}
-    `;
-    const queryValues = [...values, limit, offset];
-
-    const res = await pool.query(dataQuery, queryValues);
-    const items = res.rows.map(r => this.mapRowToQuestion(r));
+    const items = merged.slice(offset, offset + limit);
 
     return { items, total };
   }
 
   async listPYQs(params: PYQListParams = {}): Promise<{ items: Question[]; total: number }> {
-    let whereConditions: string[] = ['(is_pyq = true OR exam_tag ILIKE \'%PYQ%\')', 'is_published = true'];
-    let values: any[] = [];
-    let idx = 1;
+    // 1. Fetch curated PYQs
+    const curatedPYQs = await this.fetchCuratedPYQs(params);
 
-    if (params.subjectId) {
-      whereConditions.push(`subject_id = $${idx++}`);
-      values.push(params.subjectId);
-    }
-    if (params.topicId) {
-      whereConditions.push(`topic_id = $${idx++}`);
-      values.push(params.topicId);
-    }
-    if (params.conceptId) {
-      whereConditions.push(`concept_id = $${idx++}`);
-      values.push(params.conceptId);
-    }
-    if (params.exam) {
-      whereConditions.push(`(exam ILIKE $${idx} OR exam_tag ILIKE $${idx})`);
-      values.push(`%${params.exam}%`);
-      idx++;
-    }
-    if (params.pyqYear) {
-      whereConditions.push(`pyq_year = $${idx++}`);
-      values.push(params.pyqYear);
-    }
+    // 2. Fetch official PYQs
+    const officialPYQs = await this.fetchOfficialPYQs(params);
 
-    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+    // 3. Merge and deduplicate deterministically
+    const merged = this.mergeAndDeduplicate(curatedPYQs, officialPYQs);
 
-    const countRes = await pool.query(`SELECT COUNT(*) as total FROM public.questions ${whereClause}`, values);
-    const total = parseInt(countRes.rows[0]?.total || '0', 10);
+    // 4. Sort results by year descending
+    merged.sort((a, b) => {
+      const yearA = a.pyqYear || 0;
+      const yearB = b.pyqYear || 0;
+      if (yearB !== yearA) return yearB - yearA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
 
+    const total = merged.length;
     const limit = params.limit || 50;
     const offset = params.offset || 0;
-
-    const dataQuery = `
-      SELECT * FROM public.questions 
-      ${whereClause} 
-      ORDER BY pyq_year DESC NULLS LAST, created_at DESC 
-      LIMIT $${idx++} OFFSET $${idx++}
-    `;
-    const queryValues = [...values, limit, offset];
-
-    const res = await pool.query(dataQuery, queryValues);
-    const items = res.rows.map(r => this.mapRowToQuestion(r));
+    const items = merged.slice(offset, offset + limit);
 
     return { items, total };
   }
 
   async listAll(): Promise<Question[]> {
-    const res = await pool.query('SELECT * FROM public.questions ORDER BY created_at DESC');
-    return res.rows.map(r => this.mapRowToQuestion(r));
+    const curated = await this.fetchCuratedQuestions({});
+    const official = await this.fetchOfficialQuestions({});
+    const merged = this.mergeAndDeduplicate(curated, official);
+    merged.sort((a, b) => {
+      const yearA = a.pyqYear || 0;
+      const yearB = b.pyqYear || 0;
+      if (yearB !== yearA) return yearB - yearA;
+      return (b.id || '').localeCompare(a.id || '');
+    });
+    return merged;
   }
 
   async create(data: Question): Promise<Question> {
@@ -204,9 +234,9 @@ export class QuestionRepository {
 
     const values = [
       data.id,
-      data.subjectId || 'subj_polity',
-      data.topicId || 'topic_polity_constitution',
-      data.conceptId || 'concept_preamble',
+      data.subjectId || 'sub_polity',
+      data.topicId || 'top_const',
+      data.conceptId || 'c_art32',
       data.type || 'MCQ',
       data.question,
       data.question_en || data.question,
@@ -247,6 +277,230 @@ export class QuestionRepository {
   async delete(id: string): Promise<boolean> {
     const res = await pool.query('DELETE FROM public.questions WHERE id = $1', [id]);
     return (res.rowCount || 0) > 0;
+  }
+
+  private async fetchCuratedQuestions(params: QuestionListParams): Promise<Question[]> {
+    let whereConditions: string[] = [];
+    let values: any[] = [];
+    let idx = 1;
+
+    if (params.subjectId) {
+      whereConditions.push(`subject_id = $${idx++}`);
+      values.push(params.subjectId);
+    }
+    if (params.topicId) {
+      whereConditions.push(`topic_id = $${idx++}`);
+      values.push(params.topicId);
+    }
+    if (params.conceptId) {
+      whereConditions.push(`concept_id = $${idx++}`);
+      values.push(params.conceptId);
+    }
+    if (params.isPyq !== undefined) {
+      whereConditions.push(`is_pyq = $${idx++}`);
+      values.push(params.isPyq);
+    }
+    if (params.isPublished !== undefined) {
+      whereConditions.push(`is_published = $${idx++}`);
+      values.push(params.isPublished);
+    }
+    if (params.status) {
+      whereConditions.push(`status = $${idx++}`);
+      values.push(params.status);
+    }
+    if (params.difficulty) {
+      whereConditions.push(`difficulty ILIKE $${idx++}`);
+      values.push(params.difficulty);
+    }
+    if (params.examTag) {
+      whereConditions.push(`(exam_tag ILIKE $${idx} OR exam ILIKE $${idx})`);
+      values.push(`%${params.examTag}%`);
+      idx++;
+    }
+    if (params.searchQuery) {
+      whereConditions.push(`(question ILIKE $${idx} OR explanation ILIKE $${idx})`);
+      values.push(`%${params.searchQuery}%`);
+      idx++;
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY created_at DESC`, values);
+    return res.rows.map(r => this.mapRowToQuestion(r));
+  }
+
+  private async fetchOfficialQuestions(params: QuestionListParams): Promise<Question[]> {
+    let whereConditions: string[] = ['dq.is_verified = true'];
+    let values: any[] = [];
+    let idx = 1;
+
+    if (params.subjectId) {
+      const enumList = SUBJECT_ID_TO_ENUMS[params.subjectId] || [params.subjectId.toUpperCase()];
+      whereConditions.push(`dq.subject = ANY($${idx++})`);
+      values.push(enumList);
+    }
+    if (params.topicId) {
+      whereConditions.push(`dq.topic ILIKE $${idx++}`);
+      values.push(`%${params.topicId}%`);
+    }
+    if (params.conceptId) {
+      whereConditions.push(`(dq.topic ILIKE $${idx} OR dq.tags::text ILIKE $${idx})`);
+      values.push(`%${params.conceptId}%`);
+      idx++;
+    }
+    if (params.isPyq !== undefined) {
+      whereConditions.push(`dq.is_pyq = $${idx++}`);
+      values.push(params.isPyq);
+    }
+    if (params.difficulty) {
+      whereConditions.push(`dq.difficulty ILIKE $${idx++}`);
+      values.push(params.difficulty);
+    }
+    if (params.examTag) {
+      whereConditions.push(`(dq.exam ILIKE $${idx} OR dq.paper ILIKE $${idx})`);
+      values.push(`%${params.examTag}%`);
+      idx++;
+    }
+    if (params.searchQuery) {
+      whereConditions.push(`(dq.question_text ILIKE $${idx} OR dq.explanation ILIKE $${idx} OR dq.topic ILIKE $${idx})`);
+      values.push(`%${params.searchQuery}%`);
+      idx++;
+    }
+
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+    const query = `
+      SELECT 
+        dq.*,
+        dr.title as resource_title,
+        dr.url as resource_url,
+        dr.status as resource_status,
+        ds.id as source_id,
+        ds.name as source_name,
+        ds.slug as source_slug,
+        ds.source_type as source_type_enum
+      FROM data_questions dq
+      LEFT JOIN data_resources dr ON dq.resource_id = dr.id
+      LEFT JOIN data_sources ds ON dr.source_id = ds.id
+      ${whereClause}
+      ORDER BY dq.created_at DESC;
+    `;
+
+    const res = await pool.query(query, values);
+    return res.rows.map(r => this.mapDataQuestionRowToQuestion(r));
+  }
+
+  private async fetchCuratedPYQs(params: PYQListParams): Promise<Question[]> {
+    let whereConditions: string[] = ['(is_pyq = true OR exam_tag ILIKE \'%PYQ%\')', 'is_published = true'];
+    let values: any[] = [];
+    let idx = 1;
+
+    if (params.subjectId) {
+      whereConditions.push(`subject_id = $${idx++}`);
+      values.push(params.subjectId);
+    }
+    if (params.topicId) {
+      whereConditions.push(`topic_id = $${idx++}`);
+      values.push(params.topicId);
+    }
+    if (params.conceptId) {
+      whereConditions.push(`concept_id = $${idx++}`);
+      values.push(params.conceptId);
+    }
+    if (params.exam && params.exam !== 'All') {
+      whereConditions.push(`(exam ILIKE $${idx} OR exam_tag ILIKE $${idx})`);
+      values.push(`%${params.exam}%`);
+      idx++;
+    }
+    if (params.pyqYear) {
+      whereConditions.push(`pyq_year = $${idx++}`);
+      values.push(params.pyqYear);
+    }
+
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+    const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY pyq_year DESC NULLS LAST, created_at DESC`, values);
+    return res.rows.map(r => this.mapRowToQuestion(r));
+  }
+
+  private async fetchOfficialPYQs(params: PYQListParams): Promise<Question[]> {
+    let whereConditions: string[] = ['dq.is_pyq = true', 'dq.is_verified = true'];
+    let values: any[] = [];
+    let idx = 1;
+
+    if (params.subjectId) {
+      const enumList = SUBJECT_ID_TO_ENUMS[params.subjectId] || [params.subjectId.toUpperCase()];
+      whereConditions.push(`dq.subject = ANY($${idx++})`);
+      values.push(enumList);
+    }
+    if (params.topicId) {
+      whereConditions.push(`dq.topic ILIKE $${idx++}`);
+      values.push(`%${params.topicId}%`);
+    }
+    if (params.conceptId) {
+      whereConditions.push(`(dq.topic ILIKE $${idx} OR dq.tags::text ILIKE $${idx})`);
+      values.push(`%${params.conceptId}%`);
+      idx++;
+    }
+    if (params.exam && params.exam !== 'All') {
+      const examPattern = params.exam.replace(/\s+/g, '_').toUpperCase();
+      whereConditions.push(`(dq.exam ILIKE $${idx} OR dq.exam ILIKE $${idx + 1} OR dq.paper ILIKE $${idx})`);
+      values.push(`%${params.exam}%`, `%${examPattern}%`);
+      idx += 2;
+    }
+    if (params.pyqYear) {
+      whereConditions.push(`dq.year = $${idx++}`);
+      values.push(params.pyqYear);
+    }
+
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+    const query = `
+      SELECT 
+        dq.*,
+        dr.title as resource_title,
+        dr.url as resource_url,
+        dr.status as resource_status,
+        ds.id as source_id,
+        ds.name as source_name,
+        ds.slug as source_slug,
+        ds.source_type as source_type_enum
+      FROM data_questions dq
+      LEFT JOIN data_resources dr ON dq.resource_id = dr.id
+      LEFT JOIN data_sources ds ON dr.source_id = ds.id
+      ${whereClause}
+      ORDER BY dq.year DESC NULLS LAST, dq.created_at DESC;
+    `;
+
+    const res = await pool.query(query, values);
+    return res.rows.map(r => this.mapDataQuestionRowToQuestion(r));
+  }
+
+  private mergeAndDeduplicate(curated: Question[], official: Question[]): Question[] {
+    const seenKeys = new Map<string, Question>();
+    const results: Question[] = [];
+
+    // Curated questions are canonical and registered first
+    for (const q of curated) {
+      const key = getQuestionDedupKey(q);
+      seenKeys.set(key, q);
+      results.push(q);
+    }
+
+    // Official questions enrich canonical if duplicate, or append if unique
+    for (const o of official) {
+      const key = getQuestionDedupKey(o);
+      if (seenKeys.has(key)) {
+        const canonical = seenKeys.get(key)!;
+        if (!canonical.sourceProvenance && o.sourceProvenance) {
+          canonical.sourceProvenance = o.sourceProvenance;
+        }
+        if (!canonical.sourceUrl && o.sourceUrl) {
+          canonical.sourceUrl = o.sourceUrl;
+        }
+      } else {
+        seenKeys.set(key, o);
+        results.push(o);
+      }
+    }
+
+    return results;
   }
 
   private mapRowToQuestion(row: any): Question {
@@ -294,6 +548,85 @@ export class QuestionRepository {
       verifiedStatus: row.verified_status,
       isPublished: row.is_published,
       status: row.status,
+    };
+  }
+
+  private mapDataQuestionRowToQuestion(row: any): Question {
+    const normSubject = (row.subject || '').toUpperCase().trim();
+    const subjectId = ENUM_TO_SUBJECT_ID[normSubject] || 'sub_polity';
+    const defaultMeta = DEFAULT_TOPIC_CONCEPT_BY_SUBJECT[subjectId] || { topicId: 'top_const', conceptId: 'c_art32' };
+
+    const rawExam = row.exam || 'UPSC_CSE';
+    const formattedExam = rawExam === 'UPSC_CSE' ? 'UPSC CSE' : rawExam.replace(/_/g, ' ');
+    const yearStr = row.year ? ` ${row.year}` : '';
+    const paperStr = row.paper ? ` (${row.paper})` : '';
+    const examTag = `${formattedExam}${yearStr}${paperStr}`;
+
+    let parsedOptions: any[] = [];
+    if (row.options) {
+      if (Array.isArray(row.options)) {
+        parsedOptions = row.options;
+      } else if (typeof row.options === 'string') {
+        try {
+          parsedOptions = JSON.parse(row.options);
+        } catch {
+          parsedOptions = [];
+        }
+      }
+    }
+
+    const options = parsedOptions.map((opt: any, idx: number) => {
+      if (typeof opt === 'string') {
+        return {
+          id: String.fromCharCode(65 + idx),
+          text: opt,
+        };
+      }
+      if (opt && typeof opt === 'object') {
+        return {
+          id: String(opt.id || String.fromCharCode(65 + idx)),
+          text: String(opt.text || opt.value || opt.label || ''),
+        };
+      }
+      return {
+        id: String.fromCharCode(65 + idx),
+        text: String(opt),
+      };
+    });
+
+    const sourceName = row.source_name || (row.resource_title ? `Official: ${row.resource_title}` : 'Official UPSC / Examination Portal');
+
+    return {
+      id: row.id,
+      subjectId,
+      topicId: defaultMeta.topicId,
+      conceptId: defaultMeta.conceptId,
+      type: (row.question_type === 'MAINS_SUBJECTIVE' || row.question_type === 'SHORT_ANSWER') ? 'SHORT_ANSWER' : 'MCQ',
+      question: row.question_text,
+      question_en: row.question_text,
+      options,
+      options_en: options,
+      correctAnswer: String(row.correct_answer || 'A'),
+      explanation: row.explanation || '',
+      explanation_en: row.explanation || '',
+      difficulty: (row.difficulty || 'MEDIUM').toUpperCase() as any,
+      examTag,
+      pyqYear: row.year || undefined,
+      exam: formattedExam,
+      paper: row.paper || undefined,
+      isPyq: Boolean(row.is_pyq),
+      source: sourceName,
+      sourceUrl: row.resource_url || undefined,
+      sourceProvenance: {
+        sourceId: row.source_id || undefined,
+        resourceId: row.resource_id || undefined,
+        sourceName,
+        sourceType: row.source_type_enum || 'GOVERNMENT',
+        adapter: row.source_slug || 'upsc',
+      },
+      verifiedStatus: row.is_verified ? 'VERIFIED_PYQ' : 'UNVERIFIED',
+      isPublished: true,
+      status: 'PUBLISHED',
     };
   }
 }
