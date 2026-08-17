@@ -190,6 +190,36 @@ export const GlobalSearchModal: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Official Resources & Documents */}
+          {results.resources.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-amber-400 tracking-wider uppercase mb-2 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Official Resources & Documents ({results.resources.length})
+              </div>
+              <div className="space-y-1.5">
+                {results.resources.map(r => (
+                  <div
+                    key={r.id}
+                    onClick={() => {
+                      setActiveSection('resources');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <div className="text-xs font-semibold text-slate-200">{r.title}</div>
+                    <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5">{r.summary}</div>
+                    {r.source && (
+                      <div className="text-[10px] text-amber-300/80 font-mono mt-1">
+                        Source: {r.source}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
