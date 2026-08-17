@@ -237,7 +237,7 @@ def test_upsc_adapter_registry_resolution():
     pib_adapter = adapter_registry.resolve_for_url("https://pib.gov.in/PressReleasePage.aspx?PRID=2085000")
     assert pib_adapter.source_identifier == "pib"
 
-    generic_adapter = adapter_registry.resolve_for_url("https://www.isro.gov.in/")
+    generic_adapter = adapter_registry.resolve_for_url("https://example.com/some/random/page")
     assert generic_adapter.source_identifier == "generic_http"
 
 
