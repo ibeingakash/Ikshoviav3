@@ -306,6 +306,9 @@ async function startServer() {
 
   // AI Tutor Proxy Endpoint (Grounded Retrieval-First AI Mentoring)
   app.post('/api/v1/data/ai/tutor', async (req, res) => {
+    if (req.body && !req.body.message && req.body.userPrompt) {
+      req.body.message = req.body.userPrompt;
+    }
     await proxyFastApiRequest(req, res, '/api/v1/ai/tutor');
   });
 
