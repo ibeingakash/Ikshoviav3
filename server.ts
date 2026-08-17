@@ -1119,6 +1119,53 @@ async function startServer() {
       r.title.toLowerCase().includes(query) || r.summary.toLowerCase().includes(query)
     );
 
+    // Integrate with FastAPI KnowledgeSearchService for official government documents, chunks & verified PYQs
+    try {
+      const fastApiHost = process.env.FASTAPI_HOST || '127.0.0.1';
+      const fastApiPort = process.env.FASTAPI_PORT || 8001;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const fastApiRes = await fetch(`http://${fastApiHost}:${fastApiPort}/api/v1/search?q=${encodeURIComponent(query)}&page_size=10`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (fastApiRes.ok) {
+        const data = await fastApiRes.json();
+        if (data && Array.isArray(data.items)) {
+          for (const item of data.items) {
+            if (item.content_type === 'question' && item.title) {
+              if (!questions.some((q: any) => q.id === item.id || q.question === item.title)) {
+                questions.push({
+                  id: item.id,
+                  question: item.title,
+                  difficulty: item.difficulty || 'MEDIUM',
+                  examTag: item.exam || 'UPSC CSE',
+                  explanation: item.snippet || '',
+                  options: [],
+                  correctAnswer: '0',
+                } as any);
+              }
+            } else if (item.content_type === 'document' || item.content_type === 'chunk') {
+              if (!resources.some((r: any) => r.id === item.id)) {
+                resources.push({
+                  id: item.id,
+                  title: item.title || 'Official Document',
+                  summary: item.snippet || '',
+                  type: 'OFFICIAL_DOCUMENT',
+                  source: item.source_id || 'Official Government Source',
+                  url: item.url || '',
+                } as any);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Gracefully continue with local database results if FastAPI is starting or idle
+    }
+
     res.json({ subjects, concepts, questions, currentAffairs, resources });
   });
 
