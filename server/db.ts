@@ -21,6 +21,9 @@ import {
   OCRJob,
   AuditLogRecord,
 } from '../src/types/index.js';
+import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './db/syllabusData.js';
+import { OFFICIAL_PYQ_QUESTIONS } from './db/seedPYQBank.js';
+import { OFFICIAL_CURRENT_AFFAIRS } from './db/seedCurrentAffairs.js';
 
 export function hashPassword(password: string): string {
   const salt = 'ikshovia_auth_salt_2026';
@@ -945,6 +948,42 @@ export class IKSHOVIADatabase {
     console.log('[DB] Persistent database initial seeding complete.');
   }
 
+  public ensureAuthoritativeContent() {
+    console.log('[DB] Synchronizing authoritative UPSC & BPSC syllabus, PYQ bank, and Current Affairs...');
+    
+    // Always merge official subjects
+    OFFICIAL_SUBJECTS.forEach(sub => {
+      this.subjects.set(sub.id, sub);
+    });
+
+    // Always merge official topics
+    OFFICIAL_TOPICS.forEach(top => {
+      this.topics.set(top.id, top);
+    });
+
+    // Always merge official concepts
+    OFFICIAL_CONCEPTS.forEach(concept => {
+      this.concepts.set(concept.id, concept);
+    });
+
+    // Always merge official PYQs
+    OFFICIAL_PYQ_QUESTIONS.forEach(q => {
+      this.questions.set(q.id, q);
+    });
+
+    // Always merge official Current Affairs
+    OFFICIAL_CURRENT_AFFAIRS.forEach(ca => {
+      this.currentAffairs.set(ca.id, ca);
+    });
+
+    // Ensure system accounts exist
+    if (this.users.size === 0) {
+      this.seedIfEmpty();
+    } else {
+      this.save();
+    }
+  }
+
   public async loadFromPostgres(): Promise<void> {
     try {
       if (process.env.SQL_HOST) {
@@ -960,10 +999,8 @@ export const db = new IKSHOVIADatabase();
 
 export async function initDatabase(): Promise<IKSHOVIADatabase> {
   console.log('[DB] Initializing persistent database...');
-  const loaded = await db.loadFromSupabase();
-  if (!loaded) {
-    db.seedIfEmpty();
-  }
+  await db.loadFromSupabase();
+  db.ensureAuthoritativeContent();
   await db.loadFromPostgres();
   return db;
 }

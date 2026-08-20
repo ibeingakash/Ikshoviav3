@@ -152,17 +152,11 @@ REQUIRED JSON FORMAT:
         generatedQuestionId,
       };
     } catch (err: any) {
-      console.error(`[CurrentAffairsAiService] AI Enrichment failed for article ${articleId}:`, err.message);
-      // AI failure fallback: preserve source article and flag for review
-      const fallback = await currentAffairsRepository.updateArticle(articleId, {
-        status: 'REVIEW_REQUIRED',
-        isPublished: false,
-      });
-
+      console.warn(`[CurrentAffairsAiService] AI Enrichment bypassed or quota exhausted for article ${articleId}: ${err.message}. Preserving original article.`);
       return {
         success: false,
-        article: fallback || article,
-        error: `AI Enrichment failed: ${err.message}. Article stored and flagged for review.`,
+        article,
+        error: `AI Enrichment bypassed: ${err.message}`,
       };
     }
   }

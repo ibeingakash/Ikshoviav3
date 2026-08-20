@@ -1,4 +1,5 @@
 import pool from '../db/pool.js';
+import { db } from '../db.js';
 import { Question } from '../../src/types/index.js';
 
 export interface QuestionListParams {
@@ -113,6 +114,10 @@ export class QuestionRepository {
       return this.mapDataQuestionRowToQuestion(dqRes.rows[0]);
     }
 
+    if (db.questions.has(id)) {
+      return db.questions.get(id)!;
+    }
+
     return null;
   }
 
@@ -171,6 +176,71 @@ export class QuestionRepository {
     const items = merged.slice(offset, offset + limit);
 
     return { items, total };
+  }
+
+  async getPYQMetadata(): Promise<{
+    exams: string[];
+    years: number[];
+    stages: string[];
+    papers: string[];
+    totalCount: number;
+  }> {
+    try {
+      const qRes = await pool.query(`
+        SELECT DISTINCT exam, pyq_year, paper FROM public.questions WHERE (is_pyq = true OR exam_tag ILIKE '%PYQ%')
+      `);
+      const dqRes = await pool.query(`
+        SELECT DISTINCT exam, year as pyq_year, paper FROM data_questions WHERE is_pyq = true
+      `);
+
+      const examSet = new Set<string>();
+      const yearSet = new Set<number>();
+      const paperSet = new Set<string>();
+
+      const processRow = (row: any) => {
+        if (row.exam) {
+          const raw = String(row.exam).trim();
+          const clean = raw === 'UPSC_CSE' ? 'UPSC CSE' : raw.replace(/_/g, ' ');
+          if (clean && clean !== 'null') examSet.add(clean);
+        }
+        if (row.pyq_year && Number(row.pyq_year) > 1990) {
+          yearSet.add(Number(row.pyq_year));
+        }
+        if (row.paper) {
+          const p = String(row.paper).trim();
+          if (p && p !== 'null') paperSet.add(p);
+        }
+      };
+
+      qRes.rows.forEach(processRow);
+      dqRes.rows.forEach(processRow);
+
+      if (examSet.size === 0) {
+        examSet.add('UPSC CSE');
+        examSet.add('BPSC');
+        examSet.add('UPPCS');
+      }
+
+      const years = Array.from(yearSet).sort((a, b) => b - a);
+      const exams = Array.from(examSet).sort();
+      const papers = Array.from(paperSet).sort();
+
+      return {
+        exams: ['All', ...exams],
+        years,
+        stages: ['All Stages', 'Prelims', 'Mains'],
+        papers: ['All Papers', ...papers],
+        totalCount: qRes.rows.length + dqRes.rows.length,
+      };
+    } catch {
+      return {
+        exams: ['All', 'UPSC CSE', 'BPSC', 'UPPCS'],
+        years: [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018],
+        stages: ['All Stages', 'Prelims', 'Mains'],
+        papers: ['All Papers', 'GS Paper I', 'GS Paper II', 'GS Paper III', 'GS Paper IV', 'CSAT'],
+        totalCount: 0,
+      };
+    }
   }
 
   async listAll(): Promise<Question[]> {
@@ -232,11 +302,43 @@ export class QuestionRepository {
       RETURNING *
     `;
 
+    const normDifficulty = (data.difficulty || '').toUpperCase();
+    const safeDifficulty = ['EASY', 'MEDIUM', 'HARD'].includes(normDifficulty) ? normDifficulty : 'MEDIUM';
+
+    // Validate and resolve FK references against database
+    let conceptId = data.conceptId || 'c_art21';
+    let topicId = data.topicId;
+    let subjectId = data.subjectId;
+
+    const conRes = await pool.query(
+      'SELECT c.id, c.topic_id, t.subject_id FROM public.concepts c JOIN public.topics t ON c.topic_id = t.id WHERE c.id = $1',
+      [conceptId]
+    );
+
+    if (conRes.rows.length > 0) {
+      conceptId = conRes.rows[0].id;
+      topicId = topicId || conRes.rows[0].topic_id;
+      subjectId = subjectId || conRes.rows[0].subject_id;
+    } else {
+      const fallbackRes = await pool.query(
+        'SELECT c.id, c.topic_id, t.subject_id FROM public.concepts c JOIN public.topics t ON c.topic_id = t.id LIMIT 1'
+      );
+      if (fallbackRes.rows.length > 0) {
+        conceptId = fallbackRes.rows[0].id;
+        topicId = fallbackRes.rows[0].topic_id;
+        subjectId = fallbackRes.rows[0].subject_id;
+      } else {
+        conceptId = 'c_art21';
+        topicId = 'top_rights';
+        subjectId = 'sub_polity';
+      }
+    }
+
     const values = [
       data.id,
-      data.subjectId || 'sub_polity',
-      data.topicId || 'top_const',
-      data.conceptId || 'c_art32',
+      subjectId,
+      topicId,
+      conceptId,
       data.type || 'MCQ',
       data.question,
       data.question_en || data.question,
@@ -249,7 +351,7 @@ export class QuestionRepository {
       data.explanation_en || data.explanation || null,
       data.explanation_hi || null,
       data.availableLanguages ? JSON.stringify(data.availableLanguages) : JSON.stringify(['en']),
-      data.difficulty || 'MEDIUM',
+      safeDifficulty,
       data.examTag || null,
       data.pyqYear || null,
       data.exam || null,
@@ -280,52 +382,80 @@ export class QuestionRepository {
   }
 
   private async fetchCuratedQuestions(params: QuestionListParams): Promise<Question[]> {
-    let whereConditions: string[] = [];
-    let values: any[] = [];
-    let idx = 1;
+    const memoryQuestions = Array.from(db.questions.values()).filter(q => {
+      if (params.subjectId && q.subjectId !== params.subjectId) return false;
+      if (params.topicId && q.topicId !== params.topicId) return false;
+      if (params.conceptId && q.conceptId !== params.conceptId) return false;
+      if (params.isPyq !== undefined && Boolean(q.isPyq) !== params.isPyq) return false;
+      if (params.isPublished !== undefined && q.isPublished !== params.isPublished) return false;
+      if (params.status && q.status !== params.status) return false;
+      if (params.difficulty && q.difficulty?.toLowerCase() !== params.difficulty.toLowerCase()) return false;
+      if (params.examTag && !q.examTag?.toLowerCase().includes(params.examTag.toLowerCase()) && !q.exam?.toLowerCase().includes(params.examTag.toLowerCase())) return false;
+      if (params.searchQuery) {
+        const sq = params.searchQuery.toLowerCase();
+        const inQ = q.question?.toLowerCase().includes(sq);
+        const inExp = q.explanation?.toLowerCase().includes(sq);
+        if (!inQ && !inExp) return false;
+      }
+      return true;
+    });
 
-    if (params.subjectId) {
-      whereConditions.push(`subject_id = $${idx++}`);
-      values.push(params.subjectId);
-    }
-    if (params.topicId) {
-      whereConditions.push(`topic_id = $${idx++}`);
-      values.push(params.topicId);
-    }
-    if (params.conceptId) {
-      whereConditions.push(`concept_id = $${idx++}`);
-      values.push(params.conceptId);
-    }
-    if (params.isPyq !== undefined) {
-      whereConditions.push(`is_pyq = $${idx++}`);
-      values.push(params.isPyq);
-    }
-    if (params.isPublished !== undefined) {
-      whereConditions.push(`is_published = $${idx++}`);
-      values.push(params.isPublished);
-    }
-    if (params.status) {
-      whereConditions.push(`status = $${idx++}`);
-      values.push(params.status);
-    }
-    if (params.difficulty) {
-      whereConditions.push(`difficulty ILIKE $${idx++}`);
-      values.push(params.difficulty);
-    }
-    if (params.examTag) {
-      whereConditions.push(`(exam_tag ILIKE $${idx} OR exam ILIKE $${idx})`);
-      values.push(`%${params.examTag}%`);
-      idx++;
-    }
-    if (params.searchQuery) {
-      whereConditions.push(`(question ILIKE $${idx} OR explanation ILIKE $${idx})`);
-      values.push(`%${params.searchQuery}%`);
-      idx++;
-    }
+    try {
+      let whereConditions: string[] = [];
+      let values: any[] = [];
+      let idx = 1;
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-    const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY created_at DESC`, values);
-    return res.rows.map(r => this.mapRowToQuestion(r));
+      if (params.subjectId) {
+        whereConditions.push(`subject_id = ${idx++}`);
+        values.push(params.subjectId);
+      }
+      if (params.topicId) {
+        whereConditions.push(`topic_id = ${idx++}`);
+        values.push(params.topicId);
+      }
+      if (params.conceptId) {
+        whereConditions.push(`concept_id = ${idx++}`);
+        values.push(params.conceptId);
+      }
+      if (params.isPyq !== undefined) {
+        whereConditions.push(`is_pyq = ${idx++}`);
+        values.push(params.isPyq);
+      }
+      if (params.isPublished !== undefined) {
+        whereConditions.push(`is_published = ${idx++}`);
+        values.push(params.isPublished);
+      }
+      if (params.status) {
+        whereConditions.push(`status = ${idx++}`);
+        values.push(params.status);
+      }
+      if (params.difficulty) {
+        whereConditions.push(`difficulty ILIKE ${idx++}`);
+        values.push(params.difficulty);
+      }
+      if (params.examTag) {
+        whereConditions.push(`(exam_tag ILIKE ${idx} OR exam ILIKE ${idx})`);
+        values.push(`%${params.examTag}%`);
+        idx++;
+      }
+      if (params.searchQuery) {
+        whereConditions.push(`(question ILIKE ${idx} OR explanation ILIKE ${idx})`);
+        values.push(`%${params.searchQuery}%`);
+        idx++;
+      }
+
+      const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+      const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY created_at DESC`, values);
+      const dbQuestions = res.rows.map(r => this.mapRowToQuestion(r));
+
+      // Combine memory and database questions by ID
+      const map = new Map<string, Question>();
+      memoryQuestions.forEach(q => map.set(q.id, q));
+      dbQuestions.forEach(q => map.set(q.id, q));
+      return Array.from(map.values());
+    } catch {
+      return memoryQuestions;
+    }
   }
 
   private async fetchOfficialQuestions(params: QuestionListParams): Promise<Question[]> {
@@ -389,35 +519,60 @@ export class QuestionRepository {
   }
 
   private async fetchCuratedPYQs(params: PYQListParams): Promise<Question[]> {
-    let whereConditions: string[] = ['(is_pyq = true OR exam_tag ILIKE \'%PYQ%\')', 'is_published = true'];
-    let values: any[] = [];
-    let idx = 1;
+    const memoryPYQs = Array.from(db.questions.values()).filter(q => {
+      const isPyq = q.isPyq || q.examTag?.includes('PYQ');
+      if (!isPyq) return false;
+      if (q.isPublished === false) return false;
+      if (params.subjectId && q.subjectId !== params.subjectId) return false;
+      if (params.topicId && q.topicId !== params.topicId) return false;
+      if (params.conceptId && q.conceptId !== params.conceptId) return false;
+      if (params.exam && params.exam !== 'All') {
+        const normExam = params.exam.toLowerCase();
+        const matchesExam = q.exam?.toLowerCase().includes(normExam) || q.examTag?.toLowerCase().includes(normExam);
+        if (!matchesExam) return false;
+      }
+      if (params.pyqYear && q.pyqYear !== params.pyqYear) return false;
+      return true;
+    });
 
-    if (params.subjectId) {
-      whereConditions.push(`subject_id = $${idx++}`);
-      values.push(params.subjectId);
-    }
-    if (params.topicId) {
-      whereConditions.push(`topic_id = $${idx++}`);
-      values.push(params.topicId);
-    }
-    if (params.conceptId) {
-      whereConditions.push(`concept_id = $${idx++}`);
-      values.push(params.conceptId);
-    }
-    if (params.exam && params.exam !== 'All') {
-      whereConditions.push(`(exam ILIKE $${idx} OR exam_tag ILIKE $${idx})`);
-      values.push(`%${params.exam}%`);
-      idx++;
-    }
-    if (params.pyqYear) {
-      whereConditions.push(`pyq_year = $${idx++}`);
-      values.push(params.pyqYear);
-    }
+    try {
+      let whereConditions: string[] = ['(is_pyq = true OR exam_tag ILIKE \'%PYQ%\')', 'is_published = true'];
+      let values: any[] = [];
+      let idx = 1;
 
-    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-    const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY pyq_year DESC NULLS LAST, created_at DESC`, values);
-    return res.rows.map(r => this.mapRowToQuestion(r));
+      if (params.subjectId) {
+        whereConditions.push(`subject_id = ${idx++}`);
+        values.push(params.subjectId);
+      }
+      if (params.topicId) {
+        whereConditions.push(`topic_id = ${idx++}`);
+        values.push(params.topicId);
+      }
+      if (params.conceptId) {
+        whereConditions.push(`concept_id = ${idx++}`);
+        values.push(params.conceptId);
+      }
+      if (params.exam && params.exam !== 'All') {
+        whereConditions.push(`(exam ILIKE ${idx} OR exam_tag ILIKE ${idx})`);
+        values.push(`%${params.exam}%`);
+        idx++;
+      }
+      if (params.pyqYear) {
+        whereConditions.push(`pyq_year = ${idx++}`);
+        values.push(params.pyqYear);
+      }
+
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+      const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY pyq_year DESC NULLS LAST, created_at DESC`, values);
+      const dbPYQs = res.rows.map(r => this.mapRowToQuestion(r));
+
+      const map = new Map<string, Question>();
+      memoryPYQs.forEach(q => map.set(q.id, q));
+      dbPYQs.forEach(q => map.set(q.id, q));
+      return Array.from(map.values());
+    } catch {
+      return memoryPYQs;
+    }
   }
 
   private async fetchOfficialPYQs(params: PYQListParams): Promise<Question[]> {

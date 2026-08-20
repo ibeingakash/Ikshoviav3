@@ -537,7 +537,123 @@ export const api = {
     return res.json();
   },
 
-  // Current Affairs & Resources
+  // Current Affairs & Day-Wise Reader Engine
+  getDayCurrentAffairs: async (filters?: {
+    date?: string;
+    exam?: string;
+    category?: string;
+    biharOnly?: boolean;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    date: string;
+    formattedDate: string;
+    isToday: boolean;
+    digest: {
+      date: string;
+      formattedDate: string;
+      totalDiscovered: number;
+      totalEligible: number;
+      topStoriesCount: number;
+      importantDevelopmentsCount: number;
+      editorialsCount: number;
+      topicClustersCount: number;
+      sourcesCount: number;
+      sourcesDetected: string[];
+    };
+    topStories: CurrentAffairArticle[];
+    importantDevelopments: CurrentAffairArticle[];
+    editorials: CurrentAffairArticle[];
+    topicClusters: any[];
+    availableDates: { date: string; formatted: string; count: number; isToday: boolean }[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalImportant: number;
+      totalPages: number;
+      hasMore: boolean;
+    };
+  }> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.date) params.append('date', filters.date);
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.biharOnly) params.append('biharOnly', 'true');
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/current-affairs/day?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load day feed');
+      return res.json();
+    } catch {
+      const todayStr = new Date().toISOString().split('T')[0];
+      return {
+        date: todayStr,
+        formattedDate: todayStr,
+        isToday: true,
+        digest: {
+          date: todayStr,
+          formattedDate: todayStr,
+          totalDiscovered: 0,
+          totalEligible: 0,
+          topStoriesCount: 0,
+          importantDevelopmentsCount: 0,
+          editorialsCount: 0,
+          topicClustersCount: 0,
+          sourcesCount: 0,
+          sourcesDetected: [],
+        },
+        topStories: [],
+        importantDevelopments: [],
+        editorials: [],
+        topicClusters: [],
+        availableDates: [],
+        pagination: { page: 1, limit: 8, totalImportant: 0, totalPages: 1, hasMore: false },
+      };
+    }
+  },
+
+  getDailyDigest: async (date?: string, exam?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (date) params.append('date', date);
+      if (exam) params.append('exam', exam);
+      const res = await apiFetch(`/api/current-affairs/daily-digest?${params.toString()}`);
+      return res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getCurrentAffairsArchive: async (filters?: {
+    startDate?: string;
+    endDate?: string;
+    date?: string;
+    category?: string;
+    exam?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.startDate) params.append('startDate', filters.startDate);
+      if (filters?.endDate) params.append('endDate', filters.endDate);
+      if (filters?.date) params.append('date', filters.date);
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/current-affairs/archive?${params.toString()}`);
+      return res.json();
+    } catch {
+      return { groupedByDate: [], totalArticles: 0, page: 1, limit: 15, totalPages: 1, hasMore: false };
+    }
+  },
+
   getCurrentAffairs: async (filters?: { category?: string; dateRange?: string; search?: string; subjectId?: string; exam?: string; relevance?: string; biharOnly?: boolean }): Promise<CurrentAffairArticle[]> => {
     try {
       const params = new URLSearchParams();
@@ -556,6 +672,121 @@ export const api = {
     } catch {
       return [];
     }
+  },
+
+  getEditorials: async (filters?: {
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    source?: string;
+    gsPaper?: string;
+    articleType?: string;
+    search?: string;
+    limit?: number;
+  }): Promise<CurrentAffairArticle[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.date) params.append('date', filters.date);
+      if (filters?.startDate) params.append('startDate', filters.startDate);
+      if (filters?.endDate) params.append('endDate', filters.endDate);
+      if (filters?.source) params.append('source', filters.source);
+      if (filters?.gsPaper) params.append('gsPaper', filters.gsPaper);
+      if (filters?.articleType) params.append('articleType', filters.articleType);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/current-affairs/editorials?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getAvailableEditorialDates: async (): Promise<{ date: string; formatted: string; count: number }[]> => {
+    try {
+      const res = await apiFetch('/api/current-affairs/editorials/dates');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getBiharFeed: async (filters?: {
+    date?: string;
+    category?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    date?: string;
+    formattedDate?: string;
+    totalArticles: number;
+    articles: CurrentAffairArticle[];
+    availableDates: { date: string; formatted: string; count: number }[];
+    policyHighlights: {
+      title: string;
+      sector: string;
+      bpscPaper: string;
+      summary: string;
+      targetYear: string;
+    }[];
+    page: number;
+    totalPages: number;
+    hasMore: boolean;
+  }> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.date) params.append('date', filters.date);
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/current-affairs/bihar?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load Bihar feed');
+      return res.json();
+    } catch {
+      return {
+        totalArticles: 0,
+        articles: [],
+        availableDates: [],
+        policyHighlights: [],
+        page: 1,
+        totalPages: 1,
+        hasMore: false,
+      };
+    }
+  },
+
+  getAvailableBiharDates: async (): Promise<{ date: string; formatted: string; count: number }[]> => {
+    try {
+      const res = await apiFetch('/api/current-affairs/bihar/dates');
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getTopicClusters: async (): Promise<any[]> => {
+    try {
+      const res = await apiFetch(`/api/current-affairs/topic-clusters`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getTopicClusterDetails: async (id: string): Promise<any> => {
+    const res = await apiFetch(`/api/current-affairs/topic-clusters/${id}`);
+    return res.json();
   },
 
   getCurrentAffairById: async (id: string): Promise<CurrentAffairArticle> => {
@@ -584,6 +815,16 @@ export const api = {
 
   adminGetCurrentAffairsMetrics: async () => {
     const res = await apiFetch(`/api/admin/current-affairs/metrics`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  adminGetIngestionRuns: async (limit = 30) => {
+    const res = await apiFetch(`/api/admin/current-affairs/ingestion-runs?limit=${limit}`, { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  adminGetSourceFreshness: async () => {
+    const res = await apiFetch(`/api/admin/current-affairs/source-freshness`, { headers: getAuthHeaders() });
     return res.json();
   },
 
@@ -643,12 +884,35 @@ export const api = {
     return res.json();
   },
 
-  getPYQs: async (filters?: { exam?: string; year?: number; paper?: string; subjectId?: string; topicId?: string; search?: string }): Promise<Question[]> => {
+  getPYQMetadata: async (): Promise<{
+    exams: string[];
+    years: number[];
+    stages: string[];
+    papers: string[];
+    totalCount: number;
+  }> => {
+    try {
+      const res = await apiFetch('/api/pyqs/metadata');
+      if (!res.ok) throw new Error('Failed to fetch PYQ metadata');
+      return await res.json();
+    } catch {
+      return {
+        exams: ['All', 'UPSC CSE', 'BPSC', 'UPPCS'],
+        years: [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018],
+        stages: ['All Stages', 'Prelims', 'Mains'],
+        papers: ['All Papers', 'GS Paper I', 'GS Paper II', 'GS Paper III', 'GS Paper IV', 'CSAT'],
+        totalCount: 0,
+      };
+    }
+  },
+
+  getPYQs: async (filters?: { exam?: string; year?: number | string; stage?: string; paper?: string; subjectId?: string; topicId?: string; search?: string }): Promise<Question[]> => {
     try {
       const params = new URLSearchParams();
       if (filters?.exam) params.append('exam', filters.exam);
-      if (filters?.year) params.append('year', String(filters.year));
-      if (filters?.paper) params.append('paper', filters.paper);
+      if (filters?.year && String(filters.year) !== 'All') params.append('year', String(filters.year));
+      if (filters?.stage && filters.stage !== 'All Stages') params.append('stage', filters.stage);
+      if (filters?.paper && filters.paper !== 'All Papers') params.append('paper', filters.paper);
       if (filters?.subjectId) params.append('subjectId', filters.subjectId);
       if (filters?.topicId) params.append('topicId', filters.topicId);
       if (filters?.search) params.append('search', filters.search);
