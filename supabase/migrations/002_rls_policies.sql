@@ -114,3 +114,16 @@ CREATE POLICY "Users access own AI conversations" ON public.ai_conversations
 DROP POLICY IF EXISTS "Users access own AI messages" ON public.ai_messages;
 CREATE POLICY "Users access own AI messages" ON public.ai_messages 
   FOR ALL USING (COALESCE(current_setting('request.jwt.claim.sub', true), current_user) = user_id);
+
+-- 4. RBAC & PERMISSIONS SECURITY HARDENING (Server-Only Access)
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.permissions FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions FORCE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE public.permissions FROM anon, authenticated;
+REVOKE ALL ON TABLE public.role_permissions FROM anon, authenticated;
+
+GRANT ALL ON TABLE public.permissions TO postgres, service_role;
+GRANT ALL ON TABLE public.role_permissions TO postgres, service_role;
+

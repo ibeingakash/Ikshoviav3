@@ -203,7 +203,7 @@ export interface Question {
   options?: QuestionOption[];
   correctAnswer: string; // Option ID or exact text
   explanation: string;
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'INTERMEDIATE' | 'BEGINNER' | 'ADVANCED';
   examTag?: string;
   pyqYear?: number;
   exam?: string;
@@ -301,7 +301,7 @@ export interface MockAttempt {
   startedAt?: string;
 }
 
-export type ArticleType = 'EDITORIAL' | 'OPINION' | 'EXPLAINER' | 'UPSC_GUIDE' | 'CURRENT_AFFAIR';
+export type ArticleType = 'EDITORIAL' | 'OPINION' | 'EXPLAINER' | 'UPSC_GUIDE' | 'CURRENT_AFFAIR' | 'STANDARD';
 
 export interface PyqLinkage {
   id?: string;
@@ -316,15 +316,21 @@ export interface PyqLinkage {
 
 export interface MainsModelQuestion {
   question: string;
-  marks: 10 | 15 | 20 | 38;
-  wordCount: 150 | 250 | 400;
-  gsPaper: string;
-  approachOutline: string[];
-  keyKeywords: string[];
+  marks?: number;
+  wordCount?: number;
+  gsPaper?: string;
+  approachOutline?: string[];
+  keyKeywords?: string[];
+  modelStructure?: {
+    introduction?: string;
+    body?: string;
+    conclusion?: string;
+  };
   modelAnswerSummary?: string;
 }
 
 export interface EditorialAnalysis {
+  coreArgument?: string;
   argumentsFor?: string[];
   argumentsAgainst?: string[];
   constitutionalDimensions?: string[];
@@ -409,7 +415,7 @@ export interface CurrentAffairArticle {
   issuesAndChallenges?: string[];
   wayForward?: string[];
   gsPaper?: string;
-  examRelevance?: 'UPSC' | 'BPSC' | 'BOTH';
+  examRelevance?: 'UPSC' | 'BPSC' | 'BOTH' | string | string[];
   prelimsRelevance?: string;
   mainsRelevance?: string;
   biharRelevance?: string;
@@ -419,14 +425,27 @@ export interface CurrentAffairArticle {
   relatedSubject?: string;
   relatedConceptIds?: string[];
   keywords?: string[];
-  source: string; // E.g. 'The Hindu', 'The Indian Express', 'Supreme Court of India', 'Reserve Bank of India (RBI)'
+  content?: string;
+  tags?: string[];
+  mainsQuestions?: string[];
+  isTopStory?: boolean;
+  isEditorial?: boolean;
+  isBiharSpecial?: boolean;
+  importance?: 'HIGH' | 'MEDIUM' | 'LOW';
+  subjectId?: string;
+  conceptId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  source: string; // E.g. 'Press Information Bureau (PIB)', 'The Hindu', 'Supreme Court of India', 'Reserve Bank of India (RBI)'
   sourceUrl?: string;
-  sourceType?: 'PRIMARY_GOVT' | 'SECONDARY_NEWS' | 'OFFICIAL_PORTAL';
+  sourceDomain?: string;
+  sourceType?: 'PRIMARY_GOVT' | 'SECONDARY_NEWS' | 'OFFICIAL_PORTAL' | 'SUPPLEMENTARY_REFERENCE' | 'EDUCATIONAL_ANALYSIS' | string;
   primarySource?: string;
   documentType?: string;
   secondarySource?: string;
   editorialSource?: string;
   articleType?: ArticleType;
+  rawContent?: string;
   editorialAnalysis?: EditorialAnalysis;
   topicClusterId?: string;
   topicClusterTitle?: string;
@@ -434,10 +453,20 @@ export interface CurrentAffairArticle {
   relatedCurrentAffairIds?: string[];
   relatedPyqIds?: string[];
   sourceProvenance?: Record<string, any>;
+  verificationStatus?: 'VERIFIED' | 'UNVERIFIED' | 'FAILED' | string;
+  qualityStatus?: 'PASSED' | 'FLAGGED' | 'REJECTED' | string;
+  rejectionReason?: string;
+  upscRelevant?: boolean;
+  bpscRelevant?: boolean;
+  relevanceScore?: number;
+  relevanceReason?: string;
+  canonicalUrl?: string;
+  contentHash?: string;
   status?: 'INGESTED' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PUBLISHED' | 'REJECTED';
   publishedAt?: string;
   retrievedAt?: string;
-  isPublished: boolean;
+  discoveredAt?: string;
+  isPublished?: boolean;
   questions?: Question[];
 }
 

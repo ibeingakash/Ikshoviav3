@@ -14,8 +14,10 @@ import { currentAffairsRepository } from './server/repositories/CurrentAffairsRe
 import { currentAffairsIngestionManager } from './server/services/CurrentAffairsProvider.js';
 import { currentAffairsAiService } from './server/services/CurrentAffairsAiService.js';
 import { ensureFastApiBridgeStarted, proxyFastApiHealth, proxyFastApiRequest } from './server/services/fastapiBridge.js';
+import { openapiSpec } from './server/openapiSpec.js';
 import pool from './server/db/pool.js';
 import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
+import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './server/db/syllabusData.js';
 import {
   recordQuestionAttempt,
   updateLearnerModel,
@@ -110,6 +112,51 @@ async function startServer() {
   await userRepository.ensureDefaultAccounts(hashPassword);
   await currentAffairsRepository.ensureSeedArticles();
   ensureFastApiBridgeStarted().catch((err) => console.warn('[FastAPI Bridge Startup Warning]', err));
+
+  // Current Affairs Ingestion Orchestrator & Periodic Background Scheduler
+  let lastIngestionRunTimestamp = new Date().toISOString();
+  let lastIngestionRunSummary: any = null;
+  let isIngestionRunning = false;
+
+  const triggerIngestion = async (triggerType: 'STARTUP' | 'SCHEDULED' | 'MANUAL' | 'ADMIN') => {
+    if (isIngestionRunning) {
+      console.log(`[CurrentAffairs Ingestion] Ingestion already in progress (trigger: ${triggerType}), skipping duplicate trigger.`);
+      return { skipped: true, reason: 'ALREADY_RUNNING' };
+    }
+    isIngestionRunning = true;
+    try {
+      console.log(`[CurrentAffairs Ingestion] Starting ingestion cycle (trigger: ${triggerType})...`);
+      const result = await currentAffairsIngestionManager.runIngestionPipeline();
+      lastIngestionRunTimestamp = new Date().toISOString();
+      lastIngestionRunSummary = {
+        triggerType,
+        completedAt: lastIngestionRunTimestamp,
+        createdCount: result.createdCount,
+        duplicateCount: result.duplicateCount,
+        editorialsCount: result.editorialsCount,
+        fetchedCount: result.fetchedCount,
+        failedCount: result.failedCount,
+      };
+      console.log(`[CurrentAffairs Ingestion] Ingestion cycle completed (${triggerType}): ${result.createdCount} created, ${result.duplicateCount} duplicates, ${result.editorialsCount} editorials.`);
+      return { success: true, ...lastIngestionRunSummary };
+    } catch (err: any) {
+      console.error(`[CurrentAffairs Ingestion] Error during ingestion (${triggerType}):`, err);
+      return { success: false, error: err?.message || String(err) };
+    } finally {
+      isIngestionRunning = false;
+    }
+  };
+
+  // Launch initial automated ingestion pipeline on startup
+  triggerIngestion('STARTUP').catch((e) => console.warn('[Startup Ingestion Warning]', e));
+
+  // Schedule periodic background execution (every 2 hours)
+  const INGESTION_INTERVAL_MS = 2 * 60 * 60 * 1000;
+  const ingestionTimer = setInterval(() => {
+    triggerIngestion('SCHEDULED').catch((e) => console.warn('[Scheduled Ingestion Warning]', e));
+  }, INGESTION_INTERVAL_MS);
+  ingestionTimer.unref();
+
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
@@ -125,7 +172,7 @@ async function startServer() {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https: wss:; frame-ancestors 'self' https://*.google.com https://*.run.app;"
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob: https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob: validator.swagger.io; connect-src 'self' https: wss:; frame-ancestors 'self' https://*.google.com https://*.run.app;"
     );
 
     // Controlled CORS origin policy
@@ -189,6 +236,115 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', app: 'IKSHOVIA', timestamp: new Date().toISOString() });
   });
+
+  // OpenAPI Specification endpoint
+  app.get('/openapi.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json(openapiSpec);
+  });
+
+  app.get('/api/openapi.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json(openapiSpec);
+  });
+
+  // Interactive Swagger UI HTML Route
+  const renderSwaggerUI = (req: express.Request, res: express.Response) => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IKSHOVIA — Interactive Swagger API Explorer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="icon" type="image/png" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/favicon-32x32.png" sizes="32x32" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .topbar {
+      display: none !important;
+    }
+    .custom-header {
+      background: linear-gradient(135deg, #1e1035 0%, #35156B 100%);
+      color: #ffffff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #e2b714;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+    .custom-header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .custom-header .badge {
+      background: #fef08a;
+      color: #713f12;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+    .swagger-ui .info {
+      margin: 20px 0 !important;
+    }
+    .swagger-ui .scheme-container {
+      background: #ffffff !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+      padding: 15px 0 !important;
+      border-radius: 8px !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="custom-header">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <h1>IKSHOVIA API Explorer</h1>
+      <span class="badge">UPSC & BPSC Intelligence Engine</span>
+    </div>
+    <div style="font-size: 13px; opacity: 0.9;">
+      OpenAPI 3.0.3 &bull; Live Interactive Console
+    </div>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "BaseLayout",
+        defaultModelsExpandDepth: -1,
+        docExpansion: "list"
+      });
+    };
+  </script>
+</body>
+</html>`;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  };
+
+  app.get('/docs', renderSwaggerUI);
+  app.get('/swagger', renderSwaggerUI);
+  app.get('/api/docs', renderSwaggerUI);
 
   // FastAPI Data API Proxy Bridge (Isolated to /api/v1/data/*)
   app.get('/api/v1/data/health', async (req, res) => {
@@ -536,30 +692,44 @@ async function startServer() {
 
     const isCorrect = String(userAnswer) === String(question.correctAnswer);
 
-    const attempt: QuestionAttempt = {
-      id: `att_${Date.now()}`,
-      userId: uid,
-      questionId,
-      conceptId: question.conceptId,
-      userAnswer,
-      isCorrect,
-      timeSpentSeconds: timeSpentSeconds || 25,
-      confidenceRating: confidenceRating || 3,
-      mistakeCategory: isCorrect ? undefined : (mistakeCategory || 'CONCEPT_GAP'),
-      timestamp: new Date().toISOString(),
-    };
-
     const client = await pool.connect();
     let updatedMastery;
     try {
       await client.query('BEGIN');
+
+      let resolvedConceptId = question.conceptId;
+      const qExists = await client.query('SELECT concept_id FROM public.questions WHERE id = $1', [questionId]);
+      if (qExists.rows.length === 0) {
+        const savedQ = await questionRepository.create(question);
+        resolvedConceptId = savedQ.conceptId;
+      } else {
+        resolvedConceptId = qExists.rows[0].concept_id;
+      }
+
+      const conceptCheck = await client.query('SELECT 1 FROM public.concepts WHERE id = $1', [resolvedConceptId]);
+      if (conceptCheck.rows.length === 0) {
+        resolvedConceptId = 'c_art21';
+      }
+
+      const attempt: QuestionAttempt = {
+        id: `att_${Date.now()}`,
+        userId: uid,
+        questionId,
+        conceptId: resolvedConceptId,
+        userAnswer,
+        isCorrect,
+        timeSpentSeconds: timeSpentSeconds || 25,
+        confidenceRating: confidenceRating || 3,
+        mistakeCategory: isCorrect ? undefined : (mistakeCategory || 'CONCEPT_GAP'),
+        timestamp: new Date().toISOString(),
+      };
 
       await practiceRepository.recordAttempt(attempt, client);
 
       await practiceRepository.recordLearningEvent(
         {
           userId: uid,
-          conceptId: question.conceptId,
+          conceptId: resolvedConceptId,
           eventType: 'QUESTION_ATTEMPT',
           payload: { questionId, isCorrect, userAnswer, mistakeCategory: attempt.mistakeCategory },
         },
@@ -568,7 +738,7 @@ async function startServer() {
 
       updatedMastery = await recordQuestionAttempt(
         uid,
-        question.conceptId,
+        resolvedConceptId,
         isCorrect,
         timeSpentSeconds || 25,
         confidenceRating || 3,
@@ -675,7 +845,28 @@ async function startServer() {
     const userMasteries = await learnerRepository.getUserMasteries(userId);
     const masteryMap = new Map(userMasteries.map(m => [m.conceptId, m]));
 
-    const nodes = Array.from(db.concepts.values()).map(c => {
+    let conceptsList = OFFICIAL_CONCEPTS;
+    try {
+      const cRes = await pool.query('SELECT * FROM public.concepts');
+      if (cRes.rows.length > 0) {
+        conceptsList = cRes.rows.map(r => ({
+          id: r.id,
+          subjectId: r.subject_id,
+          topicId: r.topic_id,
+          title: r.title,
+          summary: r.summary,
+          explanation: r.explanation,
+          difficulty: r.difficulty,
+          importance: r.importance,
+        } as any));
+      }
+    } catch {
+      // fallback to OFFICIAL_CONCEPTS
+    }
+
+    const subjectMap = new Map(OFFICIAL_SUBJECTS.map(s => [s.id, s]));
+
+    const nodes = conceptsList.map(c => {
       const m = masteryMap.get(c.id);
       let status: 'Mastered' | 'Strong' | 'Developing' | 'Weak' | 'Unexplored' = 'Unexplored';
       if (m) {
@@ -685,7 +876,7 @@ async function startServer() {
         else status = 'Weak';
       }
 
-      const subject = db.subjects.get(c.subjectId);
+      const subject = subjectMap.get(c.subjectId) || db.subjects.get(c.subjectId);
       return {
         id: c.id,
         title: c.title,
@@ -981,7 +1172,54 @@ async function startServer() {
     }
   });
 
-  // Current Affairs Endpoints (PostgreSQL Source of Truth)
+  // Current Affairs Day-Wise Reader Engine (PostgreSQL Source of Truth)
+  app.get('/api/current-affairs/day', async (req, res) => {
+    try {
+      const { date, exam, category, biharOnly, page, limit } = req.query;
+      const feed = await currentAffairsRepository.getDayFeed({
+        date: date as string,
+        exam: exam as string,
+        category: category as string,
+        biharOnly: biharOnly === 'true',
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 8,
+      });
+      res.json(feed);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get day feed' });
+    }
+  });
+
+  app.get('/api/current-affairs/daily-digest', async (req, res) => {
+    try {
+      const { date, exam } = req.query;
+      const digest = await currentAffairsRepository.getDailyDigest(date as string, exam as string);
+      res.json(digest);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get daily digest' });
+    }
+  });
+
+  app.get('/api/current-affairs/archive', async (req, res) => {
+    try {
+      const { startDate, endDate, date, category, exam, search, page, limit } = req.query;
+      const archive = await currentAffairsRepository.getArchiveFeed({
+        startDate: startDate as string,
+        endDate: endDate as string,
+        date: date as string,
+        category: category as string,
+        exam: exam as string,
+        search: search as string,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 15,
+      });
+      res.json(archive);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get archive feed' });
+    }
+  });
+
+  // Current Affairs General Endpoint (Backwards-Compatible)
   app.get('/api/current-affairs', async (req, res) => {
     try {
       const { category, dateRange, search, subjectId, exam, relevance, biharOnly } = req.query;
@@ -1001,11 +1239,42 @@ async function startServer() {
     }
   });
 
+  // Dedicated Current Affairs Articles Filter & Search Endpoint (for Swagger & Direct API)
+  app.get('/api/current-affairs/articles', async (req, res) => {
+    try {
+      const { query, search, date, startDate, endDate, category, exam, examRelevance, relevance, biharOnly, limit, offset } = req.query;
+      const effectiveSearch = (query || search) as string;
+      const effectiveExam = (examRelevance || exam) as any;
+      const list = await currentAffairsRepository.listArticles({
+        search: effectiveSearch,
+        date: date as string,
+        startDate: startDate as string,
+        endDate: endDate as string,
+        category: category as string,
+        exam: effectiveExam,
+        relevance: relevance as any,
+        biharOnly: biharOnly === 'true',
+        isPublished: true,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+      res.json({
+        articles: list,
+        total: list.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list articles' });
+    }
+  });
+
   // Dedicated Editorial & Opinion Intelligence Feed
   app.get('/api/current-affairs/editorials', async (req, res) => {
     try {
-      const { source, gsPaper, articleType, search, limit, offset } = req.query;
+      const { date, startDate, endDate, source, gsPaper, articleType, search, limit, offset } = req.query;
       const list = await currentAffairsRepository.listEditorials({
+        date: date as string,
+        startDate: startDate as string,
+        endDate: endDate as string,
         source: source as string,
         gsPaper: gsPaper as string,
         articleType: articleType as string,
@@ -1019,7 +1288,67 @@ async function startServer() {
     }
   });
 
-  // Multi-Source Topic Clusters & Perspectives
+  app.get('/api/current-affairs/editorials/dates', async (req, res) => {
+    try {
+      const dates = await currentAffairsRepository.getAvailableEditorialDates();
+      res.json(dates);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get available editorial dates' });
+    }
+  });
+
+  // Dedicated Bihar Special Feed & Intelligence Endpoints
+  app.get('/api/current-affairs/bihar', async (req, res) => {
+    try {
+      const { date, category, search, page, limit } = req.query;
+      const feed = await currentAffairsRepository.getBiharFeed({
+        date: date as string,
+        category: category as string,
+        search: search as string,
+        page: page ? parseInt(page as string) : 1,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+      res.json(feed);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get Bihar feed' });
+    }
+  });
+
+  app.get('/api/current-affairs/bihar/dates', async (req, res) => {
+    try {
+      const dates = await currentAffairsRepository.getAvailableBiharDates();
+      res.json(dates);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get Bihar dates' });
+    }
+  });
+
+  app.get('/api/current-affairs/bihar/articles', async (req, res) => {
+    try {
+      const { date, category, search, limit, offset } = req.query;
+      const articles = await currentAffairsRepository.listBiharArticles({
+        date: date as string,
+        category: category as string,
+        search: search as string,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+      res.json(articles);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list Bihar articles' });
+    }
+  });
+
+  // Multi-Source Topic Clusters & Perspectives (Alias /clusters and /topic-clusters)
+  app.get('/api/current-affairs/clusters', async (req, res) => {
+    try {
+      const clusters = await currentAffairsRepository.listTopicClusters();
+      res.json(clusters);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to list clusters' });
+    }
+  });
+
   app.get('/api/current-affairs/topic-clusters', async (req, res) => {
     try {
       const clusters = await currentAffairsRepository.listTopicClusters();
@@ -1036,6 +1365,85 @@ async function startServer() {
       res.json(details);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to get topic cluster details' });
+    }
+  });
+
+  // Source Freshness & Ingestion Health Status (Public API)
+  app.get('/api/current-affairs/freshness', async (req, res) => {
+    try {
+      const freshnessList = await currentAffairsRepository.getSourceFreshnessList();
+      res.json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        sources: freshnessList,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get source freshness' });
+    }
+  });
+
+  // Current Affairs Ingestion Trigger & Status Endpoints
+  app.post('/api/current-affairs/ingest', async (req, res) => {
+    try {
+      const summary = await triggerIngestion('MANUAL');
+      res.json({
+        status: summary.success ? 'COMPLETED' : summary.skipped ? 'SKIPPED' : 'FAILED',
+        timestamp: new Date().toISOString(),
+        summary,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to trigger ingestion' });
+    }
+  });
+
+  app.post('/api/admin/current-affairs/ingest', requireAdmin, async (req, res) => {
+    try {
+      const summary = await triggerIngestion('ADMIN');
+      res.json({
+        status: summary.success ? 'COMPLETED' : summary.skipped ? 'SKIPPED' : 'FAILED',
+        timestamp: new Date().toISOString(),
+        summary,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to trigger admin ingestion' });
+    }
+  });
+
+  app.get('/api/current-affairs/ingest/status', async (req, res) => {
+    res.json({
+      schedulerRunning: true,
+      schedulerIntervalMs: INGESTION_INTERVAL_MS,
+      isIngestionRunning,
+      lastRunTimestamp: lastIngestionRunTimestamp,
+      lastRunSummary: lastIngestionRunSummary,
+    });
+  });
+
+  app.get('/api/current-affairs/ingest/runs', async (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 25;
+      const runs = await currentAffairsRepository.listIngestionRuns(limit);
+      res.json({
+        status: 'OK',
+        count: runs.length,
+        runs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get ingestion runs' });
+    }
+  });
+
+  app.get('/api/admin/current-affairs/ingest/runs', requireAdmin, async (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 50;
+      const runs = await currentAffairsRepository.listIngestionRuns(limit);
+      res.json({
+        status: 'OK',
+        count: runs.length,
+        runs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get ingestion runs' });
     }
   });
 
@@ -1070,18 +1478,32 @@ async function startServer() {
   });
 
   // Dedicated Real PYQ (Previous Year Question) Bank Endpoint
+  app.get('/api/pyqs/metadata', async (req, res) => {
+    try {
+      const meta = await questionRepository.getPYQMetadata();
+      res.json(meta);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get PYQ metadata' });
+    }
+  });
+
   app.get('/api/pyqs', async (req, res) => {
-    const { exam, year, paper, subjectId, topicId, search } = req.query;
+    const { exam, year, stage, paper, subjectId, topicId, search } = req.query;
     const { items } = await questionRepository.listPYQs({
       exam: exam && exam !== 'All' ? String(exam) : undefined,
-      pyqYear: year ? Number(year) : undefined,
+      pyqYear: year && year !== 'All' ? Number(year) : undefined,
       subjectId: subjectId ? String(subjectId) : undefined,
       topicId: topicId ? String(topicId) : undefined,
       limit: 100,
     });
 
     let list = items;
-    if (paper) {
+    if (stage && stage !== 'All Stages') {
+      const isMains = String(stage).toLowerCase().includes('main');
+      list = list.filter(q => isMains ? (q.type === 'SHORT_ANSWER' || (q.paper && q.paper.toLowerCase().includes('mains'))) : (q.type === 'MCQ' || (q.paper && !q.paper.toLowerCase().includes('mains'))));
+    }
+
+    if (paper && paper !== 'All Papers') {
       list = list.filter(q => q.paper && q.paper.toLowerCase().includes(String(paper).toLowerCase()));
     }
 
@@ -1090,7 +1512,9 @@ async function startServer() {
       list = list.filter(qItem =>
         qItem.question.toLowerCase().includes(qStr) ||
         qItem.explanation.toLowerCase().includes(qStr) ||
-        (qItem.source && qItem.source.toLowerCase().includes(qStr))
+        (qItem.source && qItem.source.toLowerCase().includes(qStr)) ||
+        (qItem.exam && qItem.exam.toLowerCase().includes(qStr)) ||
+        (qItem.paper && qItem.paper.toLowerCase().includes(qStr))
       );
     }
 

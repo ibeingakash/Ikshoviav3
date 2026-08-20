@@ -1,4 +1,5 @@
 import pool from './pool.js';
+import { OFFICIAL_PYQ_QUESTIONS } from './seedPYQBank.js';
 
 export const VERIFIED_QUESTION_BANK = [
   // POLITY QUESTIONS (1-20)
@@ -432,7 +433,15 @@ export async function ensureQuestionBankSeed(): Promise<void> {
   try {
     console.log('[Question Bank] Verifying question bank seed in PostgreSQL...');
 
-    for (const q of VERIFIED_QUESTION_BANK) {
+    const allQuestions = [...VERIFIED_QUESTION_BANK, ...OFFICIAL_PYQ_QUESTIONS];
+
+    for (const q of allQuestions) {
+      const normDiff = (q.difficulty || '').toUpperCase();
+      let safeDiff = 'MEDIUM';
+      if (['EASY', 'BEGINNER'].includes(normDiff)) safeDiff = 'EASY';
+      else if (['HARD', 'ADVANCED'].includes(normDiff)) safeDiff = 'HARD';
+      else safeDiff = 'MEDIUM';
+
       await pool.query(`
         INSERT INTO public.questions (
           id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
@@ -444,6 +453,9 @@ export async function ensureQuestionBankSeed(): Promise<void> {
           $16, $17, $18, $19, $20, $21, $22, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
+          subject_id = EXCLUDED.subject_id,
+          topic_id = EXCLUDED.topic_id,
+          concept_id = EXCLUDED.concept_id,
           question = EXCLUDED.question,
           options = EXCLUDED.options,
           correct_answer = EXCLUDED.correct_answer,
@@ -465,7 +477,7 @@ export async function ensureQuestionBankSeed(): Promise<void> {
         q.explanation,
         q.explanation_en || q.explanation,
         q.explanation_hi || null,
-        q.difficulty,
+        safeDiff,
         q.examTag,
         q.pyqYear,
         q.isPyq,
@@ -492,7 +504,7 @@ export async function ensureQuestionBankSeed(): Promise<void> {
       }
     }
 
-    console.log(`[Question Bank] Verified ${VERIFIED_QUESTION_BANK.length} authentic questions seeded in PostgreSQL.`);
+    console.log(`[Question Bank] Verified ${allQuestions.length} authentic questions seeded in PostgreSQL.`);
   } catch (err: any) {
     console.error('[Question Bank] Seed error:', err.message);
   }

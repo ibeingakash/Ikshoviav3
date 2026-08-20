@@ -1,8 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { FolderArchive, Download, FileText, Search, Sparkles, Filter, ShieldCheck, CheckCircle2, HelpCircle, ArrowRight, Bot, BookOpen } from 'lucide-react';
+import {
+  FolderArchive,
+  Download,
+  FileText,
+  Search,
+  Sparkles,
+  Filter,
+  ShieldCheck,
+  CheckCircle2,
+  HelpCircle,
+  ArrowRight,
+  Bot,
+  BookOpen,
+  Calendar,
+  Layers,
+  GraduationCap,
+  ChevronRight,
+  ExternalLink,
+  Tag
+} from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { LearningResource, Question } from '../../types/index.js';
 import { useLearner } from '../../context/LearnerContext.js';
+import { formatDateHuman } from '../../lib/dateUtils.js';
 
 export const ResourcesView: React.FC = () => {
   const { askTutorWithContext, navigateToConcept } = useLearner();
@@ -12,23 +32,50 @@ export const ResourcesView: React.FC = () => {
   const [pyqs, setPyqs] = useState<Question[]>([]);
   const [pyqLoading, setPyqLoading] = useState(true);
   const [selectedExam, setSelectedExam] = useState<string>('All');
+  const [selectedStage, setSelectedStage] = useState<string>('All Stages');
   const [selectedYear, setSelectedYear] = useState<string>('All');
+  const [selectedPaper, setSelectedPaper] = useState<string>('All Papers');
   const [pyqSearch, setPyqSearch] = useState('');
   const [expandedAnswers, setExpandedAnswers] = useState<Record<string, boolean>>({});
+
+  // Dynamic Metadata state
+  const [metadata, setMetadata] = useState<{
+    exams: string[];
+    years: number[];
+    stages: string[];
+    papers: string[];
+    totalCount: number;
+  }>({
+    exams: ['All', 'UPSC CSE', 'BPSC', 'UPPCS'],
+    years: [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018],
+    stages: ['All Stages', 'Prelims', 'Mains'],
+    papers: ['All Papers', 'GS Paper I', 'GS Paper II', 'GS Paper III', 'GS Paper IV', 'CSAT'],
+    totalCount: 0,
+  });
 
   // Notes/Resources state
   const [resources, setResources] = useState<LearningResource[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [resourceSearch, setResourceSearch] = useState('');
 
-  const exams = ['All', 'UPSC CSE', 'BPSC Prelims', 'UPPCS'];
-  const years = ['All', '2023', '2022', '2021', '2020'];
+  // Load PYQ Metadata dynamically on mount
+  useEffect(() => {
+    api.getPYQMetadata().then(res => {
+      if (res && Array.isArray(res.exams) && Array.isArray(res.years)) {
+        setMetadata(res);
+      }
+    }).catch(err => {
+      console.error('Failed to load PYQ metadata:', err);
+    });
+  }, []);
 
   const fetchPYQs = () => {
     setPyqLoading(true);
     api.getPYQs({
       exam: selectedExam === 'All' ? undefined : selectedExam,
+      stage: selectedStage === 'All Stages' ? undefined : selectedStage,
       year: selectedYear === 'All' ? undefined : Number(selectedYear),
+      paper: selectedPaper === 'All Papers' ? undefined : selectedPaper,
       search: pyqSearch,
     }).then(list => {
       setPyqs(Array.isArray(list) ? list : []);
@@ -41,7 +88,7 @@ export const ResourcesView: React.FC = () => {
 
   useEffect(() => {
     fetchPYQs();
-  }, [selectedExam, selectedYear]);
+  }, [selectedExam, selectedStage, selectedYear, selectedPaper]);
 
   useEffect(() => {
     api.getResources().then(list => {
@@ -62,8 +109,27 @@ export const ResourcesView: React.FC = () => {
     setExpandedAnswers(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleAskTutorForPYQ = (q: Question) => {
+    const prompt = `Please provide a step-by-step master breakdown for this ${q.exam || 'Civil Services'} PYQ (${q.pyqYear || 'Past Year'} ${q.paper || ''}):
+
+"${q.question}"
+
+Explain:
+1. Core Concept & Syllabus Linkage.
+2. Direct elimination strategy for each option.
+3. Official standard explanation and why (${q.correctAnswer}) is correct.
+4. Key prelims trap points & prospective questions for upcoming exams.`;
+
+    askTutorWithContext(prompt, {
+      subjectName: q.paper || 'General Studies',
+      conceptTitle: `PYQ: ${q.question.slice(0, 60)}...`,
+      conceptSummary: q.explanation || q.question,
+      pageContext: `PYQ Details: Exam=${q.exam || 'UPSC'}, Year=${q.pyqYear}, Paper=${q.paper}, CorrectAnswer=${q.correctAnswer}. Explanation: ${q.explanation}`,
+    });
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto font-sans-editorial">
+    <div className="space-y-6 animate-fade-in pb-16 max-w-5xl mx-auto font-sans-editorial">
       
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200/80 pb-4">
@@ -73,12 +139,12 @@ export const ResourcesView: React.FC = () => {
             <span>Official PYQ Repository & Resource Library</span>
           </h1>
           <p className="text-stone-500 text-xs mt-0.5 font-medium">
-            Verified Civil Services Past Year Questions (UPSC CSE/State PSCs) with primary provenance and syllabus notes.
+            Authentic Civil Services Past Year Questions (UPSC CSE & BPSC) sourced from official commission archives with structured solutions and AI Tutor integration.
           </p>
         </div>
 
         {/* Tab Selector */}
-        <div className="flex items-center gap-1 bg-stone-100 border border-stone-200 p-1 rounded-xl">
+        <div className="flex items-center gap-1 bg-stone-100 border border-stone-200 p-1 rounded-xl shrink-0">
           <button
             onClick={() => setActiveTab('pyqs')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -97,7 +163,7 @@ export const ResourcesView: React.FC = () => {
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            Syllabus Notes & PDFs
+            Syllabus Notes & Official PDFs
           </button>
         </div>
       </div>
@@ -105,22 +171,27 @@ export const ResourcesView: React.FC = () => {
       {/* TAB 1: Verified PYQ Bank */}
       {activeTab === 'pyqs' && (
         <div className="space-y-5">
-          {/* PYQ Filters */}
-          <div className="bg-white border border-stone-200/90 p-4 rounded-2xl space-y-3 shadow-2xs">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3">
+          {/* Multi-Dimensional Filter Deck */}
+          <div className="bg-white border border-stone-200/90 p-4 rounded-2xl space-y-3.5 shadow-2xs">
+            <div className="flex flex-col gap-3">
+              
+              {/* Row 1: Exam & Stage */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 {/* Exam Filter */}
-                <div className="flex items-center gap-1.5 max-w-full overflow-hidden">
-                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono">Exam:</span>
-                  <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none max-w-full">
-                    {exams.map(e => (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono flex items-center gap-1">
+                    <GraduationCap className="w-3.5 h-3.5 text-[#35156B]" />
+                    <span>Exam:</span>
+                  </span>
+                  <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+                    {metadata.exams.map(e => (
                       <button
                         key={e}
                         onClick={() => setSelectedExam(e)}
-                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
+                        className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                           selectedExam === e
                             ? 'bg-[#35156B] text-amber-300 shadow-2xs'
-                            : 'bg-stone-100 text-stone-600 hover:text-stone-900'
+                            : 'bg-stone-100 text-stone-600 hover:text-stone-900 hover:bg-stone-200'
                         }`}
                       >
                         {e}
@@ -129,17 +200,56 @@ export const ResourcesView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Year Filter */}
-                <div className="flex items-center gap-1.5 max-w-full overflow-hidden">
-                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono">Year:</span>
+                {/* Stage Filter */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Stage:</span>
+                  </span>
+                  <div className="flex gap-1">
+                    {metadata.stages.map(st => (
+                      <button
+                        key={st}
+                        onClick={() => setSelectedStage(st)}
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 cursor-pointer ${
+                          selectedStage === st
+                            ? 'bg-[#35156B] text-white shadow-2xs'
+                            : 'bg-stone-100 text-stone-600 hover:text-stone-900'
+                        }`}
+                      >
+                        {st}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Year & Search */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-stone-100">
+                {/* Dynamic Years */}
+                <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                  <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Year:</span>
+                  </span>
                   <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none max-w-full">
-                    {years.map(y => (
+                    <button
+                      onClick={() => setSelectedYear('All')}
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 cursor-pointer ${
+                        selectedYear === 'All'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'bg-stone-100 text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      All Years
+                    </button>
+                    {metadata.years.map(y => (
                       <button
                         key={y}
-                        onClick={() => setSelectedYear(y)}
-                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
-                          selectedYear === y
-                            ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                        onClick={() => setSelectedYear(String(y))}
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all shrink-0 cursor-pointer font-mono ${
+                          selectedYear === String(y)
+                            ? 'bg-amber-600 text-white shadow-2xs'
                             : 'bg-stone-100 text-stone-600 hover:text-stone-900'
                         }`}
                       >
@@ -148,27 +258,39 @@ export const ResourcesView: React.FC = () => {
                     ))}
                   </div>
                 </div>
-              </div>
 
-              {/* Search */}
-              <form onSubmit={handlePyqSearchSubmit} className="relative flex-1 sm:max-w-xs">
-                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Search PYQ text..."
-                  value={pyqSearch}
-                  onChange={e => setPyqSearch(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 text-xs text-stone-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-[#35156B]"
-                />
-              </form>
+                {/* Search */}
+                <form onSubmit={handlePyqSearchSubmit} className="relative flex-1 sm:max-w-xs">
+                  <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search PYQ text, concepts, sources..."
+                    value={pyqSearch}
+                    onChange={e => setPyqSearch(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 text-xs text-stone-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-[#35156B]"
+                  />
+                </form>
+              </div>
             </div>
+          </div>
+
+          {/* Active Hierarchy Indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-stone-500 font-mono px-1">
+            <span className="font-semibold text-stone-700">{selectedExam}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+            <span>{selectedStage}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+            <span className="font-bold text-amber-700">{selectedYear === 'All' ? 'All Years' : `${selectedYear}`}</span>
+            <span className="ml-auto text-stone-400">
+              Showing {pyqs.length} verified questions
+            </span>
           </div>
 
           {/* PYQ List */}
           {pyqLoading && (
             <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
               <Sparkles className="w-4 h-4 animate-spin text-amber-600" />
-              <span>Fetching verified previous year questions...</span>
+              <span>Fetching verified previous year questions from commission archives...</span>
             </div>
           )}
 
@@ -176,18 +298,20 @@ export const ResourcesView: React.FC = () => {
             <div className="bg-white border border-stone-200/90 rounded-2xl p-8 text-center space-y-3 shadow-2xs">
               <HelpCircle className="w-8 h-8 text-stone-400 mx-auto" />
               <h3 className="text-sm font-serif-editorial font-bold text-[#111426]">No PYQs found matching these filters</h3>
-              <p className="text-xs text-stone-500">
-                Try clearing year or exam filters to view the full collection of verified UPSC CSE past year questions.
+              <p className="text-xs text-stone-500 max-w-md mx-auto">
+                No past questions found for {selectedExam} ({selectedYear}). Try switching filters or searching with keywords.
               </p>
               <button
                 onClick={() => {
                   setSelectedExam('All');
+                  setSelectedStage('All Stages');
                   setSelectedYear('All');
+                  setSelectedPaper('All Papers');
                   setPyqSearch('');
                 }}
-                className="text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-800 px-4 py-2 rounded-xl cursor-pointer"
+                className="text-xs font-bold bg-[#35156B] text-amber-300 hover:bg-[#4B1F78] px-4 py-2 rounded-xl cursor-pointer shadow-2xs"
               >
-                Reset Filters
+                Reset All Filters
               </button>
             </div>
           )}
@@ -201,11 +325,11 @@ export const ResourcesView: React.FC = () => {
                     key={q.id}
                     className="bg-white border border-stone-200/90 hover:border-amber-400 p-5 rounded-2xl space-y-4 transition-all shadow-2xs"
                   >
-                    {/* PYQ Badges */}
+                    {/* PYQ Header & Badges */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full font-mono">
-                          {q.examTag || `UPSC CSE ${q.pyqYear}`}
+                          {q.examTag || `${q.exam || 'UPSC CSE'} ${q.pyqYear || ''}`}
                         </span>
 
                         {q.paper && (
@@ -219,24 +343,30 @@ export const ResourcesView: React.FC = () => {
                             Q.{q.questionNumber}
                           </span>
                         )}
+
+                        {q.difficulty && (
+                          <span className="text-[10px] font-bold text-stone-500 px-2 py-0.5 rounded bg-stone-50 border border-stone-200">
+                            {q.difficulty}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>Official UPSC Verified</span>
+                          <span>Official Commission Verified</span>
                         </span>
                       </div>
                     </div>
 
                     {/* Question Statement */}
-                    <div className="text-sm font-semibold text-[#111426] leading-relaxed whitespace-pre-line bg-stone-50 p-3.5 rounded-xl border border-stone-200/80">
+                    <div className="text-sm font-semibold text-[#111426] leading-relaxed whitespace-pre-line bg-stone-50/80 p-4 rounded-xl border border-stone-200/80">
                       {q.question}
                     </div>
 
-                    {/* Options */}
+                    {/* Options (for MCQs) */}
                     {q.options && q.options.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {q.options.map(opt => {
                           const isCorrectOpt = q.correctAnswer === opt.id;
                           return (
@@ -244,11 +374,11 @@ export const ResourcesView: React.FC = () => {
                               key={opt.id}
                               className={`p-3 rounded-xl border text-xs font-medium transition-all ${
                                 isExpanded && isCorrectOpt
-                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold shadow-2xs'
                                   : 'bg-white border-stone-200 text-stone-700'
                               }`}
                             >
-                              <span className="font-bold mr-1.5 uppercase text-stone-400">({opt.id}):</span>
+                              <span className="font-bold mr-2 uppercase text-stone-400 font-mono">({opt.id}):</span>
                               <span>{opt.text}</span>
                             </div>
                           );
@@ -258,36 +388,55 @@ export const ResourcesView: React.FC = () => {
 
                     {/* Action Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
-                      <button
-                        onClick={() => toggleAnswer(q.id)}
-                        className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 cursor-pointer"
-                      >
-                        <HelpCircle className="w-3.5 h-3.5" />
-                        <span>{isExpanded ? 'Hide Verified Solution' : 'Show Verified Solution'}</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleAnswer(q.id)}
+                          className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 cursor-pointer"
+                        >
+                          <HelpCircle className="w-3.5 h-3.5" />
+                          <span>{isExpanded ? 'Hide Verified Solution' : 'Show Verified Solution'}</span>
+                        </button>
+
+                        {q.conceptId && (
+                          <button
+                            onClick={() => navigateToConcept && navigateToConcept(q.conceptId!)}
+                            className="text-xs font-medium text-stone-600 hover:text-stone-900 flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-stone-100 transition-colors cursor-pointer"
+                          >
+                            <BookOpen className="w-3.5 h-3.5 text-stone-400" />
+                            <span>View Syllabus Concept</span>
+                          </button>
+                        )}
+                      </div>
 
                       <button
-                        onClick={() => askTutorWithContext(`Explain this UPSC PYQ step-by-step: ${q.question}`, q.conceptId)}
-                        className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => handleAskTutorForPYQ(q)}
+                        className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] bg-purple-50 border border-purple-200 hover:bg-purple-100 px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
                         <Bot className="w-3.5 h-3.5 text-[#35156B]" />
-                        <span>Ask AI Tutor About This PYQ</span>
+                        <span>Master Breakdown with AI Tutor</span>
                       </button>
                     </div>
 
                     {/* Explanation Drawer */}
                     {isExpanded && (
-                      <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-2 animate-fade-in">
-                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-900">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>Official Solution & Explanation:</span>
+                      <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200 space-y-2 animate-fade-in">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-bold text-emerald-900">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>Official Solution & Commission Key:</span>
+                          </div>
+                          {q.correctAnswer && (
+                            <span className="text-xs font-bold font-mono bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded">
+                              Correct Answer: ({q.correctAnswer})
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-stone-700 leading-relaxed whitespace-pre-line font-medium">
+                        <p className="text-xs text-stone-800 leading-relaxed whitespace-pre-line font-medium pt-1">
                           {q.explanation}
                         </p>
                         {q.source && (
-                          <p className="text-[10px] text-stone-500 font-mono pt-1">
-                            Source: {q.source}
+                          <p className="text-[10px] text-stone-500 font-mono pt-1 border-t border-emerald-100">
+                            Source Provenance: {q.source}
                           </p>
                         )}
                       </div>
@@ -364,3 +513,4 @@ export const ResourcesView: React.FC = () => {
     </div>
   );
 };
+
