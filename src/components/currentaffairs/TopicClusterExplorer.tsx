@@ -144,9 +144,9 @@ export const TopicClusterExplorer: React.FC = () => {
               Active Topic Clusters ({clusters.length})
             </span>
             <div className="space-y-2.5">
-              {clusters.map(cl => (
+              {clusters.map((cl, idx) => (
                 <div
-                  key={cl.id}
+                  key={`${cl.id}_${idx}`}
                   onClick={() => setSelectedClusterId(cl.id)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer text-left space-y-2 ${
                     selectedClusterId === cl.id
@@ -300,8 +300,8 @@ export const TopicClusterExplorer: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      {clusterDetails.primaryGovtAnnouncements.map((gov: any) => (
-                        <div key={gov.id} className="bg-white/90 p-3 rounded-xl border border-amber-200/80 text-xs space-y-1">
+                      {clusterDetails.primaryGovtAnnouncements.map((gov: any, gIdx: number) => (
+                        <div key={gov.id ? `${gov.id}_${gIdx}` : `gov_${gIdx}`} className="bg-white/90 p-3 rounded-xl border border-amber-200/80 text-xs space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="font-bold text-stone-900">{gov.title}</span>
                             <span className="text-[10px] text-stone-500 font-mono">{gov.source}</span>

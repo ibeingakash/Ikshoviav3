@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
+  Shield,
   Users,
   ShieldCheck,
   History,
@@ -42,6 +43,16 @@ export const SuperAdminConsoleView: React.FC = () => {
   ]);
 
   const allAvailablePermissions = [
+    'USERS_VIEW',
+    'USERS_SUSPEND',
+    'COURSES_VIEW',
+    'COURSES_CREATE',
+    'COURSES_EDIT',
+    'COURSES_ARCHIVE',
+    'PRICING_EDIT',
+    'ENTITLEMENTS_VIEW',
+    'ENTITLEMENTS_GRANT',
+    'ENTITLEMENTS_REVOKE',
     'QUESTION_CREATE',
     'QUESTION_EDIT',
     'QUESTION_PUBLISH',
@@ -49,8 +60,44 @@ export const SuperAdminConsoleView: React.FC = () => {
     'OCR_REVIEW',
     'MOCK_CREATE',
     'CONCEPT_CREATE',
+    'CURRENT_AFFAIRS_MANAGE',
     'ALL_PERMISSIONS',
   ];
+
+  // Edit Permissions Modal State
+  const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
+  const [adminPermissionsToEdit, setAdminPermissionsToEdit] = useState<string[]>([]);
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false);
+
+  const openEditPermissionsModal = (admin: AdminUser) => {
+    setEditingAdmin(admin);
+    setAdminPermissionsToEdit(admin.permissions || []);
+  };
+
+  const toggleEditPermission = (perm: string) => {
+    if (adminPermissionsToEdit.includes(perm)) {
+      setAdminPermissionsToEdit(adminPermissionsToEdit.filter(p => p !== perm));
+    } else {
+      setAdminPermissionsToEdit([...adminPermissionsToEdit, perm]);
+    }
+  };
+
+  const handleSavePermissions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAdmin) return;
+
+    setIsSavingPermissions(true);
+    try {
+      await api.updateAdminPermissions(editingAdmin.id, adminPermissionsToEdit);
+      setStatusMessage({ type: 'success', text: `Permissions updated for ${editingAdmin.name}.` });
+      setEditingAdmin(null);
+      loadConsoleData();
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to update permissions' });
+    } finally {
+      setIsSavingPermissions(false);
+    }
+  };
 
   useEffect(() => {
     loadConsoleData();
@@ -337,6 +384,13 @@ export const SuperAdminConsoleView: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => openEditPermissionsModal(admin)}
+                    className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer shadow-2xs transition-colors"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Edit Permissions</span>
+                  </button>
+                  <button
                     onClick={() => handleToggleAdminStatus(admin.id)}
                     className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer shadow-2xs"
                   >
@@ -497,6 +551,86 @@ export const SuperAdminConsoleView: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs"
                 >
                   Create Admin
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Admin Permissions Modal */}
+      {editingAdmin && (
+        <div className="fixed inset-0 z-50 bg-[#0C1024]/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-stone-200 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div>
+                <h3 className="font-serif-editorial font-bold text-[#111426] text-base">
+                  Granular Permissions: {editingAdmin.name}
+                </h3>
+                <span className="text-[11px] text-stone-500 font-mono">
+                  {editingAdmin.email} • {editingAdmin.role}
+                </span>
+              </div>
+              <button
+                onClick={() => setEditingAdmin(null)}
+                className="text-stone-400 hover:text-stone-700 cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePermissions} className="space-y-4 text-xs">
+              <div className="flex items-center justify-between">
+                <label className="text-stone-700 font-bold font-mono">Select Assigned Permissions</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdminPermissionsToEdit([...allAvailablePermissions])}
+                    className="text-[10px] text-amber-900 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-200 font-bold cursor-pointer"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminPermissionsToEdit([])}
+                    className="text-[10px] text-stone-600 bg-stone-100 hover:bg-stone-200 px-2 py-0.5 rounded border border-stone-200 font-bold cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-3 bg-stone-50 rounded-xl border border-stone-200">
+                {allAvailablePermissions.map(perm => (
+                  <label
+                    key={perm}
+                    className="flex items-center gap-2 p-1.5 rounded bg-white border border-stone-200/80 cursor-pointer text-[11px] text-stone-800 hover:border-amber-400 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={adminPermissionsToEdit.includes(perm)}
+                      onChange={() => toggleEditPermission(perm)}
+                      className="rounded border-stone-300 text-[#35156B] accent-[#35156B]"
+                    />
+                    <span className="font-mono text-[10px] font-medium">{perm}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingAdmin(null)}
+                  className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPermissions}
+                  className="px-5 py-2 rounded-xl bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs disabled:opacity-50"
+                >
+                  {isSavingPermissions ? 'Saving...' : 'Save Permissions'}
                 </button>
               </div>
             </form>

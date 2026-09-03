@@ -12,36 +12,53 @@ export interface StorageDocument {
 }
 
 class DocumentStorageService {
+  private tempMemoryStore = new Map<string, StorageDocument>();
+
   async uploadDocument(
     filename: string,
     buffer: Buffer,
     mimeType = 'application/pdf',
     bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'
   ): Promise<string> {
-    const supabase = getSupabase();
-    if (!supabase) {
-      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
-    }
-
     const sanitizeFilename = path.basename(filename).replace(/[^a-zA-Z0-9_.-]/g, '_');
     const key = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${sanitizeFilename}`;
 
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(key, buffer, { contentType: mimeType, upsert: true });
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .upload(key, buffer, { contentType: mimeType, upsert: true });
 
-    if (error) {
-      console.error('[Storage] Supabase Storage upload error:', error.message);
-      throw new Error(`Supabase Storage upload failed: ${error.message}`);
+        if (!error) {
+          return key;
+        }
+        console.warn('[Storage] Supabase Storage upload error, falling back to temp memory store:', error.message);
+      } catch (err: any) {
+        console.warn('[Storage] Supabase Storage upload exception, falling back to temp memory store:', err.message);
+      }
     }
+
+    // Local in-memory temporary store
+    this.tempMemoryStore.set(key, {
+      key,
+      filename,
+      mimeType,
+      sizeBytes: buffer.length,
+      buffer,
+      uploadedAt: new Date().toISOString(),
+    });
 
     return key;
   }
 
   async getDocument(key: string, bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'): Promise<StorageDocument | null> {
+    const memDoc = this.tempMemoryStore.get(key);
+    if (memDoc) return memDoc;
+
     const supabase = getSupabase();
     if (!supabase) {
-      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
+      return null;
     }
 
     try {
@@ -79,9 +96,10 @@ class DocumentStorageService {
   }
 
   async deleteDocument(key: string, bucket: 'ocr-documents' | 'resources' | 'user-uploads' = 'ocr-documents'): Promise<boolean> {
+    this.tempMemoryStore.delete(key);
     const supabase = getSupabase();
     if (!supabase) {
-      throw new Error('[Storage] Supabase is not configured. Storage operations require Supabase credentials.');
+      return true;
     }
 
     const { error } = await supabase.storage.from(bucket).remove([key]);
@@ -107,7 +125,9 @@ class DocumentStorageService {
   }
 
   async cleanupAbandonedTempDocs(): Promise<number> {
-    return 0;
+    const size = this.tempMemoryStore.size;
+    this.tempMemoryStore.clear();
+    return size;
   }
 }
 

@@ -459,7 +459,18 @@ export class IKSHOVIADatabase {
     this.userPasswords.set('admin@ikshovia.com', hashPassword('AkashAdmin@123'));
     this.userPasswords.set('superadmin@ikshovia.com', hashPassword('AkashSuper@123'));
 
-    this.adminPermissions.set('usr_admin', ['QUESTION_CREATE', 'QUESTION_EDIT', 'QUESTION_PUBLISH', 'OCR_IMPORT', 'OCR_REVIEW', 'MOCK_CREATE', 'CONCEPT_CREATE']);
+    this.adminPermissions.set('usr_admin', [
+      'USERS_VIEW', 'USERS_EDIT', 'USERS_SUSPEND', 'USERS_GRANT_ACCESS', 'USERS_REVOKE_ACCESS',
+      'COURSES_VIEW', 'COURSES_CREATE', 'COURSES_EDIT', 'COURSES_ARCHIVE',
+      'PRICING_VIEW', 'PRICING_EDIT',
+      'ENTITLEMENTS_VIEW', 'ENTITLEMENTS_GRANT', 'ENTITLEMENTS_REVOKE',
+      'PAYMENTS_VIEW', 'PAYMENTS_REFUND',
+      'QUESTION_BANK_VIEW', 'QUESTION_BANK_EDIT',
+      'QUESTION_CREATE', 'QUESTION_EDIT', 'QUESTION_PUBLISH',
+      'MOCKS_VIEW', 'MOCKS_CREATE', 'MOCKS_EDIT', 'MOCKS_DELETE',
+      'CONTENT_IMPORT', 'OCR_IMPORT', 'OCR_REVIEW',
+      'CONCEPT_CREATE', 'CURRENT_AFFAIRS_MANAGE', 'ANALYTICS_VIEW',
+    ]);
     this.adminPermissions.set('usr_superadmin', ['ALL_PERMISSIONS', 'ADMIN_MANAGE', 'SYSTEM_SETTINGS', 'AUDIT_LOG_VIEW']);
 
     // 2. Seed Subjects

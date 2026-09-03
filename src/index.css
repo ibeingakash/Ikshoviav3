@@ -9,68 +9,89 @@
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
 
-  /* Core Canvas Color Tokens */
+  /* Core Canvas Color Tokens (Warm Academic Luxury) */
   .bg-warm-canvas {
-    background-color: #FAF7F0;
+    background-color: #FAF8F5;
   }
 
   .bg-warm-card {
-    background-color: #FBF9F4;
+    background-color: #FFFFFF;
   }
 
   .bg-warm-surface {
-    background-color: #FDFBF7;
+    background-color: #FCFBF9;
   }
 
-  /* Deep Midnight / Plum Dark Surfaces */
+  .bg-warm-ivory {
+    background-color: #F7F5F0;
+  }
+
+  /* Deep Ink & Slate Text Tokens */
+  .text-ink-primary {
+    color: #1C1917;
+  }
+
+  .text-ink-secondary {
+    color: #57534E;
+  }
+
+  .text-ink-muted {
+    color: #8C827A;
+  }
+
+  /* Warm Saffron & Amber Brand Accent Tokens */
+  .bg-ik-amber {
+    background-color: #D97706;
+  }
+
+  .bg-ik-amber-hover {
+    background-color: #B45309;
+  }
+
+  .text-ik-amber {
+    color: #D97706;
+  }
+
+  .text-ik-amber-dark {
+    color: #92400E;
+  }
+
+  .border-ik-amber {
+    border-color: rgba(217, 119, 6, 0.4);
+  }
+
+  /* Legacy & Dark Surface compatibility */
   .bg-midnight-plum {
-    background-color: #0C1024;
+    background-color: #1C1917;
   }
 
   .bg-midnight-card {
-    background-color: #121027;
+    background-color: #292524;
   }
 
   .bg-midnight-surface {
-    background-color: #17132B;
-  }
-
-  /* Royal Purple / Plum Accent Tokens */
-  .bg-royal-purple {
-    background-color: #35156B;
-  }
-
-  .bg-royal-purple-hover {
-    background-color: #4B1F78;
-  }
-
-  .text-royal-purple {
-    color: #5B2A86;
-  }
-
-  .border-royal-purple {
-    border-color: rgba(91, 42, 134, 0.3);
+    background-color: #383431;
   }
 
   /* Warm Gold / Champagne Accent Tokens */
   .bg-warm-gold {
-    background-color: #C9953C;
+    background-color: #D97706;
   }
 
   .text-warm-gold {
-    color: #D9A441;
+    color: #D97706;
   }
 
   .border-warm-gold {
-    border-color: rgba(217, 164, 65, 0.4);
+    border-color: rgba(217, 119, 6, 0.3);
   }
 
   /* Premium Card Styles */
   .ik-card {
     background-color: #FFFFFF;
-    border: 1px solid rgba(226, 230, 238, 0.9);
+    border: 1px solid #EAE6DF;
     border-radius: 1rem;
-    box-shadow: 0 1px 3px 0 rgba(17, 20, 38, 0.03), 0 1px 2px -1px rgba(17, 20, 38, 0.02);
+    box-shadow: 0 1px 3px 0 rgba(28, 25, 23, 0.03), 0 1px 2px -1px rgba(28, 25, 23, 0.02);
   }
 
   .ik-card-hover {
@@ -78,17 +99,23 @@
   }
 
   .ik-card-hover:hover {
-    border-color: rgba(217, 164, 65, 0.5);
-    box-shadow: 0 12px 30px -8px rgba(12, 16, 36, 0.08);
+    border-color: rgba(217, 119, 6, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(28, 25, 23, 0.05);
     transform: translateY(-2px);
   }
 
   .ik-card-dark {
-    background-color: #0C1024;
-    border: 1px solid rgba(217, 164, 65, 0.25);
+    background-color: #1C1917;
+    border: 1px solid rgba(217, 119, 6, 0.25);
     border-radius: 1rem;
     color: #FFFFFF;
-    box-shadow: 0 10px 30px -10px rgba(12, 16, 36, 0.3);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Warm Glowing AI Orb */
+  .ai-orb-glow {
+    background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.8) 0%, rgba(217, 119, 6, 0.5) 45%, rgba(180, 83, 9, 0.15) 70%, transparent 100%);
+    filter: blur(1px);
   }
 
   /* 3D Perspective Floating Dashboard Transformations */
@@ -109,7 +136,7 @@
 
   /* Golden Orbital Ring */
   .orbital-ring {
-    border: 1px solid rgba(217, 164, 65, 0.25);
+    border: 1px solid rgba(217, 119, 6, 0.35);
     border-radius: 50%;
     position: absolute;
     pointer-events: none;
@@ -117,32 +144,32 @@
 
   /* Legacy texture compatibility bridges */
   .bg-warm-neutral {
-    background-color: #FAF7F0;
+    background-color: #FAF8F5;
   }
 
   .bg-dark-obsidian {
-    background-color: #0C1024;
+    background-color: #1C1917;
   }
 
   .bg-gold-accent {
-    background-color: #D9A441;
+    background-color: #D97706;
   }
   
   .text-gold-accent {
-    color: #D9A441;
+    color: #D97706;
   }
 
   .text-gold-serif {
-    color: #C9953C;
+    color: #B45309;
   }
 
   .surface-card {
     background: #FFFFFF;
-    border: 1px solid rgba(226, 230, 238, 0.9);
+    border: 1px solid #EAE6DF;
   }
 
   .surface-card-hover:hover {
-    border-color: rgba(217, 164, 65, 0.5);
+    border-color: rgba(217, 119, 6, 0.4);
   }
 }
 

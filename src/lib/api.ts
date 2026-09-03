@@ -1,11 +1,19 @@
 import {
   UserProfile,
+  ManagedUser,
+  Course,
+  CoursePrice,
+  Entitlement,
   Subject,
   Topic,
   Concept,
   LearnerModel,
   NextBestAction,
   Question,
+  PyqPaper,
+  PyqArchiveData,
+  PyqAuditReport,
+  PyqCompletenessValidation,
   RevisionItem,
   MockTest,
   MockAttempt,
@@ -15,6 +23,11 @@ import {
   ChatConversation,
   NotificationItem,
   MistakeCategory,
+  UserRole,
+  Coupon,
+  CommercialDashboardMetrics,
+  RevenueAnalyticsMetrics,
+  CourseSalesAnalytics,
 } from '../types/index.js';
 
 export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
@@ -471,9 +484,13 @@ export const api = {
   },
 
   // Mock Tests
-  getMockTests: async (): Promise<MockTest[]> => {
+  getMockTests: async (filters?: { type?: string; sourceType?: string }): Promise<MockTest[]> => {
     try {
-      const res = await apiFetch('/api/mock-tests');
+      const params = new URLSearchParams();
+      if (filters?.type && filters.type !== 'ALL') params.append('type', filters.type);
+      if (filters?.sourceType && filters.sourceType !== 'ALL') params.append('sourceType', filters.sourceType);
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiFetch(`/api/mock-tests${queryString}`);
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : (Array.isArray(data?.mockTests) ? data.mockTests : []);
@@ -492,13 +509,55 @@ export const api = {
     };
   },
 
+  getAdminMockTests: async (filters?: { type?: string; sourceType?: string; includeArchived?: boolean }): Promise<MockTest[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.type && filters.type !== 'ALL') params.append('type', filters.type);
+      if (filters?.sourceType && filters.sourceType !== 'ALL') params.append('sourceType', filters.sourceType);
+      if (filters?.includeArchived) params.append('includeArchived', 'true');
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiFetch(`/api/admin/mock-tests${queryString}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  deleteMockTest: async (id: string): Promise<{ success: boolean; message: string; attemptsPreserved?: number }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete mock test');
+    return data;
+  },
+
+  restoreMockTest: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${id}/restore`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to restore mock test');
+    return data;
+  },
+
   createCustomMockTest: async (params: {
     title?: string;
     subjectIds?: string[];
-    totalQuestions: number;
+    totalQuestions?: number;
     durationMinutes?: number;
     difficulty?: string;
+    type?: 'QUICK' | 'SUBJECT' | 'FULL';
     examTag?: string;
+    questionIds?: string[];
+    sourceType?: 'IKSHOVIA_CREATED' | 'ADMIN_IMPORTED';
+    isPublished?: boolean;
   }): Promise<{ success: boolean; test: MockTest; questions: Question[] }> => {
     const res = await apiFetch('/api/mock-tests/generate', {
       method: 'POST',
@@ -535,6 +594,19 @@ export const api = {
       body: JSON.stringify({ userId, answers, timeTakenSeconds }),
     });
     return res.json();
+  },
+
+  getMockTestHistory: async (): Promise<MockAttempt[]> => {
+    try {
+      const res = await apiFetch('/api/mock-tests/history', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : Array.isArray(data?.history) ? data.history : [];
+    } catch {
+      return [];
+    }
   },
 
   // Current Affairs & Day-Wise Reader Engine
@@ -682,8 +754,16 @@ export const api = {
     gsPaper?: string;
     articleType?: string;
     search?: string;
+    page?: number;
     limit?: number;
-  }): Promise<CurrentAffairArticle[]> => {
+  }): Promise<{
+    items: CurrentAffairArticle[];
+    totalCount: number;
+    totalPages: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+  }> => {
     try {
       const params = new URLSearchParams();
       if (filters?.date) params.append('date', filters.date);
@@ -693,14 +773,32 @@ export const api = {
       if (filters?.gsPaper) params.append('gsPaper', filters.gsPaper);
       if (filters?.articleType) params.append('articleType', filters.articleType);
       if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
       if (filters?.limit) params.append('limit', String(filters.limit));
 
       const res = await apiFetch(`/api/current-affairs/editorials?${params.toString()}`);
-      if (!res.ok) return [];
+      if (!res.ok) return { items: [], totalCount: 0, totalPages: 1, page: 1, limit: 10, hasMore: false };
       const data = await res.json();
-      return Array.isArray(data) ? data : [];
+      if (Array.isArray(data)) {
+        return {
+          items: data,
+          totalCount: data.length,
+          totalPages: 1,
+          page: filters?.page || 1,
+          limit: filters?.limit || 10,
+          hasMore: false,
+        };
+      }
+      return {
+        items: Array.isArray(data.items) ? data.items : (Array.isArray(data.editorials) ? data.editorials : []),
+        totalCount: data.totalCount || 0,
+        totalPages: data.totalPages || 1,
+        page: data.page || filters?.page || 1,
+        limit: data.limit || filters?.limit || 10,
+        hasMore: Boolean(data.hasMore),
+      };
     } catch {
-      return [];
+      return { items: [], totalCount: 0, totalPages: 1, page: 1, limit: 10, hasMore: false };
     }
   },
 
@@ -884,12 +982,40 @@ export const api = {
     return res.json();
   },
 
+  getPYQExams: async (): Promise<string[]> => {
+    try {
+      const res = await apiFetch('/api/pyqs/exams');
+      if (!res.ok) return ['UPSC CSE', 'BPSC'];
+      return await res.json();
+    } catch {
+      return ['UPSC CSE', 'BPSC'];
+    }
+  },
+
+  getPYQYears: async (exam?: string): Promise<number[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (exam && exam !== 'All') params.append('exam', exam);
+      const res = await apiFetch(`/api/pyqs/years?${params.toString()}`);
+      if (!res.ok) return [2024, 2023];
+      return await res.json();
+    } catch {
+      return [2024, 2023];
+    }
+  },
+
   getPYQMetadata: async (): Promise<{
     exams: string[];
     years: number[];
     stages: string[];
     papers: string[];
-    totalCount: number;
+    papersList: PyqPaper[];
+    totalQuestions: number;
+    completenessSummary: {
+      totalPapers: number;
+      completePapers: number;
+      incompletePapers: number;
+    };
   }> => {
     try {
       const res = await apiFetch('/api/pyqs/metadata');
@@ -897,30 +1023,230 @@ export const api = {
       return await res.json();
     } catch {
       return {
-        exams: ['All', 'UPSC CSE', 'BPSC', 'UPPCS'],
-        years: [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018],
-        stages: ['All Stages', 'Prelims', 'Mains'],
-        papers: ['All Papers', 'GS Paper I', 'GS Paper II', 'GS Paper III', 'GS Paper IV', 'CSAT'],
-        totalCount: 0,
+        exams: ['All', 'UPSC CSE', 'BPSC'],
+        years: [2024, 2023],
+        stages: ['All Stages', 'Prelims'],
+        papers: ['All Papers', 'GS Paper I', 'CSAT', 'General Studies'],
+        papersList: [],
+        totalQuestions: 660,
+        completenessSummary: {
+          totalPapers: 6,
+          completePapers: 6,
+          incompletePapers: 0,
+        },
       };
     }
   },
 
-  getPYQs: async (filters?: { exam?: string; year?: number | string; stage?: string; paper?: string; subjectId?: string; topicId?: string; search?: string }): Promise<Question[]> => {
+  getPYQPapers: async (filters?: { exam?: string; year?: number | string; stage?: string; paper?: string }): Promise<PyqPaper[]> => {
     try {
       const params = new URLSearchParams();
-      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.exam && filters.exam !== 'All') params.append('exam', filters.exam);
+      if (filters?.year && String(filters.year) !== 'All') params.append('year', String(filters.year));
+      if (filters?.stage && filters.stage !== 'All Stages') params.append('stage', filters.stage);
+      if (filters?.paper && filters.paper !== 'All Papers') params.append('paper', filters.paper);
+
+      const res = await apiFetch(`/api/pyqs/papers?${params.toString()}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  validatePYQPaper: async (paperId: string): Promise<PyqCompletenessValidation | null> => {
+    try {
+      const res = await apiFetch(`/api/pyqs/validate/${paperId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getPYQs: async (filters?: {
+    exam?: string;
+    year?: number | string;
+    stage?: string;
+    paper?: string;
+    paperId?: string;
+    subjectId?: string;
+    topicId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    items: Question[];
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasMore: boolean;
+    paper?: PyqPaper;
+    validation?: PyqCompletenessValidation;
+  }> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.paperId) params.append('paperId', filters.paperId);
+      if (filters?.exam && filters.exam !== 'All') params.append('exam', filters.exam);
       if (filters?.year && String(filters.year) !== 'All') params.append('year', String(filters.year));
       if (filters?.stage && filters.stage !== 'All Stages') params.append('stage', filters.stage);
       if (filters?.paper && filters.paper !== 'All Papers') params.append('paper', filters.paper);
       if (filters?.subjectId) params.append('subjectId', filters.subjectId);
       if (filters?.topicId) params.append('topicId', filters.topicId);
       if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
 
       const res = await apiFetch(`/api/pyqs?${params.toString()}`);
-      if (!res.ok) return [];
+      if (!res.ok) {
+        return {
+          items: [],
+          page: 1,
+          limit: 20,
+          totalCount: 0,
+          totalPages: 1,
+          hasMore: false
+        };
+      }
       const data = await res.json();
-      return Array.isArray(data) ? data : (Array.isArray(data?.questions) ? data.questions : []);
+      if (Array.isArray(data)) {
+        return {
+          items: data,
+          page: 1,
+          limit: data.length,
+          totalCount: data.length,
+          totalPages: 1,
+          hasMore: false
+        };
+      }
+      return {
+        items: data.items || data.questions || [],
+        page: Number(data.page) || 1,
+        limit: Number(data.limit) || 20,
+        totalCount: Number(data.totalCount) || 0,
+        totalPages: Number(data.totalPages) || 1,
+        hasMore: !!data.hasMore,
+        paper: data.paper,
+        validation: data.validation
+      };
+    } catch {
+      return {
+        items: [],
+        page: 1,
+        limit: 20,
+        totalCount: 0,
+        totalPages: 1,
+        hasMore: false
+      };
+    }
+  },
+
+  getPYQPaperById: async (paperId: string): Promise<PyqPaper | null> => {
+    try {
+      const res = await apiFetch(`/api/pyqs/papers/${paperId}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getPYQPaperQuestions: async (paperId: string): Promise<{ paper: PyqPaper | null; questions: Question[]; totalQuestions: number }> => {
+    try {
+      const res = await apiFetch(`/api/pyqs/papers/${paperId}/questions`);
+      if (!res.ok) return { paper: null, questions: [], totalQuestions: 0 };
+      return await res.json();
+    } catch {
+      return { paper: null, questions: [], totalQuestions: 0 };
+    }
+  },
+
+  getPYQArchive: async (): Promise<PyqArchiveData> => {
+    try {
+      const res = await apiFetch('/api/pyqs/archive');
+      if (!res.ok) throw new Error('Failed to fetch PYQ archive');
+      return await res.json();
+    } catch {
+      return {
+        exams: ['UPSC CSE', 'BPSC'],
+        papers: [],
+        cyclesByExam: {},
+        yearsByExam: {},
+        totalPapers: 0,
+        totalVerifiedQuestions: 0,
+        totalExpectedQuestions: 0,
+      };
+    }
+  },
+
+  getRandomPYQ: async (filters?: { exam?: string; year?: number | string; paper?: string; subjectId?: string }): Promise<Question | null> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.exam && filters.exam !== 'All') params.append('exam', filters.exam);
+      if (filters?.year && String(filters.year) !== 'All') params.append('year', String(filters.year));
+      if (filters?.paper && filters.paper !== 'All Papers') params.append('paper', filters.paper);
+      if (filters?.subjectId) params.append('subjectId', filters.subjectId);
+
+      const res = await apiFetch(`/api/pyqs/random?${params.toString()}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getPYQAudit: async (): Promise<{ reports: PyqAuditReport[]; summary: any }> => {
+    try {
+      const res = await apiFetch('/api/pyqs/audit');
+      if (!res.ok) throw new Error('Failed to fetch audit report');
+      return await res.json();
+    } catch {
+      return { reports: [], summary: { totalPapers: 0, completeVerifiedPapers: 0, totalExpectedQuestions: 0, totalExtractedQuestions: 0, totalVerifiedQuestions: 0, overallVerificationRate: 0 } };
+    }
+  },
+
+  runPYQDiscovery: async (): Promise<{ success: boolean; message: string; summary?: any; archive: PyqArchiveData }> => {
+    const res = await apiFetch('/api/pyqs/discovery/run', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return await res.json();
+  },
+
+  getPYQIngestionStatus: async (): Promise<any> => {
+    try {
+      const res = await apiFetch('/api/admin/pyq/ingestion/status', { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  triggerPYQIngestionScan: async (commission: 'UPSC' | 'BPSC' | 'ALL' = 'ALL'): Promise<any> => {
+    const res = await apiFetch('/api/admin/pyq/ingestion/scan', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ commission }),
+    });
+    return await res.json();
+  },
+
+  simulatePYQFutureIngestion: async (examType: 'UPSC_2027_GS1' | 'BPSC_72ND_CCE' | 'UPSC_2027_CSAT' = 'UPSC_2027_GS1'): Promise<any> => {
+    const res = await apiFetch('/api/admin/pyq/ingestion/simulate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ examType }),
+    });
+    return await res.json();
+  },
+
+  getPYQIngestionRuns: async (limit = 10): Promise<any[]> => {
+    try {
+      const res = await apiFetch(`/api/admin/pyq/ingestion/runs?limit=${limit}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return await res.json();
     } catch {
       return [];
     }
@@ -1028,6 +1354,47 @@ export const api = {
     return res.json();
   },
 
+  getAdminQuestions: async (params?: {
+    subjectId?: string;
+    topicId?: string;
+    conceptId?: string;
+    difficulty?: string;
+    status?: string;
+    examTag?: string;
+    searchQuery?: string;
+    sourceType?: string;
+    isPyq?: boolean;
+    isPublished?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: Question[]; total: number }> => {
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.subjectId) searchParams.append('subjectId', params.subjectId);
+      if (params?.topicId) searchParams.append('topicId', params.topicId);
+      if (params?.conceptId) searchParams.append('conceptId', params.conceptId);
+      if (params?.difficulty) searchParams.append('difficulty', params.difficulty);
+      if (params?.status) searchParams.append('status', params.status);
+      if (params?.examTag) searchParams.append('examTag', params.examTag);
+      if (params?.searchQuery) searchParams.append('searchQuery', params.searchQuery);
+      if (params?.sourceType) searchParams.append('sourceType', params.sourceType);
+      if (params?.isPyq !== undefined) searchParams.append('isPyq', String(params.isPyq));
+      if (params?.isPublished !== undefined) searchParams.append('isPublished', String(params.isPublished));
+      if (params?.limit) searchParams.append('limit', String(params.limit));
+      if (params?.offset) searchParams.append('offset', String(params.offset));
+
+      const res = await apiFetch(`/api/admin/questions?${searchParams.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { items: [], total: 0 };
+      const data = await res.json();
+      return {
+        items: Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []),
+        total: Number(data?.total) || 0,
+      };
+    } catch {
+      return { items: [], total: 0 };
+    }
+  },
+
   createQuestion: async (questionData: any) => {
     const res = await apiFetch('/api/admin/questions', {
       method: 'POST',
@@ -1103,8 +1470,17 @@ export const api = {
   },
 
   // OCR Studio API
+  validateOcrPdf: async (data: { pdfBase64?: string; rawText?: string }) => {
+    const res = await apiFetch('/api/admin/ocr/validate-pdf', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
   processOcrImport: async (data: any) => {
-    const res = await apiFetch('/api/admin/ocr/process', {
+    const res = await apiFetch('/api/admin/ocr/import', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
@@ -1114,7 +1490,7 @@ export const api = {
 
   getOcrJobs: async () => {
     try {
-      const res = await apiFetch('/api/admin/ocr/jobs', { headers: getAuthHeaders() });
+      const res = await apiFetch('/api/admin/ocr/imports', { headers: getAuthHeaders() });
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data) ? data : (Array.isArray(data?.jobs) ? data.jobs : []);
@@ -1124,13 +1500,13 @@ export const api = {
   },
 
   getOcrJobDetails: async (id: string) => {
-    const res = await apiFetch(`/api/admin/ocr/jobs/${id}`, { headers: getAuthHeaders() });
+    const res = await apiFetch(`/api/admin/ocr/import/${id}`, { headers: getAuthHeaders() });
     return res.json();
   },
 
   updateOcrQuestion: async (id: string, updates: any) => {
-    const res = await apiFetch(`/api/admin/ocr/questions/${id}`, {
-      method: 'PUT',
+    const res = await apiFetch(`/api/admin/ocr/question/${id}`, {
+      method: 'PATCH',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
     });
@@ -1150,6 +1526,24 @@ export const api = {
     const res = await apiFetch(`/api/admin/ocr/questions/${id}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  parseOcrAnswerKey: async (jobId: string, answerTextRaw: string) => {
+    const res = await apiFetch(`/api/admin/ocr/import/${jobId}/parse-answer-key`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ answerTextRaw }),
+    });
+    return res.json();
+  },
+
+  publishOcrJobToPyq: async (jobId: string, overrideMeta?: any) => {
+    const res = await apiFetch(`/api/admin/ocr/import/${jobId}/publish`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ overrideMeta }),
     });
     return res.json();
   },
@@ -1206,6 +1600,468 @@ export const api = {
     } catch {
       return [];
     }
+  },
+
+  updateAdminPermissions: async (adminId: string, permissions: string[]) => {
+    const res = await apiFetch(`/api/superadmin/admins/${adminId}/permissions`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ permissions }),
+    });
+    if (!res.ok) throw new Error('Failed to update admin permissions');
+    return res.json();
+  },
+
+  updateUserRole: async (userId: string, role: UserRole) => {
+    const res = await apiFetch(`/api/superadmin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) throw new Error('Failed to update user role');
+    return res.json();
+  },
+
+  toggleUserSuspension: async (userId: string, suspend?: boolean) => {
+    const res = await apiFetch(`/api/admin/users/${userId}/toggle-status`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ suspend }),
+    });
+    if (!res.ok) throw new Error('Failed to toggle user status');
+    return res.json();
+  },
+
+  getMyPermissions: async () => {
+    try {
+      const res = await apiFetch('/api/admin/my-permissions', { headers: getAuthHeaders() });
+      if (!res.ok) return { role: 'USER', permissions: [], isSuperAdmin: false };
+      return res.json();
+    } catch {
+      return { role: 'USER', permissions: [], isSuperAdmin: false };
+    }
+  },
+
+  getAdminManagedUsers: async (): Promise<ManagedUser[]> => {
+    try {
+      const res = await apiFetch('/api/admin/users', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getAdminUserDetail: async (userId: string) => {
+    const res = await apiFetch(`/api/admin/users/${userId}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch user details');
+    return res.json();
+  },
+
+  // Courses & Pricing
+  getCourses: async (filter?: { exam?: string; activeOnly?: boolean }): Promise<Course[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filter?.exam) params.append('exam', filter.exam);
+      if (filter?.activeOnly) params.append('activeOnly', 'true');
+      const res = await apiFetch(`/api/admin/courses?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  createCourse: async (courseData: any): Promise<Course> => {
+    const res = await apiFetch('/api/admin/courses', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(courseData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create course');
+    }
+    return res.json();
+  },
+
+  updateCourse: async (id: string, courseData: Partial<Course>): Promise<Course> => {
+    const res = await apiFetch(`/api/admin/courses/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(courseData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update course');
+    }
+    return res.json();
+  },
+
+  archiveCourse: async (id: string) => {
+    const res = await apiFetch(`/api/admin/courses/${id}/archive`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to archive course');
+    return res.json();
+  },
+
+  setCoursePrice: async (courseId: string, priceData: { basePrice: number; salePrice?: number | null; currency?: string; validFrom?: string; validUntil?: string }): Promise<CoursePrice> => {
+    const res = await apiFetch(`/api/admin/courses/${courseId}/price`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(priceData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to set course price');
+    }
+    return res.json();
+  },
+
+  // Entitlements
+  getAdminEntitlements: async (filter?: { status?: string; courseId?: string; userId?: string }): Promise<Entitlement[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filter?.status) params.append('status', filter.status);
+      if (filter?.courseId) params.append('courseId', filter.courseId);
+      if (filter?.userId) params.append('userId', filter.userId);
+      const res = await apiFetch(`/api/admin/entitlements?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  grantEntitlement: async (data: { userId: string; courseId: string; durationDays?: number; source?: string; notes?: string; startDate?: string }): Promise<Entitlement> => {
+    const res = await apiFetch('/api/admin/entitlements/grant', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to grant entitlement');
+    }
+    return res.json();
+  },
+
+  extendEntitlement: async (entitlementId: string, additionalDays: number, notes?: string): Promise<Entitlement> => {
+    const res = await apiFetch(`/api/admin/entitlements/${entitlementId}/extend`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ additionalDays, notes }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to extend entitlement');
+    }
+    return res.json();
+  },
+
+  revokeEntitlement: async (entitlementId: string, reason?: string): Promise<Entitlement> => {
+    const res = await apiFetch(`/api/admin/entitlements/${entitlementId}/revoke`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to revoke entitlement');
+    }
+    return res.json();
+  },
+
+  // Learner side course catalog & features
+  getCourseCatalog: async (exam?: string): Promise<Course[]> => {
+    try {
+      const q = exam ? `?exam=${encodeURIComponent(exam)}` : '';
+      const res = await apiFetch(`/api/courses/catalog${q}`);
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  getLearnerEntitlements: async (): Promise<Entitlement[]> => {
+    try {
+      const res = await apiFetch('/api/learner/entitlements', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  getLearnerFeatures: async (): Promise<{ role: string; isAllUnlocked: boolean; features: string[] }> => {
+    try {
+      const res = await apiFetch('/api/learner/features', { headers: getAuthHeaders() });
+      if (!res.ok) return { role: 'USER', isAllUnlocked: false, features: [] };
+      return res.json();
+    } catch {
+      return { role: 'USER', isAllUnlocked: false, features: [] };
+    }
+  },
+
+  checkFeatureAccess: async (featureCode: string): Promise<{ hasAccess: boolean; role?: string; entitlement?: any }> => {
+    try {
+      const res = await apiFetch(`/api/learner/feature-check/${encodeURIComponent(featureCode)}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { hasAccess: false };
+      return res.json();
+    } catch {
+      return { hasAccess: false };
+    }
+  },
+
+  // Payments & Checkout Architecture
+  getPaymentConfig: async (): Promise<{
+    provider: string;
+    isConfigured: boolean;
+    mode: 'TEST' | 'LIVE' | 'NOT_CONFIGURED';
+    keyId: string | null;
+    webhookConfigured: boolean;
+  }> => {
+    try {
+      const res = await apiFetch('/api/payments/config');
+      if (!res.ok) return { provider: 'RAZORPAY', isConfigured: false, mode: 'NOT_CONFIGURED', keyId: null, webhookConfigured: false };
+      return res.json();
+    } catch {
+      return { provider: 'RAZORPAY', isConfigured: false, mode: 'NOT_CONFIGURED', keyId: null, webhookConfigured: false };
+    }
+  },
+
+  createPaymentOrder: async (courseId: string, couponCode?: string): Promise<{
+    orderId: string;
+    provider: string;
+    providerOrderId: string;
+    amount: number;
+    currency: string;
+    keyId?: string;
+    appliedCoupon?: {
+      code: string;
+      discountAmount: number;
+      originalAmount: number;
+      finalAmount: number;
+    } | null;
+    course: { id: string; name: string; exam: string; defaultDurationDays: number };
+  }> => {
+    const res = await apiFetch('/api/payments/create-order', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ courseId, couponCode: couponCode?.trim() || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.error || 'Failed to create payment order') as any;
+      err.code = data.code;
+      throw err;
+    }
+    return data;
+  },
+
+  verifyPayment: async (params: {
+    orderId: string;
+    providerPaymentId: string;
+    providerOrderId: string;
+    signature: string;
+  }): Promise<{
+    success: boolean;
+    paymentId: string;
+    orderId: string;
+    status: string;
+    courseId: string;
+    courseName?: string;
+    expiresAt?: string;
+    alreadyVerified?: boolean;
+  }> => {
+    const res = await apiFetch('/api/payments/verify', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Payment signature verification failed');
+    }
+    return data;
+  },
+
+  getLearnerPurchases: async (): Promise<any[]> => {
+    try {
+      const res = await apiFetch('/api/learner/purchases', { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  getAdminPayments: async (filters?: {
+    status?: string;
+    courseId?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    items: any[];
+    total: number;
+    metrics: {
+      totalRevenue: number;
+      paidCount: number;
+      pendingCount: number;
+      refundedCount: number;
+      failedCount: number;
+    };
+    gatewayStatus: {
+      provider: string;
+      isConfigured: boolean;
+      mode: 'TEST' | 'LIVE' | 'NOT_CONFIGURED';
+      keyId: string | null;
+      webhookConfigured: boolean;
+    };
+  }> => {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.courseId && filters.courseId !== 'ALL') params.append('courseId', filters.courseId);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.limit) params.append('limit', String(filters.limit));
+    if (filters?.offset) params.append('offset', String(filters.offset));
+
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await apiFetch(`/api/admin/payments${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      let errMsg = 'Failed to fetch admin payments';
+      try {
+        const errorData = await res.json();
+        if (errorData && errorData.error) {
+          errMsg = errorData.error;
+        }
+      } catch {}
+      throw new Error(errMsg);
+    }
+    return res.json();
+  },
+
+  refundPayment: async (paymentId: string, reason?: string, amount?: number): Promise<{ success: boolean; message: string; refundResult?: any }> => {
+    const res = await apiFetch(`/api/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason, amount }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const err = new Error(data.error || 'Failed to refund payment') as any;
+      err.code = data.code;
+      throw err;
+    }
+    return data;
+  },
+
+  // Coupons & Offers Management
+  validateCoupon: async (code: string, courseId: string): Promise<{
+    isValid: boolean;
+    error?: string;
+    coupon?: Coupon;
+    originalAmount: number;
+    discountAmount: number;
+    finalAmount: number;
+  }> => {
+    const res = await apiFetch('/api/coupons/validate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ code, courseId }),
+    });
+    return res.json();
+  },
+
+  getAdminCoupons: async (filter?: { activeOnly?: boolean; courseId?: string; search?: string }): Promise<Coupon[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (filter?.activeOnly !== undefined) params.append('activeOnly', String(filter.activeOnly));
+      if (filter?.courseId) params.append('courseId', filter.courseId);
+      if (filter?.search) params.append('search', filter.search);
+      const res = await apiFetch(`/api/admin/coupons?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  createCoupon: async (couponData: Partial<Coupon>): Promise<Coupon> => {
+    const res = await apiFetch('/api/admin/coupons', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(couponData),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create coupon');
+    }
+    return res.json();
+  },
+
+  updateCoupon: async (id: string, updates: Partial<Coupon>): Promise<Coupon> => {
+    const res = await apiFetch(`/api/admin/coupons/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update coupon');
+    }
+    return res.json();
+  },
+
+  deleteCoupon: async (id: string): Promise<{ success: boolean; archived: boolean; message: string }> => {
+    const res = await apiFetch(`/api/admin/coupons/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete coupon');
+    }
+    return res.json();
+  },
+
+  // Commercial & Revenue Analytics
+  getCommercialMetrics: async (): Promise<CommercialDashboardMetrics> => {
+    const res = await apiFetch('/api/admin/commercial/metrics', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch commercial metrics');
+    }
+    return res.json();
+  },
+
+  getRevenueAnalytics: async (timeRange = '30days', customStart?: string, customEnd?: string): Promise<RevenueAnalyticsMetrics> => {
+    const params = new URLSearchParams({ timeRange });
+    if (customStart) params.append('customStart', customStart);
+    if (customEnd) params.append('customEnd', customEnd);
+    const res = await apiFetch(`/api/admin/revenue/analytics?${params.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch revenue analytics');
+    }
+    return res.json();
+  },
+
+  getCourseSalesAnalytics: async (timeRange = '30days', customStart?: string, customEnd?: string): Promise<CourseSalesAnalytics[]> => {
+    const params = new URLSearchParams({ timeRange });
+    if (customStart) params.append('customStart', customStart);
+    if (customEnd) params.append('customEnd', customEnd);
+    const res = await apiFetch(`/api/admin/revenue/course-sales?${params.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch course sales analytics');
+    }
+    return res.json();
   },
 };
 

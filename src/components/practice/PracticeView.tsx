@@ -19,6 +19,7 @@ import {
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
 import { Question, MistakeCategory } from '../../types/index.js';
+import { QuestionRenderer } from '../common/QuestionRenderer.js';
 import confetti from 'canvas-confetti';
 
 export const PracticeView: React.FC = () => {
@@ -127,12 +128,26 @@ export const PracticeView: React.FC = () => {
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <button
+              onClick={() => setActiveSection('pyq-practice')}
+              className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 transition-colors cursor-pointer"
+            >
+              ← Go to Official PYQ Practice
+            </button>
+            <button
+              onClick={() => setActiveSection('mock-tests')}
+              className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 transition-colors cursor-pointer"
+            >
+              Go to Mock Tests →
+            </button>
+          </div>
           <h1 className="text-2xl font-black text-[#111827] flex items-center gap-2">
             <Target className="w-6 h-6 text-indigo-600" />
-            <span>Adaptive Practice & Evaluation Engine</span>
+            <span>Topic & Subject Practice Engine</span>
           </h1>
           <p className="text-slate-500 text-xs mt-0.5 font-medium">
-            Adaptive Prelims MCQs and Gemini Mains Answer Evaluator for UPSC & BPSC.
+            Adaptive Concept MCQs and Gemini Mains Answer Evaluator for UPSC & BPSC syllabus.
           </p>
         </div>
 
@@ -234,52 +249,19 @@ export const PracticeView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Question Text */}
-              <div className="text-sm sm:text-base font-bold text-[#111827] leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-                {displayLanguage === 'hi'
-                  ? currentQ.question_hi || currentQ.question
-                  : currentQ.question_en || currentQ.question}
-              </div>
-
-              {/* Options */}
-              {currentQ.options && (
-                <div className="space-y-2.5">
-                  {(displayLanguage === 'hi' && currentQ.options_hi && currentQ.options_hi.length > 0
-                    ? currentQ.options_hi
-                    : currentQ.options
-                  ).map((opt) => {
-                    const isSelected = selectedOption === opt.id;
-                    let optStyle = 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50';
-
-                    if (submitted) {
-                      if (opt.id === currentQ.correctAnswer) {
-                        optStyle = 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold';
-                      } else if (isSelected && !attemptResult?.isCorrect) {
-                        optStyle = 'bg-rose-50 border-rose-300 text-rose-900 font-bold';
-                      }
-                    } else if (isSelected) {
-                      optStyle = 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold shadow-2xs';
-                    }
-
-                    return (
-                      <button
-                        key={opt.id}
-                        disabled={submitted}
-                        onClick={() => setSelectedOption(opt.id)}
-                        className={`w-full text-left p-3.5 rounded-xl text-xs sm:text-sm font-medium transition-all border flex items-center justify-between cursor-pointer ${optStyle}`}
-                      >
-                        <span>{opt.text}</span>
-                        {submitted && opt.id === currentQ.correctAnswer && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        )}
-                        {submitted && isSelected && !attemptResult?.isCorrect && (
-                          <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* Rendered Question via Canonical Renderer */}
+              <QuestionRenderer
+                question={currentQ}
+                questionNumber={currentIndex + 1}
+                language={displayLanguage}
+                selectedOption={selectedOption}
+                isSubmitted={submitted}
+                isCorrect={attemptResult?.isCorrect}
+                onSelectOption={(optId) => setSelectedOption(optId)}
+                mode="interactive"
+                showSolution={false}
+                hideHeaderMeta={true}
+              />
 
               {/* Confidence Selector */}
               {!submitted && (

@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import type { Request, Response } from 'express';
+import { dataApiService } from './dataApiService.js';
 
 const FASTAPI_HOST = process.env.FASTAPI_HOST || '127.0.0.1';
 const FASTAPI_PORT = Number(process.env.FASTAPI_PORT) || 8001;
@@ -10,10 +11,19 @@ let fastApiProcess: ChildProcess | null = null;
 let isStarting = false;
 let cleanupRegistered = false;
 
+let fastApiHealthy = false;
+let lastHealthCheck = 0;
+
 /**
  * Checks if the internal FastAPI service is already alive and accepting requests.
  */
-export async function isFastApiAlive(timeoutMs = 800): Promise<boolean> {
+export async function isFastApiAlive(timeoutMs = 500): Promise<boolean> {
+  const now = Date.now();
+  if (now - lastHealthCheck < 10000 && !fastApiHealthy) {
+    return false;
+  }
+  lastHealthCheck = now;
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -21,10 +31,120 @@ export async function isFastApiAlive(timeoutMs = 800): Promise<boolean> {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    return response.ok || response.status === 200;
+    fastApiHealthy = response.ok || response.status === 200;
+    return fastApiHealthy;
   } catch {
+    fastApiHealthy = false;
     return false;
   }
+}
+
+/**
+ * Handles Data API requests via native PostgreSQL service fallback.
+ */
+export async function handleDataApiFallback(
+  req: Request,
+  res: Response,
+  targetPath: string
+): Promise<void> {
+  const cleanPath = targetPath.startsWith('/') ? targetPath : `/${targetPath}`;
+  const method = req.method.toUpperCase();
+
+  // 1. Health
+  if (cleanPath === '/api/v1/health') {
+    return dataApiService.handleHealth(req, res);
+  }
+
+  // 2. Ingestion
+  if (cleanPath === '/api/v1/ingestion/run' && method === 'POST') {
+    return dataApiService.runIngestion(req, res);
+  }
+
+  // 3. Search
+  if (cleanPath === '/api/v1/search' && method === 'GET') {
+    return dataApiService.searchKnowledge(req, res);
+  }
+
+  // 4. AI Tutor
+  if (cleanPath === '/api/v1/ai/tutor' && method === 'POST') {
+    return dataApiService.handleAiTutor(req, res);
+  }
+
+  // 5. Sources
+  if (cleanPath === '/api/v1/sources') {
+    if (method === 'GET') return dataApiService.listSources(req, res);
+    if (method === 'POST') return dataApiService.createSource(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/sources/')) {
+    const sourceId = decodeURIComponent(cleanPath.replace('/api/v1/sources/', ''));
+    if (method === 'GET') return dataApiService.getSource(req, res, sourceId);
+  }
+
+  // 6. Resources
+  if (cleanPath === '/api/v1/resources') {
+    if (method === 'GET') return dataApiService.listResources(req, res);
+    if (method === 'POST') return dataApiService.createResource(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/resources/')) {
+    const resourceId = decodeURIComponent(cleanPath.replace('/api/v1/resources/', ''));
+    if (method === 'GET') return dataApiService.getResource(req, res, resourceId);
+  }
+
+  // 7. Documents
+  if (cleanPath === '/api/v1/documents') {
+    if (method === 'GET') return dataApiService.listDocuments(req, res);
+    if (method === 'POST') return dataApiService.createDocument(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/documents/')) {
+    const documentId = decodeURIComponent(cleanPath.replace('/api/v1/documents/', ''));
+    if (method === 'GET') return dataApiService.getDocument(req, res, documentId);
+  }
+
+  // 8. Chunks
+  if (cleanPath === '/api/v1/chunks') {
+    if (method === 'GET') return dataApiService.listChunks(req, res);
+    if (method === 'POST') return dataApiService.createChunk(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/chunks/')) {
+    const chunkId = decodeURIComponent(cleanPath.replace('/api/v1/chunks/', ''));
+    if (method === 'GET') return dataApiService.getChunk(req, res, chunkId);
+  }
+
+  // 9. Jobs
+  if (cleanPath === '/api/v1/jobs') {
+    if (method === 'GET') return dataApiService.listJobs(req, res);
+    if (method === 'POST') return dataApiService.createJob(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/jobs/')) {
+    const jobId = decodeURIComponent(cleanPath.replace('/api/v1/jobs/', ''));
+    if (method === 'GET') return dataApiService.getJob(req, res, jobId);
+    if (method === 'PATCH') return dataApiService.updateJob(req, res, jobId);
+  }
+
+  // 10. Questions
+  if (cleanPath === '/api/v1/questions/bulk' && method === 'POST') {
+    return dataApiService.bulkCreateQuestions(req, res);
+  }
+  if (cleanPath === '/api/v1/questions') {
+    if (method === 'GET') return dataApiService.listQuestions(req, res);
+    if (method === 'POST') return dataApiService.createQuestion(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/questions/')) {
+    const questionId = decodeURIComponent(cleanPath.replace('/api/v1/questions/', ''));
+    if (method === 'GET') return dataApiService.getQuestion(req, res, questionId);
+  }
+
+  // 11. Tags
+  if (cleanPath === '/api/v1/tags') {
+    if (method === 'GET') return dataApiService.listTags(req, res);
+    if (method === 'POST') return dataApiService.createTag(req, res);
+  }
+  if (cleanPath.startsWith('/api/v1/tags/')) {
+    const tagId = decodeURIComponent(cleanPath.replace('/api/v1/tags/', ''));
+    if (method === 'GET') return dataApiService.getTag(req, res, tagId);
+  }
+
+  res.status(404).json({ error: 'Endpoint not found in Data API', path: targetPath });
 }
 
 /**
@@ -111,13 +231,17 @@ export async function ensureFastApiBridgeStarted(): Promise<void> {
 /**
  * Generic Express-to-FastAPI proxy forwarding helper.
  * Preserves method, path mapping (/api/v1/data/* -> /api/v1/*), query params, body, status codes, and headers.
- * Returns clean 503 JSON without crashing Node on upstream failure.
+ * Seamlessly falls back to native PostgreSQL data service when FastAPI is not running.
  */
 export async function proxyFastApiRequest(
   req: Request,
   res: Response,
   targetPath: string
 ): Promise<void> {
+  if (!fastApiHealthy) {
+    return handleDataApiFallback(req, res, targetPath);
+  }
+
   // Construct target URL preserving query string
   const queryString = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   const cleanTargetPath = targetPath.startsWith('/') ? targetPath : `/${targetPath}`;
@@ -125,7 +249,7 @@ export async function proxyFastApiRequest(
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
 
     const headers: Record<string, string> = {
       'Accept': 'application/json',
@@ -160,26 +284,15 @@ export async function proxyFastApiRequest(
       const text = await response.text().catch(() => '');
       res.status(response.status).send(text);
     }
-  } catch (err: any) {
-    const isAbort = err.name === 'AbortError';
-    console.warn(`[FastAPI Bridge Proxy Notice] ${req.method} ${targetPath} -> ${isAbort ? 'Request timed out' : err.message}`);
-
-    ensureFastApiBridgeStarted().catch(() => {});
-
-    res.status(503).json({
-      status: 'unavailable',
-      error: 'FastAPI service bridge unavailable',
-      message: isAbort
-        ? 'The internal FastAPI backend request timed out.'
-        : 'The internal FastAPI backend is unreachable or initializing.',
-      service: 'IKSHOVIA Data API',
-    });
+  } catch {
+    fastApiHealthy = false;
+    // Upstream FastAPI unavailable - seamlessly route to native dataApiService
+    await handleDataApiFallback(req, res, targetPath);
   }
 }
 
 /**
  * Proxies an Express request to the internal FastAPI server health endpoint.
- * Returns clean, structured JSON errors on upstream failure without crashing Express.
  */
 export async function proxyFastApiHealth(req: Request, res: Response): Promise<void> {
   await proxyFastApiRequest(req, res, '/api/v1/health');

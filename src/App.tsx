@@ -13,6 +13,7 @@ import { DashboardView } from './components/dashboard/DashboardView.js';
 import { LearnView } from './components/learn/LearnView.js';
 import { AITutorView } from './components/ai/AITutorView.js';
 import { PracticeView } from './components/practice/PracticeView.js';
+import { PyqPracticeView } from './components/pyq/PyqPracticeView.js';
 import { MockTestView } from './components/mock/MockTestView.js';
 import { RevisionView } from './components/revision/RevisionView.js';
 import { KnowledgeGraphView } from './components/graph/KnowledgeGraphView.js';
@@ -26,6 +27,17 @@ import { AdminView } from './components/admin/AdminView.js';
 import { OCRStudioView } from './components/admin/OCRStudioView.js';
 import { CurrentAffairsAdminView } from './components/admin/CurrentAffairsAdminView.js';
 import { SuperAdminConsoleView } from './components/admin/SuperAdminConsoleView.js';
+import { QuestionBankView } from './components/admin/QuestionBankView.js';
+import { MockTestBuilderView } from './components/admin/MockTestBuilderView.js';
+import { ImportPublishLogsView } from './components/admin/ImportPublishLogsView.js';
+import { SubjectsConceptsView } from './components/admin/SubjectsConceptsView.js';
+import { AdminDashboardView } from './components/admin/AdminDashboardView.js';
+import { UserManagementView } from './components/admin/UserManagementView.js';
+import { CoursesPricingView } from './components/admin/CoursesPricingView.js';
+import { EntitlementsView } from './components/admin/EntitlementsView.js';
+import { AdminPaymentsView } from './components/admin/AdminPaymentsView.js';
+import { CourseCatalogView } from './components/courses/CourseCatalogView.js';
+import { LearnerPurchasesView } from './components/courses/LearnerPurchasesView.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
 const MainContent: React.FC = () => {
@@ -67,24 +79,20 @@ const MainContent: React.FC = () => {
   }
 
   const getThemeClass = () => {
-    return 'bg-[#FAFAF8] text-[#111827]';
+    return 'bg-[#FAF8F5] text-stone-900';
   };
 
   const renderSection = () => {
     // Super Admin Route Guard
-    if (activeSection.startsWith('super-admin-')) {
+    if (activeSection.startsWith('super-admin') || activeSection === 'super-admin') {
       if (user?.role !== 'SUPER_ADMIN') {
-        return user?.role === 'ADMIN' ? <AdminView /> : <DashboardView />;
+        return user?.role === 'ADMIN' ? <AdminDashboardView /> : <DashboardView />;
       }
       return <SuperAdminConsoleView />;
     }
 
     // Admin Route Guard
-    if (
-      activeSection.startsWith('admin-') ||
-      activeSection === 'admin-ocr' ||
-      activeSection === 'admin-current-affairs'
-    ) {
+    if (activeSection.startsWith('admin-')) {
       if (user?.role !== 'ADMIN' && user?.role !== 'SUPER_ADMIN') {
         return <DashboardView />;
       }
@@ -97,11 +105,21 @@ const MainContent: React.FC = () => {
         return <LearnView />;
       case 'ai-tutor':
         return <AITutorView />;
+      case 'daily-quiz':
       case 'practice':
+      case 'practice-subject':
+      case 'practice-full':
         return <PracticeView />;
+      case 'pyq-practice':
+      case 'practice-pyq':
+        return <PyqPracticeView />;
       case 'mock-tests':
+      case 'mock-pyq':
+      case 'mock-custom':
+      case 'mock-attempts':
         return <MockTestView />;
       case 'revision':
+      case 'bookmarks':
         return <RevisionView />;
       case 'graph':
         return <KnowledgeGraphView />;
@@ -110,21 +128,52 @@ const MainContent: React.FC = () => {
       case 'current-affairs':
         return <CurrentAffairsView />;
       case 'resources':
+      case 'notes':
         return <ResourcesView />;
       case 'goals':
         return <GoalsView />;
       case 'profile':
         return <ProfileView />;
       case 'settings':
+      case 'admin-settings':
         return <SettingsView />;
+      case 'admin-dashboard':
+        return <AdminDashboardView />;
+      case 'admin-questions':
+        return <QuestionBankView />;
+      case 'admin-mock-builder':
+        return <MockTestBuilderView />;
       case 'admin-ocr':
+      case 'admin-content-import':
         return <OCRStudioView />;
       case 'admin-current-affairs':
         return <CurrentAffairsAdminView />;
-      case 'admin-dashboard':
-      case 'admin-users':
       case 'admin-content':
-      case 'admin-questions':
+        return <SubjectsConceptsView />;
+      case 'admin-import-logs':
+        return <ImportPublishLogsView />;
+      case 'courses-catalog':
+      case 'course-catalog':
+        return <CourseCatalogView />;
+      case 'admin-users':
+        return <UserManagementView />;
+      case 'admin-courses':
+        return <CoursesPricingView />;
+      case 'admin-entitlements':
+        return <EntitlementsView />;
+      case 'admin-payments':
+        return <AdminPaymentsView />;
+      case 'learner-purchases':
+        return <LearnerPurchasesView />;
+      case 'superadmin-console':
+      case 'super-admin':
+      case 'super-admin-dashboard':
+      case 'super-admin-users':
+      case 'super-admin-admins':
+      case 'super-admin-permissions':
+      case 'super-admin-audit':
+      case 'super-admin-settings':
+        return <SuperAdminConsoleView />;
       case 'admin-ai':
         return <AdminView />;
       default:
@@ -133,13 +182,11 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans selection:bg-indigo-600 selection:text-white transition-colors duration-300`}>
-      {/* Accent Ribbon */}
-      <div className="h-0.5 w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-500" />
+    <div className={`min-h-screen ${getThemeClass()} flex flex-col font-sans-editorial selection:bg-amber-500 selection:text-white transition-colors duration-200`}>
       <Header />
-      <div className="flex flex-1 w-full max-w-7xl mx-auto min-w-0">
+      <div className="flex flex-1 w-full max-w-[1600px] mx-auto min-w-0">
         <Sidebar />
-        <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-3 pb-24 sm:p-6 sm:pb-8 lg:p-8 overflow-y-auto">
+        <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-4 pb-24 sm:p-6 sm:pb-12 lg:p-8 overflow-y-auto">
           <ErrorBoundary key={activeSection} onReset={() => setActiveSection('dashboard')}>
             {renderSection()}
           </ErrorBoundary>

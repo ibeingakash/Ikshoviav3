@@ -77,9 +77,9 @@ export const OCRStudioView: React.FC = () => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [concepts, setConcepts] = useState<Concept[]>([]);
 
-  const [selectedSubjectId, setSelectedSubjectId] = useState('sub_polity');
-  const [selectedTopicId, setSelectedTopicId] = useState('top_rights');
-  const [selectedConceptId, setSelectedConceptId] = useState('c_art32');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('sub_full_length');
+  const [selectedTopicId, setSelectedTopicId] = useState('top_mixed');
+  const [selectedConceptId, setSelectedConceptId] = useState('c_mixed');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD'>('MEDIUM');
   const [examTag, setExamTag] = useState('UPSC CSE Prelims');
   const [pyqYear, setPyqYear] = useState<number>(2025);
@@ -92,6 +92,11 @@ export const OCRStudioView: React.FC = () => {
   const [totalExpectedQuestions, setTotalExpectedQuestions] = useState<number>(100);
   const [ocrResultMeta, setOcrResultMeta] = useState<any>(null);
   const [cardLang, setCardLang] = useState<Record<string, 'en' | 'hi'>>({});
+  const [officialSourceUrl, setOfficialSourceUrl] = useState('');
+  const [showAnswerKeyModal, setShowAnswerKeyModal] = useState(false);
+  const [answerKeyInputText, setAnswerKeyInputText] = useState('');
+  const [isApplyingKey, setIsApplyingKey] = useState(false);
+  const [isPublishingToCatalog, setIsPublishingToCatalog] = useState(false);
 
   const handleExamChange = (exam: 'UPSC CSE' | 'BPSC') => {
     setSelectedExam(exam);
@@ -143,7 +148,9 @@ export const OCRStudioView: React.FC = () => {
       const subRes = await api.getSubjects();
       if (Array.isArray(subRes) && subRes.length > 0) {
         setSubjects(subRes);
-        if (!selectedSubjectId) setSelectedSubjectId(subRes[0].id);
+        if (!selectedSubjectId || !subRes.some(s => s.id === selectedSubjectId)) {
+          setSelectedSubjectId(subRes[0].id);
+        }
       }
     } catch (err) {
       console.error('Failed to load metadata', err);
@@ -151,17 +158,34 @@ export const OCRStudioView: React.FC = () => {
   };
 
   const loadTopicsForSubject = async (subjId: string) => {
+    if (subjId === 'sub_full_length') {
+      const mixedTopics: Topic[] = [
+        {
+          id: 'top_mixed',
+          name: 'All / Mixed Topics',
+          subjectId: 'sub_full_length',
+          description: 'Multi-disciplinary and full paper topic coverage',
+          order: 1,
+          conceptsCount: 1,
+        },
+      ];
+      setTopics(mixedTopics);
+      setSelectedTopicId('top_mixed');
+      return;
+    }
+
     try {
       const topicRes = await api.getTopics(subjId);
-      if (Array.isArray(topicRes)) {
+      if (Array.isArray(topicRes) && topicRes.length > 0) {
         setTopics(topicRes);
-        if (topicRes.length > 0) {
+        if (!selectedTopicId || !topicRes.some(t => t.id === selectedTopicId)) {
           setSelectedTopicId(topicRes[0].id);
-        } else {
-          setSelectedTopicId('');
-          setConcepts([]);
-          setSelectedConceptId('');
         }
+      } else {
+        setTopics([]);
+        setSelectedTopicId('');
+        setConcepts([]);
+        setSelectedConceptId('');
       }
     } catch (err) {
       console.error('Failed to load topics', err);
@@ -174,15 +198,40 @@ export const OCRStudioView: React.FC = () => {
       setSelectedConceptId('');
       return;
     }
+
+    if (topId === 'top_mixed') {
+      const mixedConcepts: Concept[] = [
+        {
+          id: 'c_mixed',
+          title: 'All / Mixed Concepts (Full Paper)',
+          topicId: 'top_mixed',
+          subjectId: 'sub_full_length',
+          summary: 'Full length paper mixed conceptual coverage',
+          explanation: 'Covers questions across the entire syllabus for mock and PYQ full-length papers.',
+          examples: [],
+          keyPoints: ['Comprehensive syllabus coverage', 'Real exam simulation'],
+          difficulty: 'INTERMEDIATE',
+          importance: 'HIGH',
+          prerequisiteIds: [],
+          relatedIds: [],
+          tags: ['Full Length', 'PYQ', 'Mock'],
+        },
+      ];
+      setConcepts(mixedConcepts);
+      setSelectedConceptId('c_mixed');
+      return;
+    }
+
     try {
       const conRes = await api.getConcepts(topId);
-      if (Array.isArray(conRes)) {
+      if (Array.isArray(conRes) && conRes.length > 0) {
         setConcepts(conRes);
-        if (conRes.length > 0) {
+        if (!selectedConceptId || !conRes.some(c => c.id === selectedConceptId)) {
           setSelectedConceptId(conRes[0].id);
-        } else {
-          setSelectedConceptId('');
         }
+      } else {
+        setConcepts([]);
+        setSelectedConceptId('');
       }
     } catch (err) {
       console.error('Failed to load concepts', err);
@@ -258,9 +307,9 @@ export const OCRStudioView: React.FC = () => {
         answerPdfBase64: answerFile.base64,
         questionFileName: questionFile.name || 'Question_Paper.pdf',
         answerFileName: answerFile.name || 'Answer_Key.pdf',
-        subjectId: selectedSubjectId,
-        topicId: selectedTopicId,
-        conceptId: selectedConceptId,
+        subjectId: selectedSubjectId || 'sub_full_length',
+        topicId: selectedTopicId || 'top_mixed',
+        conceptId: selectedConceptId || 'c_mixed',
         difficulty: selectedDifficulty,
         examTag,
         pyqYear,
@@ -270,7 +319,7 @@ export const OCRStudioView: React.FC = () => {
 
       setProcessingStage(4);
 
-      if (res.success && Array.isArray(res.questions)) {
+      if (res.success && Array.isArray(res.questions) && res.questions.length > 0) {
         setExtractedQuestions(res.questions);
         setOcrResultMeta(res);
         setStatusMessage({
@@ -283,11 +332,17 @@ export const OCRStudioView: React.FC = () => {
         }, 800);
       } else {
         setIsProcessing(false);
-        setStatusMessage({ type: 'error', text: res.error || 'Failed to process OCR document.' });
+        const stageInfo = res.stage ? `[Stage: ${res.stage}] ` : '';
+        const detailsInfo = res.details ? ` (${res.details})` : '';
+        setStatusMessage({
+          type: 'error',
+          text: `${stageInfo}${res.error || 'Failed to process OCR document.'}${detailsInfo}`,
+        });
       }
     } catch (err: any) {
       setIsProcessing(false);
-      setStatusMessage({ type: 'error', text: 'Server error during OCR extraction.' });
+      const errDetail = err?.message || 'Server error during OCR extraction.';
+      setStatusMessage({ type: 'error', text: `OCR Processing Error: ${errDetail}` });
     }
   };
 
@@ -315,8 +370,10 @@ export const OCRStudioView: React.FC = () => {
       return;
     }
 
+    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
     try {
       const res = await api.bulkActionOcrQuestions({
+        jobId,
         questionIds: selectedQuestionIds,
         action,
         destination,
@@ -330,20 +387,27 @@ export const OCRStudioView: React.FC = () => {
 
       if (res.success) {
         setStatusMessage({ type: 'success', text: res.message });
-        setExtractedQuestions(prev =>
-          prev
-            .map(q => {
-              if (!selectedQuestionIds.includes(q.id)) return q;
-              if (action === 'DELETE') return null;
-              if (action === 'PUBLISH' && q.correctAnswer && q.correctAnswer !== '') {
-                return { ...q, isPublished: true, status: 'PUBLISHED' as const, destination };
-              }
-              if (action === 'APPROVE') return { ...q, status: 'READY_TO_PUBLISH' as const };
-              if (action === 'SAVE_DRAFT') return { ...q, status: 'DRAFT' as const, isPublished: false };
-              return q;
-            })
-            .filter(Boolean) as Question[]
-        );
+        if (Array.isArray(res.questions) && res.questions.length > 0) {
+          setExtractedQuestions(res.questions);
+        } else {
+          setExtractedQuestions(prev =>
+            prev
+              .map(q => {
+                if (!selectedQuestionIds.includes(q.id)) return q;
+                if (action === 'DELETE') return null;
+                if (action === 'PUBLISH' && q.correctAnswer && q.correctAnswer !== '') {
+                  return { ...q, isPublished: true, status: 'PUBLISHED' as const, destination };
+                }
+                if (action === 'APPROVE') {
+                  const isBlocked = res.rejectedIds?.includes(q.id);
+                  return isBlocked ? q : { ...q, status: 'READY_TO_PUBLISH' as const };
+                }
+                if (action === 'SAVE_DRAFT') return { ...q, status: 'DRAFT' as const, isPublished: false };
+                return q;
+              })
+              .filter(Boolean) as Question[]
+          );
+        }
         setSelectedQuestionIds([]);
       } else {
         setStatusMessage({ type: 'error', text: res.error || 'Bulk action failed.' });
@@ -383,12 +447,79 @@ export const OCRStudioView: React.FC = () => {
     }
   };
 
+  const handleApplyAnswerKeyText = async () => {
+    if (!answerKeyInputText.trim()) {
+      setStatusMessage({ type: 'error', text: 'Please enter answer key text (e.g. 1 A 2 B 3 C 4 D).' });
+      return;
+    }
+    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    if (!jobId) {
+      setStatusMessage({ type: 'error', text: 'No active OCR job ID found. Please process a document first.' });
+      return;
+    }
+
+    setIsApplyingKey(true);
+    try {
+      const res = await api.parseOcrAnswerKey(jobId, answerKeyInputText);
+      if (res.success && Array.isArray(res.questions)) {
+        setExtractedQuestions(res.questions);
+        setShowAnswerKeyModal(false);
+        setAnswerKeyInputText('');
+        setStatusMessage({
+          type: 'success',
+          text: `Master Answer Key applied! Matched ${res.matchedCount} keys, updated ${res.updatedQuestionsCount} questions to READY_TO_PUBLISH.`,
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: res.error || 'Failed to parse and bind answer key.' });
+      }
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: 'Error applying answer key text.' });
+    } finally {
+      setIsApplyingKey(false);
+    }
+  };
+
+  const handlePublishEntirePaperToPyqCatalog = async () => {
+    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    if (!jobId) {
+      setStatusMessage({ type: 'error', text: 'No active OCR Job ID found to publish.' });
+      return;
+    }
+
+    setIsPublishingToCatalog(true);
+    try {
+      const res = await api.publishOcrJobToPyq(jobId, {
+        exam: selectedExam,
+        year: pyqYear,
+        paper: examTag,
+      });
+
+      if (res.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `Successfully published entire paper (${res.publishedCount} questions) to canonical PYQ database [Paper ID: ${res.paperId}]!`,
+        });
+        setExtractedQuestions(prev =>
+          prev.map(q => ({ ...q, isPublished: true, status: 'PUBLISHED' as const }))
+        );
+      } else {
+        setStatusMessage({ type: 'error', text: res.error || 'Failed to publish to PYQ catalog.' });
+      }
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: 'Exception while publishing to canonical PYQ catalog.' });
+    } finally {
+      setIsPublishingToCatalog(false);
+    }
+  };
+
   const handleFinalPublish = async (action: 'PUBLISH' | 'DRAFT') => {
     setIsPublishing(true);
     const targetIds = extractedQuestions.map(q => q.id);
+    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
 
     try {
       const res = await api.bulkActionOcrQuestions({
+        jobId,
         questionIds: targetIds,
         action: action === 'PUBLISH' ? 'PUBLISH' : 'SAVE_DRAFT',
         destination,
@@ -402,7 +533,9 @@ export const OCRStudioView: React.FC = () => {
 
       if (res.success) {
         setStatusMessage({ type: 'success', text: res.message });
-        if (action === 'PUBLISH') {
+        if (Array.isArray(res.questions) && res.questions.length > 0) {
+          setExtractedQuestions(res.questions);
+        } else if (action === 'PUBLISH') {
           setExtractedQuestions(prev =>
             prev.map(q =>
               q.correctAnswer && q.correctAnswer !== ''
@@ -449,11 +582,11 @@ export const OCRStudioView: React.FC = () => {
             <div className="flex items-center gap-2 mb-2">
               <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/40 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                IKSHOVIA V3 OCR & Vision Studio
+                Content Import • Ingestion & OCR Pipeline
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Question & Solution PDF Import System
+              Content Import Studio (PDF & Answer Key Ingestion)
             </h1>
             <p className="text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
               Digitize Civil Services PYQs and Mock Test PDFs. Auto-match question papers with solution keys, inspect extraction confidence, map to syllabus hierarchy, and publish.
@@ -1052,19 +1185,19 @@ export const OCRStudioView: React.FC = () => {
           </div>
 
           <div>
-            <h2 className="text-xl font-extrabold text-white">OCR Vision Intelligence Pipeline</h2>
+            <h2 className="text-xl font-extrabold text-white">Deterministic OCR & Extraction Pipeline</h2>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Extract questions, parse choices, align answer keys, and calculate confidence scores.
+              Extract authentic questions, parse choices & statements, align answer keys, and calculate forensic confidence scores.
             </p>
           </div>
 
           {/* Steps Indicator */}
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-left space-y-3">
             {[
-              { idx: 1, label: 'Validate PDF headers & security structure' },
-              { idx: 2, label: 'Run Gemini Vision OCR extraction' },
-              { idx: 3, label: 'Align solution key numbers & explanations' },
-              { idx: 4, label: 'Generate confidence scores & review flags' },
+              { idx: 1, label: 'Validate PDF header & security structure' },
+              { idx: 2, label: 'Deterministic native text / Tesseract OCR extraction' },
+              { idx: 3, label: 'Sequential boundary segmentation & 5-option normalization' },
+              { idx: 4, label: 'Align solution key numbers & verification diagnostics' },
             ].map(st => (
               <div key={st.idx} className="flex items-center gap-3 text-xs">
                 <div
@@ -1161,6 +1294,45 @@ export const OCRStudioView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Forensic Diagnostics Details */}
+              {ocrResultMeta.diagnostics && (
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-slate-300 font-bold border-b border-slate-800 pb-1.5">
+                    <span className="flex items-center gap-1.5 text-indigo-400">
+                      <Info className="w-4 h-4" />
+                      Deterministic Extraction Diagnostics
+                    </span>
+                    <span className="font-mono text-[11px] text-slate-400">
+                      {ocrResultMeta.diagnostics.processingTimeMs}ms
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-300">
+                    <div>
+                      <span className="text-slate-500">PDF Layer: </span>
+                      <span className="font-semibold text-white">{ocrResultMeta.diagnostics.pdfType}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Pages Processed: </span>
+                      <span className="font-semibold text-white">{ocrResultMeta.diagnostics.pageCount || ocrResultMeta.diagnostics.ocrPagesProcessed}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Extracted Chars: </span>
+                      <span className="font-semibold text-white">{(ocrResultMeta.diagnostics.extractedTextCharCount || ocrResultMeta.diagnostics.ocrCharCount || 0).toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Question Markers: </span>
+                      <span className="font-semibold text-emerald-400">{ocrResultMeta.diagnostics.detectedQuestionMarkers}</span>
+                    </div>
+                  </div>
+                  {ocrResultMeta.diagnostics.rejectionReasons && ocrResultMeta.diagnostics.rejectionReasons.length > 0 && (
+                    <div className="text-[11px] text-amber-300/90 pt-1 border-t border-slate-900">
+                      <span className="font-bold text-amber-400">Parser Notices: </span>
+                      {ocrResultMeta.diagnostics.rejectionReasons.join(' • ')}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {ocrResultMeta.missingQuestionNums && ocrResultMeta.missingQuestionNums.length > 0 && (
                 <div className="bg-rose-950/50 border border-rose-800/80 rounded-xl p-3 text-xs text-rose-200 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -1213,7 +1385,15 @@ export const OCRStudioView: React.FC = () => {
             </div>
 
             {/* Bulk Toolbar */}
-            <div className="flex items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
+            <div className="flex items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800 flex-wrap">
+              <button
+                onClick={() => setShowAnswerKeyModal(true)}
+                className="text-xs bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <FileCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>Bind Master Answer Key</span>
+              </button>
+
               <button
                 onClick={handleToggleSelectAll}
                 className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 font-medium"
@@ -1241,6 +1421,55 @@ export const OCRStudioView: React.FC = () => {
             </div>
           </div>
 
+          {/* Master Answer Key Quick-Binder Modal */}
+          {showAnswerKeyModal && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <FileCheck className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-sm font-bold text-white">Bind Master Answer Key</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowAnswerKeyModal(false)}
+                    className="text-slate-400 hover:text-white p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-300">
+                  Paste the official answer key text. Formats supported: <code className="text-amber-300 font-mono">1 A 2 B 3 C</code>, tabular numbers, or <code className="text-amber-300 font-mono">Q1: A, Q2: B</code>.
+                </p>
+
+                <textarea
+                  value={answerKeyInputText}
+                  onChange={e => setAnswerKeyInputText(e.target.value)}
+                  placeholder="1 A&#10;2 B&#10;3 C&#10;4 D..."
+                  rows={8}
+                  className="w-full bg-slate-950 border border-slate-700 text-white rounded-xl p-3 text-xs font-mono focus:border-amber-500 focus:outline-none"
+                />
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setShowAnswerKeyModal(false)}
+                    className="text-xs text-slate-400 hover:text-white px-3 py-1.5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApplyAnswerKeyText}
+                    disabled={isApplyingKey || !answerKeyInputText.trim()}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-lg disabled:opacity-50"
+                  >
+                    {isApplyingKey ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <span>Parse & Apply Keys</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Question Cards List */}
           <div className="space-y-4">
             {filteredQuestions.length === 0 ? (
@@ -1253,6 +1482,7 @@ export const OCRStudioView: React.FC = () => {
               filteredQuestions.map((q, idx) => {
                 const isSelected = selectedQuestionIds.includes(q.id);
                 const isEditing = editingQId === q.id;
+                const anyQ = q as any;
 
                 return (
                   <div
@@ -1263,7 +1493,7 @@ export const OCRStudioView: React.FC = () => {
                   >
                     {/* Top Meta Bar */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -1271,7 +1501,34 @@ export const OCRStudioView: React.FC = () => {
                           className="w-4 h-4 rounded border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-950"
                         />
                         <span className="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-lg">
-                          Question #{idx + 1}
+                          Question #{anyQ.questionNum || idx + 1}
+                        </span>
+
+                        {anyQ.format && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-indigo-950 text-indigo-300 border border-indigo-700/60 font-mono">
+                            {anyQ.format}
+                          </span>
+                        )}
+
+                        {/* Answer Key Binding Status Badge */}
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
+                            anyQ.answerKeyStatus === 'ANSWER_BOUND' || anyQ.correctAnswer
+                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                              : 'bg-amber-950 text-amber-300 border border-amber-700'
+                          }`}
+                        >
+                          {anyQ.answerKeyStatus === 'ANSWER_BOUND' || anyQ.correctAnswer ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              <span>Answer Bound ({anyQ.correctAnswer})</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="w-3 h-3 text-amber-400" />
+                              <span>Answer Pending</span>
+                            </>
+                          )}
                         </span>
 
                         <span
@@ -1302,7 +1559,7 @@ export const OCRStudioView: React.FC = () => {
                               onClick={() => setCardLang({ ...cardLang, [q.id]: 'en' })}
                               className={`px-2 py-0.5 rounded ${
                                 (cardLang[q.id] || 'en') === 'en'
-                                  ? 'bg-amber-500 text-slate-950 font-bold'
+                                   ? 'bg-amber-500 text-slate-950 font-bold'
                                   : 'text-slate-400 hover:text-white'
                               }`}
                             >
@@ -1361,27 +1618,31 @@ export const OCRStudioView: React.FC = () => {
 
                         {/* Options inline editing */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {(editForm.options || []).map((opt, oIdx) => (
-                            <div key={opt.id} className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name={`correct_${q.id}`}
-                                checked={editForm.correctAnswer === String(oIdx)}
-                                onChange={() => setEditForm({ ...editForm, correctAnswer: String(oIdx) })}
-                                className="w-4 h-4 text-amber-500 focus:ring-amber-500 bg-slate-900"
-                              />
-                              <input
-                                type="text"
-                                value={opt.text}
-                                onChange={e => {
-                                  const updatedOpts = [...(editForm.options || [])];
-                                  updatedOpts[oIdx] = { ...opt, text: e.target.value };
-                                  setEditForm({ ...editForm, options: updatedOpts });
-                                }}
-                                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-xs focus:border-amber-500 focus:outline-none"
-                              />
-                            </div>
-                          ))}
+                          {(editForm.options || []).map((opt: any, oIdx: number) => {
+                            const optText = typeof opt === 'string' ? opt : (opt?.text || '');
+                            const optKey = typeof opt === 'object' && opt?.id ? opt.id : oIdx;
+                            return (
+                              <div key={`edit_opt_${q.id}_${optKey}_${oIdx}`} className="flex items-center gap-2">
+                                <input
+                                  type="radio"
+                                  name={`correct_${q.id}`}
+                                  checked={editForm.correctAnswer === String(oIdx)}
+                                  onChange={() => setEditForm({ ...editForm, correctAnswer: String(oIdx) })}
+                                  className="w-4 h-4 text-amber-500 focus:ring-amber-500 bg-slate-900"
+                                />
+                                <input
+                                  type="text"
+                                  value={optText}
+                                  onChange={e => {
+                                    const updatedOpts = [...(editForm.options || [])];
+                                    updatedOpts[oIdx] = typeof opt === 'string' ? e.target.value : { ...opt, text: e.target.value };
+                                    setEditForm({ ...editForm, options: updatedOpts });
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-xs focus:border-amber-500 focus:outline-none"
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
 
                         <div>
@@ -1425,6 +1686,17 @@ export const OCRStudioView: React.FC = () => {
                           </div>
                         )}
 
+                        {/* Passage text block for comprehension */}
+                        {anyQ.passageText && (
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-300 space-y-1.5">
+                            <div className="flex items-center gap-1.5 text-indigo-300 font-bold uppercase tracking-wider text-[10px]">
+                              <BookOpen className="w-3.5 h-3.5" />
+                              <span>Passage / Context</span>
+                            </div>
+                            <p className="leading-relaxed whitespace-pre-wrap">{anyQ.passageText}</p>
+                          </div>
+                        )}
+
                         {/* Question Statement (Bilingual support) */}
                         <p className="text-sm font-semibold text-white leading-relaxed">
                           {cardLang[q.id] === 'hi'
@@ -1432,25 +1704,82 @@ export const OCRStudioView: React.FC = () => {
                             : q.question_en || q.question}
                         </p>
 
+                        {/* Statements list for STATEMENT_BASED questions */}
+                        {Array.isArray(anyQ.statements) && anyQ.statements.length > 0 && (
+                          <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1.5 text-xs text-slate-200">
+                            {anyQ.statements.map((st: any, sIdx: number) => {
+                              const stmtText = typeof st === 'string' ? st : (st?.text || String(st || ''));
+                              const stmtId = typeof st === 'object' && st?.id ? st.id : (sIdx + 1);
+                              return (
+                                <div key={`stmt_${q.id}_${stmtId}_${sIdx}`} className="flex items-start gap-2">
+                                  <span className="font-bold text-amber-400 shrink-0">{stmtId}.</span>
+                                  <span>{stmtText}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Match the Following Table */}
+                        {anyQ.matchData && (
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs overflow-x-auto">
+                            <table className="w-full text-left">
+                              <thead>
+                                <tr className="border-b border-slate-800 text-[11px] font-bold text-amber-400 uppercase">
+                                  <th className="pb-2">{anyQ.matchData.leftHeader || 'List I'}</th>
+                                  <th className="pb-2">{anyQ.matchData.rightHeader || 'List II'}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                                {anyQ.matchData.leftColumn && anyQ.matchData.rightColumn ? (
+                                  Array.from({ length: Math.max(anyQ.matchData.leftColumn.length, anyQ.matchData.rightColumn.length) }).map((_, rIdx) => {
+                                    const left = anyQ.matchData.leftColumn[rIdx];
+                                    const right = anyQ.matchData.rightColumn[rIdx];
+                                    return (
+                                      <tr key={`match_row_${q.id}_${rIdx}`}>
+                                        <td className="py-1.5 pr-4">
+                                          {left ? <span className="font-medium text-slate-200">{left.key || left.id}. {left.text}</span> : ''}
+                                        </td>
+                                        <td className="py-1.5">
+                                          {right ? <span className="font-medium text-slate-200">{right.key || right.id}. {right.text}</span> : ''}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                ) : (anyQ.matchData.pairs || []).map((pair: any, pIdx: number) => (
+                                  <tr key={`pair_${q.id}_${pIdx}`}>
+                                    <td className="py-1.5 pr-4">{typeof pair === 'object' ? (pair.itemA || pair.item1 || pair.key || '') : String(pair)}</td>
+                                    <td className="py-1.5">{typeof pair === 'object' ? (pair.itemB || pair.item2 || pair.value || '') : ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
                         {/* Options List */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {((cardLang[q.id] === 'hi' && q.options_hi && q.options_hi.length > 0
                             ? q.options_hi
                             : q.options) || []
-                          ).map((opt, oIdx) => {
-                            const isCorrect = q.correctAnswer === String(oIdx);
+                          ).map((opt: any, oIdx: number) => {
+                            const optLetter = (typeof opt === 'object' && opt?.id) ? opt.id.toUpperCase() : String.fromCharCode(65 + oIdx);
+                            const correctLetter = (q.correctAnswer || '').trim().toUpperCase();
+                            const isCorrect = correctLetter === optLetter || correctLetter === String(oIdx) || correctLetter === String.fromCharCode(65 + oIdx);
+                            const optText = typeof opt === 'string' ? opt : (opt?.text || '');
+                            const optKey = typeof opt === 'object' && opt?.id ? opt.id : oIdx;
                             return (
                               <div
-                                key={opt.id || oIdx}
+                                key={`card_opt_${q.id}_${optKey}_${oIdx}`}
                                 className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
                                   isCorrect
-                                    ? 'bg-emerald-950/60 border-emerald-600 text-emerald-200 font-semibold'
+                                    ? 'bg-emerald-950/60 border-emerald-600 text-emerald-200 font-semibold ring-1 ring-emerald-500/30'
                                     : 'bg-slate-950/60 border-slate-800 text-slate-300'
                                 }`}
                               >
                                 <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-400">{String.fromCharCode(65 + oIdx)}.</span>
-                                  <span>{opt.text}</span>
+                                  <span className="font-bold text-slate-400">{optLetter}.</span>
+                                  <span>{optText}</span>
                                 </div>
                                 {isCorrect && <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />}
                               </div>
@@ -1458,10 +1787,17 @@ export const OCRStudioView: React.FC = () => {
                           })}
                         </div>
 
-                        {/* Explanation block */}
+                        {/* Explanation block with Forensic Provenance */}
                         {(cardLang[q.id] === 'hi' ? q.explanation_hi || q.explanation : q.explanation_en || q.explanation) && (
-                          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 space-y-1">
-                            <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px]">Solution Explanation:</span>
+                          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-1">
+                              <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px]">Solution Explanation:</span>
+                              {(anyQ.solutionSource || anyQ.solutionQuestionNumber) && (
+                                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded">
+                                  Provenance: {anyQ.solutionSource || `Canonical Solution #${anyQ.solutionQuestionNumber}`}
+                                </span>
+                              )}
+                            </div>
                             <p className="leading-relaxed">
                               {cardLang[q.id] === 'hi' ? q.explanation_hi || q.explanation : q.explanation_en || q.explanation}
                             </p>
@@ -1475,7 +1811,7 @@ export const OCRStudioView: React.FC = () => {
                               <span>Confidence Breakdown:</span>
                               <span className="text-indigo-300">Q:{q.fieldConfidence.question}</span>
                               <span className="text-indigo-300">Opts:{q.fieldConfidence.options}</span>
-                              <span className="text-indigo-300">Ans:{q.fieldConfidence.correctAnswer}</span>
+                              <span className="text-indigo-300">Ans:{q.fieldConfidence.correctAnswer || (q.fieldConfidence as any).answer || 'HIGH'}</span>
                             </div>
                           )}
 
@@ -1547,6 +1883,11 @@ export const OCRStudioView: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between py-1.5 border-b border-slate-800">
+                  <span className="text-slate-400">Needs Review:</span>
+                  <span className="font-bold text-amber-400">{needsReviewCount}</span>
+                </div>
+
+                <div className="flex justify-between py-1.5 border-b border-slate-800">
                   <span className="text-slate-400">Blocked / Needs Answer:</span>
                   <span className="font-bold text-rose-400">{needsAnswerCount}</span>
                 </div>
@@ -1558,7 +1899,9 @@ export const OCRStudioView: React.FC = () => {
 
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-400">Publish Destination:</span>
-                  <span className="font-bold text-amber-400">{destination}</span>
+                  <span className="font-bold text-amber-400">
+                    {destination === 'BOTH' ? 'Both (Practice Bank & Mock Test)' : destination === 'MOCK_TEST' ? 'Mock Test Set' : 'Practice Question Bank'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1590,7 +1933,7 @@ export const OCRStudioView: React.FC = () => {
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
                 onClick={() => handleFinalPublish('DRAFT')}
-                disabled={isPublishing}
+                disabled={isPublishing || isPublishingToCatalog}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold px-5 py-2.5 rounded-xl text-sm transition-all disabled:opacity-50 w-full sm:w-auto flex items-center justify-center gap-2"
               >
                 <Save className="w-4 h-4" />
@@ -1598,8 +1941,26 @@ export const OCRStudioView: React.FC = () => {
               </button>
 
               <button
+                onClick={handlePublishEntirePaperToPyqCatalog}
+                disabled={isPublishing || isPublishingToCatalog || readyCount === 0}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition-all disabled:opacity-50 w-full sm:w-auto flex items-center justify-center gap-2 text-sm"
+              >
+                {isPublishingToCatalog ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Publishing to PYQ...</span>
+                  </>
+                ) : (
+                  <>
+                    <BookOpen className="w-4 h-4" />
+                    <span>Publish to Official PYQ Catalog ({readyCount})</span>
+                  </>
+                )}
+              </button>
+
+              <button
                 onClick={() => handleFinalPublish('PUBLISH')}
-                disabled={isPublishing || readyCount === 0}
+                disabled={isPublishing || isPublishingToCatalog || readyCount === 0}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg transition-all disabled:opacity-50 w-full sm:w-auto flex items-center justify-center gap-2 text-sm"
               >
                 {isPublishing ? (
@@ -1610,7 +1971,9 @@ export const OCRStudioView: React.FC = () => {
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    <span>Publish Ready Questions ({readyCount})</span>
+                    <span>
+                      Publish to {destination === 'BOTH' ? 'Practice Bank & Mock Test' : destination === 'MOCK_TEST' ? 'Mock Test Set' : 'Practice Bank'} ({readyCount})
+                    </span>
                   </>
                 )}
               </button>

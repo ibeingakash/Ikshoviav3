@@ -189,13 +189,13 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in font-sans-editorial">
       
       {/* Bihar State Focus Banner */}
-      <div className="bg-stone-900 text-white p-5 rounded-2xl border border-stone-800 shadow-xs relative overflow-hidden">
+      <div className="bg-stone-900 text-white p-6 rounded-2xl border border-stone-800 shadow-xs relative overflow-hidden">
         <div className="relative z-10 space-y-2 max-w-3xl">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-extrabold uppercase bg-amber-400 text-stone-950 px-2.5 py-0.5 rounded-full tracking-wider">
+            <span className="text-[10px] font-extrabold uppercase bg-amber-400 text-stone-950 px-2.5 py-0.5 rounded-full tracking-wider font-mono">
               BPSC 71st CCE Desk
             </span>
             <span className="text-xs text-amber-200 font-medium flex items-center gap-1">
@@ -203,7 +203,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
               Date-Wise Bihar State Policies & Regional Developments
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold font-serif text-white tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-bold font-serif-editorial text-white tracking-tight">
             Bihar Special Intelligence & Policy Tracker
           </h2>
           <p className="text-xs sm:text-sm text-stone-300 font-normal leading-relaxed">
@@ -216,11 +216,11 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
       {policyHighlights && policyHighlights.length > 0 && (
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-600 flex items-center gap-1.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5 font-mono">
               <Target className="w-3.5 h-3.5 text-amber-700" />
               <span>Core Bihar Flagship Schemes & Strategic Missions</span>
             </h3>
-            <span className="text-[11px] text-amber-800 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+            <span className="text-[11px] text-amber-900 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-mono">
               High Yield for BPSC Mains
             </span>
           </div>
@@ -228,18 +228,18 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
             {policyHighlights.map((policy, idx) => (
               <div
                 key={idx}
-                className="bg-white border border-stone-200 p-3.5 rounded-xl hover:border-amber-400 hover:shadow-2xs transition-all flex flex-col justify-between"
+                className="bg-white border border-[#EAE6DF] p-3.5 rounded-xl hover:border-amber-400 hover:shadow-2xs transition-all flex flex-col justify-between"
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100/90 text-amber-900 border border-amber-200">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100/90 text-amber-900 border border-amber-200 font-mono">
                       {policy.sector}
                     </span>
-                    <span className="text-[10px] font-semibold text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-semibold text-stone-500 bg-stone-100 px-2 py-0.5 rounded font-mono">
                       {policy.bpscPaper} • Target {policy.targetYear}
                     </span>
                   </div>
-                  <h4 className="text-xs sm:text-sm font-bold text-stone-900 font-serif leading-snug">
+                  <h4 className="text-xs sm:text-sm font-bold text-stone-900 font-serif-editorial leading-snug">
                     {policy.title}
                   </h4>
                   <p className="text-xs text-stone-600 font-normal leading-relaxed">
@@ -253,15 +253,15 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
       )}
 
       {/* Filter & Date Bar */}
-      <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl space-y-3.5 shadow-2xs">
+      <div className="bg-white border border-[#EAE6DF] p-4 sm:p-5 rounded-2xl space-y-3.5 shadow-2xs">
         
         {/* Date Navigator Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-stone-100 pb-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#EAE6DF] pb-3">
           <div className="flex items-center gap-2">
             <button
               onClick={handlePreviousDay}
               title="Previous Day"
-              className="p-1.5 rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+              className="p-1.5 rounded-xl border border-[#EAE6DF] hover:bg-[#FAF8F5] text-stone-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               <span>Prev</span>
@@ -269,7 +269,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
 
             <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 px-3 py-1 rounded-xl">
               <Calendar className="w-3.5 h-3.5 text-amber-800" />
-              <span className="text-xs font-bold text-amber-950 font-serif">
+              <span className="text-xs font-bold text-amber-950 font-serif-editorial">
                 {selectedDate === 'ALL' ? 'All Historical Dates' : formatDateHuman(selectedDate, { includeWeekday: true })}
               </span>
             </div>
@@ -277,7 +277,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
             <button
               onClick={handleNextDay}
               title="Next Day"
-              className="p-1.5 rounded-xl border border-stone-200 hover:bg-stone-100 text-stone-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+              className="p-1.5 rounded-xl border border-[#EAE6DF] hover:bg-[#FAF8F5] text-stone-700 transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
             >
               <span>Next</span>
               <ChevronRight className="w-3.5 h-3.5" />
@@ -298,7 +298,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                   fetchFeed();
                 }
               }}
-              className="w-full bg-stone-50 border border-stone-200 text-xs text-stone-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-amber-800"
+              className="w-full bg-[#FAF8F5] border border-[#EAE6DF] text-xs text-stone-900 pl-8 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-stone-900"
             />
           </div>
         </div>
@@ -306,7 +306,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
         {/* Date Selector Row */}
         {availableDates.length > 0 && (
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
-            <span className="text-[11px] font-bold text-stone-500 mr-1 shrink-0 flex items-center gap-1 whitespace-nowrap">
+            <span className="text-[11px] font-bold text-stone-500 mr-1 shrink-0 flex items-center gap-1 whitespace-nowrap font-mono">
               <Clock className="w-3 h-3 text-amber-800" />
               Date Archive:
             </span>
@@ -317,7 +317,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
               }}
               className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer ${
                 selectedDate === 'ALL'
-                  ? 'bg-amber-800 text-amber-100 font-bold shadow-2xs'
+                  ? 'bg-stone-900 text-amber-300 font-bold shadow-2xs'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
@@ -332,13 +332,13 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                 }}
                 className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg transition-all shrink-0 whitespace-nowrap cursor-pointer flex items-center gap-1 ${
                   selectedDate === d.date
-                    ? 'bg-amber-800 text-amber-100 font-bold shadow-2xs'
+                    ? 'bg-stone-900 text-amber-300 font-bold shadow-2xs'
                     : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                 }`}
               >
                 <span>{d.formatted}</span>
                 <span className={`text-[9px] px-1 rounded-full ${
-                  selectedDate === d.date ? 'bg-amber-950 text-white' : 'bg-stone-200 text-stone-700'
+                  selectedDate === d.date ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
                 }`}>
                   {d.count}
                 </span>
@@ -348,8 +348,8 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
         )}
 
         {/* Domain Filters */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-stone-100 scrollbar-none">
-          <span className="text-[11px] font-bold text-stone-500 shrink-0">Domain:</span>
+        <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-[#EAE6DF] scrollbar-none">
+          <span className="text-[11px] font-bold text-stone-500 shrink-0 font-mono">Domain:</span>
           {categories.map(c => (
             <button
               key={c.id}
@@ -359,7 +359,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
               }}
               className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
                 selectedCategory === c.id
-                  ? 'bg-[#35156B] text-amber-300 shadow-2xs font-extrabold'
+                  ? 'bg-stone-900 text-amber-300 shadow-2xs font-extrabold'
                   : 'bg-stone-100 text-stone-600 hover:text-stone-900 hover:bg-stone-200'
               }`}
             >
@@ -380,9 +380,9 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
 
       {/* Empty State */}
       {!loading && articles.length === 0 && (
-        <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center space-y-3 shadow-2xs">
+        <div className="bg-white border border-[#EAE6DF] rounded-2xl p-10 text-center space-y-3 shadow-2xs">
           <MapPin className="w-10 h-10 text-amber-700/50 mx-auto" />
-          <h3 className="text-base font-bold text-stone-900">
+          <h3 className="text-base font-bold text-stone-900 font-serif-editorial">
             No Bihar Special records found for {selectedDate === 'ALL' ? 'selected filters' : formatDateHuman(selectedDate)}
           </h3>
           <p className="text-xs text-stone-500 max-w-md mx-auto">
@@ -391,7 +391,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
           <div className="flex items-center justify-center gap-2 pt-1">
             <button
               onClick={handlePreviousDay}
-              className="text-xs font-bold text-amber-100 bg-amber-800 hover:bg-amber-900 px-4 py-2 rounded-xl transition-colors cursor-pointer shadow-2xs"
+              className="text-xs font-bold text-stone-900 bg-amber-400 hover:bg-amber-300 px-4 py-2 rounded-xl transition-colors cursor-pointer shadow-2xs"
             >
               View Previous Day
             </button>
@@ -420,28 +420,28 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
               <div
                 key={art.id}
                 onClick={() => onSelectArticle && onSelectArticle(art)}
-                className="bg-white border border-stone-200 rounded-2xl p-5 hover:border-amber-400 hover:shadow-2xs transition-all cursor-pointer space-y-3 relative group"
+                className="bg-white border border-[#EAE6DF] rounded-2xl p-5 hover:border-amber-400 hover:shadow-2xs transition-all cursor-pointer space-y-3 relative group"
               >
                 {/* Header Tag Row */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono">
                       {art.category || 'Bihar Current Affairs'}
                     </span>
                     {art.subtopic && (
-                      <span className="text-[11px] text-stone-600 bg-stone-100 px-2 py-0.5 rounded-md font-medium">
+                      <span className="text-[11px] text-stone-600 bg-stone-100 px-2 py-0.5 rounded-md font-medium font-mono">
                         {art.subtopic}
                       </span>
                     )}
-                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    <span className="text-[11px] font-semibold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-mono">
                       BPSC Prelims & Mains
                     </span>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${cls.bg}`}>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border font-mono ${cls.bg}`}>
                       {cls.label}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-stone-500">
+                  <div className="flex items-center gap-2 text-xs text-stone-500 font-mono">
                     <span className="font-semibold text-stone-700 flex items-center gap-1">
                       <Building2 className="w-3 h-3 text-stone-400" />
                       {art.source}
@@ -452,7 +452,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                 </div>
 
                 {/* Article Title */}
-                <h3 className="text-base sm:text-lg font-bold text-stone-950 group-hover:text-amber-900 transition-colors font-serif leading-snug">
+                <h3 className="text-base sm:text-lg font-bold text-stone-950 group-hover:text-amber-900 transition-colors font-serif-editorial leading-snug">
                   {art.title}
                 </h3>
 
@@ -464,7 +464,7 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                 {/* Key Facts / BPSC Pointers Preview */}
                 {art.prelimsPointers && art.prelimsPointers.length > 0 && (
                   <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 space-y-1">
-                    <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
+                    <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block font-mono">
                       Key BPSC Prelims Facts:
                     </span>
                     <ul className="text-xs text-amber-950 list-disc list-inside space-y-0.5">
@@ -476,13 +476,13 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                 )}
 
                 {/* Action Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#EAE6DF]">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => handleAskTutor(e, art)}
-                      className="text-xs font-bold text-[#35156B] bg-[#35156B]/10 hover:bg-[#35156B]/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                      className="text-xs font-bold text-stone-800 bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                       <span>BPSC Tutor Analysis</span>
                     </button>
 
@@ -490,8 +490,8 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
                       onClick={(e) => handleBookmark(e, art.id)}
                       className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                         isBookmarked
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-white border border-[#EAE6DF] text-stone-700 hover:bg-stone-100'
                       }`}
                     >
                       {isBookmarked ? <BookmarkCheck className="w-3.5 h-3.5 text-emerald-700" /> : <Bookmark className="w-3.5 h-3.5" />}
@@ -520,24 +520,24 @@ export const BiharSpecialFeedView: React.FC<BiharSpecialFeedViewProps> = ({ onSe
 
       {/* Pagination Bar */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-stone-200 pt-4">
+        <div className="flex items-center justify-between border-t border-[#EAE6DF] pt-4">
           <button
             disabled={page <= 1}
             onClick={() => setPage(p => Math.max(1, p - 1))}
-            className="text-xs font-bold text-stone-700 px-3 py-1.5 rounded-xl border border-stone-200 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+            className="text-xs font-bold text-stone-700 px-3 py-1.5 rounded-xl border border-[#EAE6DF] hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
             <span>Previous</span>
           </button>
           
-          <span className="text-xs text-stone-500 font-semibold">
+          <span className="text-xs text-stone-500 font-semibold font-mono">
             Page {page} of {totalPages} ({totalCount} developments)
           </span>
 
           <button
             disabled={page >= totalPages}
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            className="text-xs font-bold text-stone-700 px-3 py-1.5 rounded-xl border border-stone-200 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+            className="text-xs font-bold text-stone-700 px-3 py-1.5 rounded-xl border border-[#EAE6DF] hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
           >
             <span>Next</span>
             <ChevronRight className="w-3.5 h-3.5" />

@@ -29,15 +29,16 @@ export const MobileNav: React.FC = () => {
 
   if (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') {
     categories.push({
-      title: 'ADMIN STUDIO',
+      title: 'ADMINISTRATION',
       items: [
         { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
-        { id: 'admin-users', label: 'User Directory', icon: Users },
+        { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle, badge: 'Canonical' },
+        { id: 'admin-mock-builder', label: 'Mock Test Builder', icon: FileSpreadsheet },
+        { id: 'admin-ocr', label: 'Content Import', icon: FileUp, badge: '4 Modes' },
+        { id: 'admin-current-affairs', label: 'Current Affairs Studio', icon: Newspaper },
         { id: 'admin-content', label: 'Subjects & Concepts', icon: FileSpreadsheet },
-        { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle },
-        { id: 'admin-ocr', label: 'OCR Import Studio', icon: FileUp, badge: '4 Modes' },
-        { id: 'admin-current-affairs', label: 'Current Affairs Studio', icon: Newspaper, badge: 'Pipeline' },
-        { id: 'admin-ai', label: 'AI Content Studio', icon: Sparkles, badge: 'Drafts' },
+        { id: 'admin-users', label: 'User Directory', icon: Users },
+        { id: 'admin-import-logs', label: 'Import & Publish Logs', icon: History },
       ],
     });
   }

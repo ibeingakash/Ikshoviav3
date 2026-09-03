@@ -101,6 +101,16 @@ export const OFFICIAL_SUBJECTS: Subject[] = [
     topicsCount: 4,
     conceptsCount: 10,
   },
+  {
+    id: 'sub_full_length',
+    name: 'Full Length / Mixed Subjects',
+    code: 'FULL_LENGTH',
+    description: 'Full Length Mock Papers, Mixed Subject Question Banks & Integrated Multi-Disciplinary Exam Papers',
+    iconName: 'Layers',
+    color: 'amber',
+    topicsCount: 1,
+    conceptsCount: 1,
+  },
 ];
 
 export const OFFICIAL_TOPICS: Topic[] = [
@@ -168,6 +178,8 @@ export const OFFICIAL_TOPICS: Topic[] = [
   { id: 'top_science_space', subjectId: 'sub_ca', name: 'Science, Space & Emerging Technology', description: 'Gaganyaan, Chandrayaan-3 findings, Aditya-L1, Generative AI in Governance, Quantum Mission', order: 2, conceptsCount: 3 },
   { id: 'top_schemes_welfare', subjectId: 'sub_ca', name: 'Social Welfare Schemes & Indices', description: 'PM Vishwakarma, Jal Jeevan Mission, NITI Aayog Multidimensional Poverty Index', order: 3, conceptsCount: 2 },
   { id: 'top_bihar_ca', subjectId: 'sub_bihar', name: 'Bihar Special Current Affairs & State Policies', description: 'Bihar Caste Survey Implementation, Kosi-Mechi River Linkage, Bihar Tourism & Industrial Corridors', order: 4, conceptsCount: 3 },
+  // Full Length / Mixed Target
+  { id: 'top_mixed', subjectId: 'sub_full_length', name: 'All / Mixed Topics', description: 'Full-length comprehensive multi-subject coverage across the entire syllabus', order: 1, conceptsCount: 1 },
 ];
 
 export const OFFICIAL_CONCEPTS: Concept[] = [
@@ -640,5 +652,26 @@ export const OFFICIAL_CONCEPTS: Concept[] = [
     prerequisiteIds: [],
     relatedIds: ['c_art21', 'c_fiscal_fed', 'c_bihar_economy_saat_nischay'],
     tags: ['Current Affairs', 'Syllabus', 'PIB', 'UPSC', 'BPSC'],
+  },
+
+  // --- FULL LENGTH / MIXED CONCEPTS ---
+  {
+    id: 'c_mixed',
+    subjectId: 'sub_full_length',
+    topicId: 'top_mixed',
+    title: 'All / Mixed Concepts (Full Length Mock Papers & Mixed PYQs)',
+    summary: 'Comprehensive multi-disciplinary question bank and mock examination papers spanning all syllabus areas.',
+    explanation: 'Designed for Full-Length UPSC CSE and BPSC preliminary and mains mock tests where questions cover diverse subjects (Polity, Economy, History, Geography, Environment, Science, Bihar Special, and CSAT) within a unified paper structure.',
+    examples: ['UPSC CSE Prelims GS Paper I (100 Questions)', '70th/71st BPSC CCE Prelims (150 Questions)'],
+    keyPoints: [
+      'Preserves cross-subject multi-disciplinary test analysis.',
+      'Enables full-length simulation scoring and percentile calculation.',
+      'Maintains individual subject mapping at question level while anchoring test paper under full-length catalog.',
+    ],
+    difficulty: 'INTERMEDIATE',
+    importance: 'HIGH',
+    prerequisiteIds: [],
+    relatedIds: [],
+    tags: ['Full Length', 'Mixed Subjects', 'PYQ', 'Mock Test', 'UPSC', 'BPSC'],
   },
 ];

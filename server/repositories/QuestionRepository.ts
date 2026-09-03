@@ -11,6 +11,7 @@ export interface QuestionListParams {
   status?: string;
   examTag?: string;
   difficulty?: string;
+  sourceType?: string;
   searchQuery?: string;
   limit?: number;
   offset?: number;
@@ -262,14 +263,14 @@ export class QuestionRepository {
         id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
         options, options_en, options_hi, correct_answer, explanation, explanation_en, explanation_hi,
         available_languages, difficulty, exam_tag, pyq_year,
-        exam, paper, question_number, is_pyq, source, verified_status,
+        exam, paper, question_number, is_pyq, source_type, source, verified_status,
         is_published, status
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8,
         $9, $10, $11, $12, $13, $14, $15,
         $16, $17, $18, $19,
-        $20, $21, $22, $23, $24, $25,
-        $26, $27
+        $20, $21, $22, $23, $24, $25, $26,
+        $27, $28
       )
       ON CONFLICT (id) DO UPDATE SET
         subject_id = EXCLUDED.subject_id,
@@ -294,6 +295,7 @@ export class QuestionRepository {
         paper = EXCLUDED.paper,
         question_number = EXCLUDED.question_number,
         is_pyq = EXCLUDED.is_pyq,
+        source_type = EXCLUDED.source_type,
         source = EXCLUDED.source,
         verified_status = EXCLUDED.verified_status,
         is_published = EXCLUDED.is_published,
@@ -304,6 +306,9 @@ export class QuestionRepository {
 
     const normDifficulty = (data.difficulty || '').toUpperCase();
     const safeDifficulty = ['EASY', 'MEDIUM', 'HARD'].includes(normDifficulty) ? normDifficulty : 'MEDIUM';
+
+    // Determine safe source type
+    const resolvedSourceType = data.sourceType || (data.id?.startsWith('admin_') || data.id?.startsWith('ocr_') ? 'ADMIN_IMPORTED' : 'OFFICIAL_COMMISSION');
 
     // Validate and resolve FK references against database
     let conceptId = data.conceptId || 'c_art21';
@@ -358,6 +363,7 @@ export class QuestionRepository {
       data.paper || null,
       data.questionNumber || data.questionNum || null,
       data.isPyq || false,
+      resolvedSourceType,
       data.source || null,
       data.verifiedStatus || 'VERIFIED_PYQ',
       data.isPublished !== undefined ? data.isPublished : true,
@@ -430,8 +436,12 @@ export class QuestionRepository {
         values.push(params.status);
       }
       if (params.difficulty) {
-        whereConditions.push(`difficulty ILIKE ${idx++}`);
+        whereConditions.push(`difficulty ILIKE $${idx++}`);
         values.push(params.difficulty);
+      }
+      if (params.sourceType) {
+        whereConditions.push(`source_type = $${idx++}`);
+        values.push(params.sourceType);
       }
       if (params.examTag) {
         whereConditions.push(`(exam_tag ILIKE ${idx} OR exam ILIKE ${idx})`);
@@ -699,6 +709,7 @@ export class QuestionRepository {
       paper: row.paper || undefined,
       questionNumber: row.question_number || undefined,
       isPyq: row.is_pyq,
+      sourceType: row.source_type || 'OFFICIAL_COMMISSION',
       source: row.source || undefined,
       verifiedStatus: row.verified_status,
       isPublished: row.is_published,
@@ -770,6 +781,7 @@ export class QuestionRepository {
       exam: formattedExam,
       paper: row.paper || undefined,
       isPyq: Boolean(row.is_pyq),
+      sourceType: 'OFFICIAL_COMMISSION',
       source: sourceName,
       sourceUrl: row.resource_url || undefined,
       sourceProvenance: {

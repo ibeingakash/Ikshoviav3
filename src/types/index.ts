@@ -39,6 +39,14 @@ export interface AdminUser {
   lastActiveAt?: string;
 }
 
+export type AnswerKeyStatus =
+  | 'ANSWER_PENDING'
+  | 'ANSWER_PARSED'
+  | 'ANSWER_BOUND'
+  | 'ANSWER_VERIFIED'
+  | 'ANSWER_CONFLICT'
+  | 'ANSWER_INVALID';
+
 export interface OCRJob {
   id: string;
   mode: OCRImportMode;
@@ -49,6 +57,7 @@ export interface OCRJob {
   needsReviewCount: number;
   missingAnswerCount: number;
   status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  answerKeyStatus?: AnswerKeyStatus | string;
   createdAt: string;
   questions: Question[];
 }
@@ -193,13 +202,142 @@ export interface FieldConfidence {
 export type OCRDocumentLanguage = 'EN' | 'HI' | 'BILINGUAL' | 'AUTO';
 export type OCRExtractionStrategy = 'TEXT_EXTRACTION' | 'VISION_OCR' | 'HYBRID_PAGE_BY_PAGE';
 
+export type ContentSourceType = 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' | 'IKSHOVIA_CREATED' | 'COACHING_MOCK';
+
+export interface PyqPaper {
+  id: string;
+  exam: string;
+  examName?: string;
+  year: number;
+  examCycle?: string;
+  stage: string;
+  paper: string;
+  paperName?: string;
+  paperTitle: string;
+  paperCode?: string;
+  sourceType?: ContentSourceType;
+  officialSourceUrl: string;
+  officialPaperUrl?: string;
+  sourceDomain?: string;
+  sourceVerificationStatus: string;
+  expectedQuestionCount: number;
+  actualQuestionCount: number;
+  verifiedQuestionCount?: number;
+  verificationStatus?: 'OFFICIAL_VERIFIED' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
+  answerKeyStatus?: 'OFFICIAL_KEY_VERIFIED' | 'ANSWER_KEY_PENDING';
+  language?: string;
+  marksPerCorrect?: number;
+  negativeMarking?: number;
+  durationMinutes?: number;
+  completenessStatus: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PyqArchiveData {
+  exams: string[];
+  papers: PyqPaper[];
+  cyclesByExam: Record<string, string[]>;
+  yearsByExam: Record<string, number[]>;
+  totalPapers: number;
+  totalVerifiedQuestions: number;
+  totalExpectedQuestions: number;
+}
+
+export interface PyqAuditReport {
+  paperId: string;
+  exam: string;
+  examCycle: string;
+  year: number;
+  paper: string;
+  paperName: string;
+  sourceDomain: string;
+  officialSourceUrl: string;
+  officialPaperUrl: string;
+  expectedQuestionCount: number;
+  actualQuestionCount: number;
+  verifiedQuestionCount: number;
+  missingCount: number;
+  duplicateCount: number;
+  missingQuestionNumbers: number[];
+  duplicateQuestionNumbers: number[];
+  verificationStatus: 'OFFICIAL_VERIFIED' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
+  answerKeyStatus: string;
+  dataAccuracyRate: number;
+}
+
+export interface PyqCompletenessValidation {
+  paperId: string;
+  paperTitle: string;
+  exam: string;
+  year: number;
+  stage: string;
+  paper: string;
+  expectedQuestionCount: number;
+  actualQuestionCount: number;
+  missingQuestionNumbers: number[];
+  duplicateQuestionNumbers: number[];
+  isComplete: boolean;
+  status: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
+}
+
+export type QuestionFormatType = 
+  | 'SINGLE_CHOICE' 
+  | 'MULTIPLE_CHOICE' 
+  | 'STATEMENT_BASED' 
+  | 'MATCH_FOLLOWING' 
+  | 'ASSERTION_REASON' 
+  | 'COMPREHENSION'
+  | 'PASSAGE_BASED'
+  | 'NUMERICAL_CSAT'
+  | 'MULTI_PART'
+  | 'MCQ'
+  | 'OTHER';
+
+export interface QuestionStatementItem {
+  id: string | number;
+  text: string;
+  text_hi?: string;
+}
+export type StatementItem = QuestionStatementItem;
+
+export interface MatchColumnItem {
+  key: string;
+  text: string;
+  text_hi?: string;
+}
+
+export interface MatchCodeItem {
+  label: string;
+  mapping: string;
+  mapping_hi?: string;
+}
+
+export interface QuestionMatchData {
+  leftColumn: MatchColumnItem[];
+  rightColumn: MatchColumnItem[];
+  codes: MatchCodeItem[];
+  leftHeader?: string;
+  rightHeader?: string;
+  leftHeader_hi?: string;
+  rightHeader_hi?: string;
+}
+export type MatchColumnData = QuestionMatchData;
+
 export interface Question {
   id: string;
   subjectId: string;
   topicId: string;
   conceptId: string;
   type: QuestionType;
+  questionType?: QuestionFormatType;
+  format?: QuestionFormatType;
+  passageText?: string;
   question: string;
+  statements?: QuestionStatementItem[];
+  statements_hi?: QuestionStatementItem[];
+  matchData?: QuestionMatchData;
+  matchData_hi?: QuestionMatchData;
   options?: QuestionOption[];
   correctAnswer: string; // Option ID or exact text
   explanation: string;
@@ -210,6 +348,7 @@ export interface Question {
   paper?: string;
   questionNumber?: number;
   isPyq?: boolean;
+  sourceType?: ContentSourceType;
   isAiGenerated?: boolean;
   source?: string;
   sourceUrl?: string;
@@ -236,6 +375,10 @@ export interface Question {
   hasVisualContent?: boolean;
   fieldConfidence?: FieldConfidence;
   validationErrors?: string[];
+  answerKeyStatus?: AnswerKeyStatus;
+  solutionSource?: string;
+  solutionPageNumber?: number;
+  solutionQuestionNumber?: number;
 
   // Bilingual Support
   question_en?: string;
@@ -282,6 +425,13 @@ export interface MockTest {
   totalMarks: number;
   negativeMarkingRate: number;
   isPublished: boolean;
+  sourceType?: ContentSourceType;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  attemptCount?: number;
+  actualQuestionCount?: number;
+  createdAt?: string;
 }
 
 export interface MockAttempt {
@@ -556,3 +706,229 @@ export interface NotificationItem {
   isRead: boolean;
   actionUrl?: string;
 }
+
+export type PlatformFeatureCode =
+  | 'PYQ_PRACTICE'
+  | 'MOCK_TESTS'
+  | 'TOPIC_SUBJECT_PRACTICE'
+  | 'CURRENT_AFFAIRS'
+  | 'NOTES'
+  | 'AI_TUTOR'
+  | 'STUDY_PLAN'
+  | 'ANALYTICS'
+  | 'BOOKMARKS'
+  | 'RESOURCE_LIBRARY';
+
+export type CourseType = 'TEST_SERIES' | 'FULL_PROGRAM' | 'CURRENT_AFFAIRS' | 'CRASH_COURSE' | 'FOUNDATION' | 'SUBJECT_MODULE' | 'FULL_COURSE';
+
+export interface Course {
+  id: string;
+  name: string;
+  description?: string;
+  exam: string;
+  courseType: CourseType;
+  isActive: boolean;
+  displayOrder: number;
+  startDate?: string;
+  endDate?: string;
+  defaultDurationDays: number;
+  features: PlatformFeatureCode[];
+  pricing?: CoursePrice;
+  currentPrice?: CoursePrice;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CoursePrice {
+  id: string;
+  courseId: string;
+  currency: string;
+  basePrice: number;
+  salePrice?: number | null;
+  isActive: boolean;
+  validFrom: string;
+  validUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type EntitlementStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'PENDING';
+export type EntitlementSource = 'ADMIN_GRANT' | 'PAYMENT' | 'PROMOTION' | 'COMP';
+
+export interface Entitlement {
+  id: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  courseId: string;
+  courseName?: string;
+  courseExam?: string;
+  features?: PlatformFeatureCode[];
+  status: EntitlementStatus;
+  source: EntitlementSource;
+  startsAt: string;
+  expiresAt?: string | null;
+  daysRemaining?: number;
+  grantedBy?: string | null;
+  grantedByName?: string | null;
+  paymentId?: string | null;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export interface Coupon {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  discountType: DiscountType;
+  discountValue: number;
+  maxDiscount?: number | null;
+  minOrderValue: number;
+  courseId?: string | null;
+  courseName?: string | null;
+  startDate: string;
+  expiryDate?: string | null;
+  usageLimit?: number | null;
+  perUserLimit: number;
+  timesUsed: number;
+  isActive: boolean;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CouponValidationResult {
+  isValid: boolean;
+  coupon?: Coupon;
+  discountAmount: number;
+  originalPrice: number;
+  finalAmount: number;
+  message?: string;
+  error?: string;
+}
+
+export interface CommercialDashboardMetrics {
+  totalCourses: number;
+  activeCourses: number;
+  activePaidUsers: number;
+  activeEntitlements: number;
+  expiringSoon7Days: number;
+  expiringSoon30Days: number;
+  totalVerifiedRevenue: number;
+  thisMonthRevenue: number;
+  last30DaysRevenue: number;
+  refundsAmount: number;
+  failedPaymentsCount: number;
+  pendingPaymentsCount: number;
+}
+
+export interface RevenueAnalyticsMetrics {
+  grossVerifiedRevenue: number;
+  refundedAmount: number;
+  netRevenue: number;
+  paidOrdersCount: number;
+  successfulEnrollments: number;
+  averageOrderValue: number;
+}
+
+export interface CourseSalesAnalytics {
+  courseId: string;
+  courseName: string;
+  exam: string;
+  paidOrders: number;
+  grossRevenue: number;
+  refunds: number;
+  netRevenue: number;
+  activeStudents: number;
+}
+
+export interface ManagedUser extends UserProfile {
+  targetExam?: string;
+  accountStatus: 'ACTIVE' | 'SUSPENDED';
+  is_suspended?: boolean;
+  isSuspended?: boolean;
+  courses: {
+    courseId: string;
+    courseName: string;
+    status: EntitlementStatus;
+    expiresAt?: string | null;
+  }[];
+  activeAccessCount: number;
+  latestExpiry?: string | null;
+  paymentStatus: 'PAID' | 'COMPLIMENTARY' | 'NONE';
+  entitlementsCount: number;
+}
+
+export const ADMIN_PERMISSIONS = {
+  // USER MANAGEMENT
+  USERS_VIEW: 'USERS_VIEW',
+  USERS_EDIT: 'USERS_EDIT',
+  USERS_SUSPEND: 'USERS_SUSPEND',
+  USERS_GRANT_ACCESS: 'USERS_GRANT_ACCESS',
+  USERS_REVOKE_ACCESS: 'USERS_REVOKE_ACCESS',
+  USERS_ROLE_MANAGE: 'USERS_ROLE_MANAGE',
+
+  // COURSES
+  COURSES_VIEW: 'COURSES_VIEW',
+  COURSES_CREATE: 'COURSES_CREATE',
+  COURSES_EDIT: 'COURSES_EDIT',
+  COURSES_ARCHIVE: 'COURSES_ARCHIVE',
+
+  // PRICING
+  PRICING_VIEW: 'PRICING_VIEW',
+  PRICING_EDIT: 'PRICING_EDIT',
+
+  // ACCESS & ENTITLEMENTS
+  ENTITLEMENTS_VIEW: 'ENTITLEMENTS_VIEW',
+  ENTITLEMENTS_GRANT: 'ENTITLEMENTS_GRANT',
+  ENTITLEMENTS_EXTEND: 'ENTITLEMENTS_EXTEND',
+  ENTITLEMENTS_REVOKE: 'ENTITLEMENTS_REVOKE',
+
+  // COUPONS & DISCOUNTS
+  COUPONS_VIEW: 'COUPONS_VIEW',
+  COUPONS_CREATE: 'COUPONS_CREATE',
+  COUPONS_EDIT: 'COUPONS_EDIT',
+  COUPONS_DELETE: 'COUPONS_DELETE',
+
+  // COMMERCIAL & PAYMENTS
+  COMMERCIAL_VIEW: 'COMMERCIAL_VIEW',
+  PAYMENTS_VIEW: 'PAYMENTS_VIEW',
+  PAYMENTS_REFUND: 'PAYMENTS_REFUND',
+  REVENUE_VIEW: 'REVENUE_VIEW',
+
+  // CONTENT
+  QUESTION_BANK_VIEW: 'QUESTION_BANK_VIEW',
+  QUESTION_BANK_EDIT: 'QUESTION_BANK_EDIT',
+  QUESTION_CREATE: 'QUESTION_CREATE',
+  QUESTION_EDIT: 'QUESTION_EDIT',
+  QUESTION_PUBLISH: 'QUESTION_PUBLISH',
+  MOCKS_VIEW: 'MOCKS_VIEW',
+  MOCKS_CREATE: 'MOCKS_CREATE',
+  MOCKS_EDIT: 'MOCKS_EDIT',
+  MOCKS_DELETE: 'MOCKS_DELETE',
+  CONTENT_IMPORT: 'CONTENT_IMPORT',
+  OCR_IMPORT: 'OCR_IMPORT',
+  OCR_REVIEW: 'OCR_REVIEW',
+  CONCEPT_CREATE: 'CONCEPT_CREATE',
+  CURRENT_AFFAIRS_MANAGE: 'CURRENT_AFFAIRS_MANAGE',
+
+  // ANALYTICS
+  ANALYTICS_VIEW: 'ANALYTICS_VIEW',
+
+  // AUDIT & SYSTEM
+  AUDIT_LOG_VIEW: 'AUDIT_LOG_VIEW',
+  SYSTEM_SETTINGS: 'SYSTEM_SETTINGS',
+  ADMIN_MANAGE: 'ADMIN_MANAGE',
+  ALL_PERMISSIONS: 'ALL_PERMISSIONS',
+} as const;
+
+export type AdminPermissionCode = keyof typeof ADMIN_PERMISSIONS;
+

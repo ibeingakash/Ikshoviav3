@@ -12,7 +12,7 @@ export interface OcrJobRecord {
   strategy: string;
   exam: string;
   expectedQuestionCount: number;
-  status: string; // 'UPLOADED' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PARTIALLY_APPROVED' | 'COMPLETED' | 'FAILED'
+  status: string; // 'UPLOADED' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PARTIALLY_APPROVED' | 'COMPLETED' | 'VERIFIED' | 'PUBLISHED' | 'FAILED'
   processedPages: number;
   detectedQuestionsCount: number;
   approvedCount: number;
@@ -22,6 +22,17 @@ export interface OcrJobRecord {
   duplicateQuestionNumbers: number[];
   reviewState: Record<string, any>;
   errorMessage?: string;
+  documentHash?: string;
+  officialSourceUrl?: string;
+  sourceDomain?: string;
+  commission?: string;
+  paper?: string;
+  year?: number;
+  examCycle?: string;
+  parserVersion?: string;
+  ocrEngineVersion?: string;
+  structureReport?: Record<string, any>;
+  answerKeyStatus?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +46,10 @@ export interface ExtractedQuestionRecord extends Question {
     similarityScore?: number;
     source?: 'INTERNAL' | 'QUESTION_BANK';
   } | null;
+  aiAssisted?: boolean;
+  parseConfidence?: number;
+  structureStatus?: 'AUTO_VERIFIED' | 'NEEDS_REVIEW' | 'FAILED';
+  sourcePageCrop?: string;
 }
 
 export class OcrRepository {
@@ -45,6 +60,17 @@ export class OcrRepository {
       ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS expected_question_count INT DEFAULT 100;
       ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS approved_count INT DEFAULT 0;
       ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS rejected_count INT DEFAULT 0;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS document_hash TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS official_source_url TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS source_domain TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS commission TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS paper TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS year INT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS exam_cycle TEXT;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS parser_version TEXT DEFAULT 'v2.1';
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS ocr_engine_version TEXT DEFAULT 'deterministic_pdfparse_v2';
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS structure_report JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS answer_key_status TEXT DEFAULT 'ANSWER_KEY_PENDING';
 
       CREATE TABLE IF NOT EXISTS public.ocr_extracted_questions (
         id TEXT PRIMARY KEY,
@@ -77,9 +103,36 @@ export class OcrRepository {
         destination TEXT DEFAULT 'PRACTICE_BANK',
         validation_errors JSONB DEFAULT '[]'::jsonb,
         duplicate_warning JSONB DEFAULT 'null'::jsonb,
+        question_type TEXT DEFAULT 'SINGLE_CHOICE',
+        statements JSONB DEFAULT '[]'::jsonb,
+        statements_hi JSONB DEFAULT '[]'::jsonb,
+        match_data JSONB DEFAULT '{}'::jsonb,
+        match_data_hi JSONB DEFAULT '{}'::jsonb,
+        document_hash TEXT,
+        official_source_url TEXT,
+        source_domain TEXT,
+        ai_assisted BOOLEAN DEFAULT FALSE,
+        parse_confidence FLOAT DEFAULT 1.0,
+        structure_status TEXT DEFAULT 'AUTO_VERIFIED',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'SINGLE_CHOICE';
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS statements JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS statements_hi JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS match_data JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS match_data_hi JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS document_hash TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS official_source_url TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS source_domain TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS ai_assisted BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS parse_confidence FLOAT DEFAULT 1.0;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS structure_status TEXT DEFAULT 'AUTO_VERIFIED';
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS answer_key_status TEXT DEFAULT 'ANSWER_PENDING';
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_source TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_page_number INT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_question_number INT;
 
       CREATE INDEX IF NOT EXISTS idx_ocr_extracted_questions_job_id ON public.ocr_extracted_questions(job_id);
     `);
@@ -94,13 +147,17 @@ export class OcrRepository {
         page_count, strategy, exam, expected_question_count, status,
         processed_pages, detected_questions_count, approved_count, rejected_count,
         confidence_score, missing_question_numbers, duplicate_question_numbers,
-        review_state, error_message, created_at, updated_at
+        review_state, error_message, document_hash, official_source_url, source_domain,
+        commission, paper, year, exam_cycle, parser_version, ocr_engine_version,
+        structure_report, answer_key_status, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
         $11, $12, $13, $14,
         $15, $16, $17,
-        $18, $19, NOW(), NOW()
+        $18, $19, $20, $21, $22,
+        $23, $24, $25, $26, $27, $28,
+        $29, $30, NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         user_id = EXCLUDED.user_id,
@@ -121,6 +178,17 @@ export class OcrRepository {
         duplicate_question_numbers = EXCLUDED.duplicate_question_numbers,
         review_state = EXCLUDED.review_state,
         error_message = EXCLUDED.error_message,
+        document_hash = COALESCE(EXCLUDED.document_hash, public.ocr_jobs.document_hash),
+        official_source_url = COALESCE(EXCLUDED.official_source_url, public.ocr_jobs.official_source_url),
+        source_domain = COALESCE(EXCLUDED.source_domain, public.ocr_jobs.source_domain),
+        commission = COALESCE(EXCLUDED.commission, public.ocr_jobs.commission),
+        paper = COALESCE(EXCLUDED.paper, public.ocr_jobs.paper),
+        year = COALESCE(EXCLUDED.year, public.ocr_jobs.year),
+        exam_cycle = COALESCE(EXCLUDED.exam_cycle, public.ocr_jobs.exam_cycle),
+        parser_version = EXCLUDED.parser_version,
+        ocr_engine_version = EXCLUDED.ocr_engine_version,
+        structure_report = EXCLUDED.structure_report,
+        answer_key_status = EXCLUDED.answer_key_status,
         updated_at = NOW()
       RETURNING *
     `;
@@ -132,7 +200,7 @@ export class OcrRepository {
       job.storageKey || null,
       job.fileSizeBytes || 0,
       job.pageCount || 1,
-      job.strategy || 'VISION_OCR',
+      job.strategy || 'TEXT_EXTRACTION',
       job.exam || 'UPSC CSE',
       job.expectedQuestionCount || (job.exam === 'BPSC' ? 150 : 100),
       job.status || 'PROCESSING',
@@ -145,6 +213,17 @@ export class OcrRepository {
       JSON.stringify(job.duplicateQuestionNumbers || []),
       JSON.stringify(job.reviewState || {}),
       job.errorMessage || null,
+      job.documentHash || null,
+      job.officialSourceUrl || null,
+      job.sourceDomain || null,
+      job.commission || null,
+      job.paper || null,
+      job.year || null,
+      job.examCycle || null,
+      job.parserVersion || 'v2.1',
+      job.ocrEngineVersion || 'deterministic_pdfparse_v2',
+      JSON.stringify(job.structureReport || {}),
+      job.answerKeyStatus || 'ANSWER_KEY_PENDING',
     ];
 
     const res = await pool.query(query, values);
@@ -208,7 +287,11 @@ export class OcrRepository {
             available_languages, subject_id, topic_id, concept_id,
             difficulty, exam_tag, pyq_year, source, is_pyq,
             has_visual_content, field_confidence, ocr_confidence, status,
-            destination, validation_errors, duplicate_warning, created_at, updated_at
+            destination, validation_errors, duplicate_warning,
+            question_type, statements, statements_hi, match_data, match_data_hi,
+            document_hash, official_source_url, source_domain, ai_assisted,
+            parse_confidence, structure_status, answer_key_status, solution_source, solution_page_number, solution_question_number,
+            created_at, updated_at
           ) VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
@@ -216,7 +299,11 @@ export class OcrRepository {
             $15, $16, $17, $18,
             $19, $20, $21, $22, $23,
             $24, $25, $26, $27,
-            $28, $29, $30, NOW(), NOW()
+            $28, $29, $30,
+            $31, $32, $33, $34, $35,
+            $36, $37, $38, $39,
+            $40, $41, $42, $43, $44, $45,
+            NOW(), NOW()
           )
           ON CONFLICT (id) DO UPDATE SET
             question_num = EXCLUDED.question_num,
@@ -247,6 +334,21 @@ export class OcrRepository {
             destination = EXCLUDED.destination,
             validation_errors = EXCLUDED.validation_errors,
             duplicate_warning = EXCLUDED.duplicate_warning,
+            question_type = EXCLUDED.question_type,
+            statements = EXCLUDED.statements,
+            statements_hi = EXCLUDED.statements_hi,
+            match_data = EXCLUDED.match_data,
+            match_data_hi = EXCLUDED.match_data_hi,
+            document_hash = COALESCE(EXCLUDED.document_hash, public.ocr_extracted_questions.document_hash),
+            official_source_url = COALESCE(EXCLUDED.official_source_url, public.ocr_extracted_questions.official_source_url),
+            source_domain = COALESCE(EXCLUDED.source_domain, public.ocr_extracted_questions.source_domain),
+            ai_assisted = EXCLUDED.ai_assisted,
+            parse_confidence = EXCLUDED.parse_confidence,
+            structure_status = EXCLUDED.structure_status,
+            answer_key_status = EXCLUDED.answer_key_status,
+            solution_source = EXCLUDED.solution_source,
+            solution_page_number = EXCLUDED.solution_page_number,
+            solution_question_number = EXCLUDED.solution_question_number,
             updated_at = NOW()
           RETURNING *
         `;
@@ -282,6 +384,21 @@ export class OcrRepository {
           q.destination || 'PRACTICE_BANK',
           JSON.stringify(q.validationErrors || []),
           JSON.stringify(q.duplicateWarning || null),
+          q.questionType || (q.matchData ? 'MATCH_FOLLOWING' : (q.statements && q.statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE')),
+          JSON.stringify(q.statements || []),
+          JSON.stringify(q.statements_hi || []),
+          JSON.stringify(q.matchData || {}),
+          JSON.stringify(q.matchData_hi || {}),
+          (q as any).documentHash || null,
+          (q as any).officialSourceUrl || null,
+          (q as any).sourceDomain || null,
+          q.aiAssisted || false,
+          q.parseConfidence || 1.0,
+          q.structureStatus || 'AUTO_VERIFIED',
+          q.answerKeyStatus || (q.correctAnswer ? 'ANSWER_BOUND' : 'ANSWER_PENDING'),
+          q.solutionSource || null,
+          q.solutionPageNumber || null,
+          q.solutionQuestionNumber || null,
         ];
 
         const res = await client.query(query, values);
@@ -331,6 +448,8 @@ export class OcrRepository {
       destination?: 'PRACTICE_BANK' | 'MOCK_TEST' | 'BOTH';
       examTag?: string;
       pyqYear?: number;
+      exam?: string;
+      paper?: string;
     }
   ): Promise<{ success: boolean; question?: Question; error?: string }> {
     const eq = await this.getExtractedQuestionById(questionId);
@@ -347,65 +466,477 @@ export class OcrRepository {
       return { success: false, error: `Question ${eq.questionNum || ''}: Correct answer is required before publishing` };
     }
 
-    // Merge meta
-    const subjectId = targetMeta?.subjectId || eq.subjectId || 'sub_polity';
-    const topicId = targetMeta?.topicId || eq.topicId || 'top_rights';
-    const conceptId = targetMeta?.conceptId || eq.conceptId || 'c_art32';
-    const difficulty = targetMeta?.difficulty || eq.difficulty || 'MEDIUM';
-    const examTag = targetMeta?.examTag || eq.examTag || 'UPSC CSE Prelims';
-    const pyqYear = targetMeta?.pyqYear || eq.pyqYear || 2025;
-    const destination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
+    const job = await this.getJobById(eq.jobId);
+    const finalSubjectId = targetMeta?.subjectId || eq.subjectId || 'sub_polity';
+    const finalTopicId = targetMeta?.topicId || eq.topicId || 'top_rights';
+    const finalConceptId = targetMeta?.conceptId || eq.conceptId || 'c_art32';
+    const finalDifficulty = targetMeta?.difficulty || eq.difficulty || 'MEDIUM';
+    const finalExamTag = targetMeta?.examTag || eq.examTag || job?.exam || 'UPSC CSE';
+    const finalPyqYear = targetMeta?.pyqYear || eq.pyqYear || job?.year || 2025;
+    const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
+    const finalExam = targetMeta?.exam || job?.exam || 'UPSC CSE';
+    const finalPaper = targetMeta?.paper || job?.paper || 'General Studies Paper-I';
 
-    const prodQuestion: Question = {
-      id: eq.id,
-      subjectId,
-      topicId,
-      conceptId,
-      type: 'MCQ',
-      question: eq.question,
-      options: eq.options,
-      correctAnswer: eq.correctAnswer,
-      explanation: eq.explanation || 'Imported via OCR Question Studio',
-      difficulty,
-      examTag,
-      pyqYear,
-      exam: eq.exam || 'UPSC CSE',
-      questionNumber: eq.questionNum || eq.questionNumber,
-      isPyq: eq.isPyq !== undefined ? eq.isPyq : true,
-      source: 'OCR_IMPORTED',
-      verifiedStatus: 'VERIFIED_PYQ',
-      isPublished: true,
-      status: 'PUBLISHED',
-      destination,
-      question_en: eq.question_en,
-      question_hi: eq.question_hi,
-      options_en: eq.options_en,
-      options_hi: eq.options_hi,
-      explanation_en: eq.explanation_en,
-      explanation_hi: eq.explanation_hi,
-      availableLanguages: eq.availableLanguages,
-    };
+    // Admin OCR uploads are strictly ADMIN_IMPORTED.
+    // Official Commission is strictly for papers ingested by the official crawler pipeline.
+    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' = 
+      (job as any)?.isOfficialIngestion ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
-    // Save to Production Question Bank (questions table)
-    const publishedQ = await questionRepository.create(prodQuestion);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Update Extracted Question state
-    await this.updateExtractedQuestion(questionId, {
-      status: 'PUBLISHED',
-      subjectId,
-      topicId,
-      conceptId,
-      difficulty,
-      examTag,
-      pyqYear,
-      destination,
-      isPublished: true,
+      // 1. Update in staging table
+      await client.query(
+        `UPDATE public.ocr_extracted_questions 
+         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4, 
+             difficulty = $5, exam_tag = $6, pyq_year = $7, destination = $8, updated_at = NOW()
+         WHERE id = $9`,
+        [resolvedSourceType === 'OFFICIAL_COMMISSION', finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, questionId]
+      );
+
+      // 2. Publish to standard questions table
+      const publishedQuestion: Question = {
+        ...eq,
+        id: eq.id,
+        subjectId: finalSubjectId,
+        topicId: finalTopicId,
+        conceptId: finalConceptId,
+        difficulty: finalDifficulty,
+        examTag: finalExamTag,
+        pyqYear: finalPyqYear,
+        destination: finalDestination,
+        sourceType: resolvedSourceType,
+        isPublished: true,
+        status: 'READY_TO_PUBLISH',
+        source: resolvedSourceType,
+        sourceJobId: eq.jobId,
+        questionType: eq.questionType || (eq.matchData ? 'MATCH_FOLLOWING' : (eq.statements && eq.statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE')),
+        statements: eq.statements,
+        statements_hi: eq.statements_hi,
+        matchData: eq.matchData,
+        matchData_hi: eq.matchData_hi,
+      };
+
+      await questionRepository.create(publishedQuestion);
+
+      const qNum = eq.questionNum || eq.questionNumber || 1;
+
+      // 3. If OFFICIAL_COMMISSION, publish to canonical pyq_papers & pyq_questions
+      if (resolvedSourceType === 'OFFICIAL_COMMISSION') {
+        const paperId = `${finalExam.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalPyqYear}_${finalPaper.toLowerCase().replace(/[^a-z0-9]/g, '_')}`.replace(/__+/g, '_');
+
+        const paperCheck = await client.query('SELECT id FROM public.pyq_papers WHERE id = $1', [paperId]);
+        if (paperCheck.rows.length === 0) {
+          await client.query(
+            `INSERT INTO public.pyq_papers (
+              id, exam, exam_name, year, exam_cycle, stage, paper, paper_name,
+              source_type, official_source_url, official_paper_url, source_domain,
+              expected_question_count, actual_question_count, verified_question_count,
+              verification_status, answer_key_status, language, created_at, updated_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, 'Prelims', $6, $7,
+              'OFFICIAL_COMMISSION', $8, $9, $10,
+              $11, 1, 1,
+              'INCOMPLETE', $12, 'bilingual', NOW(), NOW()
+            )`,
+            [
+              paperId,
+              finalExam,
+              finalExamTag,
+              finalPyqYear,
+              `${finalPyqYear}`,
+              finalPaper,
+              `${finalExam} ${finalPyqYear} - ${finalPaper}`,
+              job?.officialSourceUrl || (finalExam === 'BPSC' ? 'https://bpsc.bihar.gov.in' : 'https://upsc.gov.in'),
+              job?.officialSourceUrl || (finalExam === 'BPSC' ? 'https://bpsc.bihar.gov.in' : 'https://upsc.gov.in'),
+              job?.sourceDomain || (finalExam === 'BPSC' ? 'bpsc.bihar.gov.in' : 'upsc.gov.in'),
+              job?.expectedQuestionCount || (finalExam === 'BPSC' ? 150 : (finalPaper.includes('CSAT') ? 80 : 100)),
+              job?.answerKeyStatus || 'OFFICIAL_KEY_VERIFIED',
+            ]
+          );
+        }
+
+        const pyqQId = `${paperId}_q${String(qNum).padStart(3, '0')}`;
+        await client.query(
+          `INSERT INTO public.pyq_questions (
+            id, paper_id, question_number, question_text, question_en, question_hi,
+            options, options_en, options_hi, official_answer, official_answer_source,
+            solution, solution_source, topic, subject, subject_id, gs_paper,
+            difficulty, source_page_number, official_paper_url, question_type,
+            statements, statements_hi, match_data, match_data_hi, document_hash,
+            extraction_method, extraction_confidence, source_type, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, 'Official Commission Master Answer Key',
+            $11, 'Official References & Verification', $12, $13, $14, $15,
+            $16, $17, $18, $19,
+            $20, $21, $22, $23, $24,
+            'TEXT', $25, 'OFFICIAL_COMMISSION', NOW(), NOW()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            question_text = EXCLUDED.question_text,
+            question_en = EXCLUDED.question_en,
+            question_hi = EXCLUDED.question_hi,
+            options = EXCLUDED.options,
+            options_en = EXCLUDED.options_en,
+            options_hi = EXCLUDED.options_hi,
+            official_answer = EXCLUDED.official_answer,
+            solution = EXCLUDED.solution,
+            question_type = EXCLUDED.question_type,
+            statements = EXCLUDED.statements,
+            statements_hi = EXCLUDED.statements_hi,
+            match_data = EXCLUDED.match_data,
+            match_data_hi = EXCLUDED.match_data_hi,
+            source_type = 'OFFICIAL_COMMISSION',
+            updated_at = NOW()`,
+          [
+            pyqQId,
+            paperId,
+            qNum,
+            eq.question,
+            eq.question_en || eq.question,
+            eq.question_hi || null,
+            JSON.stringify(eq.options || []),
+            JSON.stringify(eq.options_en || []),
+            JSON.stringify(eq.options_hi || []),
+            eq.correctAnswer,
+            eq.explanation || 'Official Verified Answer',
+            finalTopicId,
+            finalSubjectId,
+            finalSubjectId,
+            finalPaper,
+            finalDifficulty,
+            eq.pageNumber || 1,
+            job?.officialSourceUrl || '',
+            eq.questionType || (eq.matchData ? 'MATCH_FOLLOWING' : (eq.statements && eq.statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE')),
+            JSON.stringify(eq.statements || []),
+            JSON.stringify(eq.statements_hi || []),
+            JSON.stringify(eq.matchData || {}),
+            JSON.stringify(eq.matchData_hi || {}),
+            job?.documentHash || null,
+            eq.ocrConfidence || 1.0,
+          ]
+        );
+
+        await client.query(
+          `UPDATE public.pyq_papers
+           SET actual_question_count = (SELECT COUNT(*) FROM public.pyq_questions WHERE paper_id = $1),
+               verified_question_count = (SELECT COUNT(*) FROM public.pyq_questions WHERE paper_id = $1 AND (verification_status = 'OFFICIAL_VERIFIED' OR official_answer IS NOT NULL)),
+               verification_status = CASE
+                 WHEN (SELECT COUNT(*) FROM public.pyq_questions WHERE paper_id = $1) >= expected_question_count THEN 'OFFICIAL_VERIFIED'
+                 ELSE 'INCOMPLETE'
+               END,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [paperId]
+        );
+      }
+
+      // 4. For ALL ADMIN_IMPORTED uploads (or when MOCK_TEST destination is chosen), create/update mock_tests & mock_questions
+      if (resolvedSourceType === 'ADMIN_IMPORTED' || finalDestination === 'MOCK_TEST' || finalDestination === 'BOTH') {
+        const mockTestId = `mock_${eq.jobId || 'imported'}`;
+        const cleanFileName = job?.originalFileName ? job.originalFileName.replace(/\.pdf$/i, '').replace(/_/g, ' ') : '';
+        const mockTitle = cleanFileName
+          ? `${finalExam} - ${cleanFileName}`
+          : (job?.paper && !job.paper.includes('General Studies Paper-I') && !job.paper.includes('BPSC Prelims')
+              ? `${finalExam} ${finalPyqYear} - ${job.paper}`
+              : `${finalExam} ${finalPyqYear} - Full Mock Simulation`);
+
+        const expectedQ = job?.expectedQuestionCount || 100;
+        const testType = expectedQ >= 50 ? 'FULL' : (expectedQ >= 20 ? 'SUBJECT' : 'QUICK');
+        const duration = expectedQ >= 100 ? 120 : (expectedQ >= 50 ? 90 : Math.round(expectedQ * 1.2));
+        const totalMarks = finalExam === 'BPSC' ? expectedQ * 1 : expectedQ * 2;
+        const negRate = finalExam === 'BPSC' ? 0.33 : 0.66;
+
+        await client.query(`
+          INSERT INTO public.mock_tests (
+            id, title, type, subject_ids, duration_minutes, total_questions, total_marks,
+            negative_marking_rate, source_type, is_published, created_at
+          ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, 'ADMIN_IMPORTED', true, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            title = EXCLUDED.title,
+            type = EXCLUDED.type,
+            source_type = 'ADMIN_IMPORTED',
+            is_published = true;
+        `, [
+          mockTestId,
+          mockTitle,
+          testType,
+          JSON.stringify([finalSubjectId]),
+          duration,
+          expectedQ,
+          totalMarks,
+          negRate
+        ]);
+
+        await client.query(`
+          INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
+        `, [mockTestId, publishedQuestion.id, qNum]);
+
+        // Keep mock_tests.total_questions accurate
+        await client.query(`
+          UPDATE public.mock_tests
+          SET total_questions = (SELECT COUNT(*) FROM public.mock_questions WHERE mock_test_id = $1),
+              total_marks = CASE WHEN '${finalExam}' = 'BPSC' THEN (SELECT COUNT(*) FROM public.mock_questions WHERE mock_test_id = $1) * 1 ELSE (SELECT COUNT(*) FROM public.mock_questions WHERE mock_test_id = $1) * 2 END
+          WHERE id = $1;
+        `, [mockTestId]);
+      }
+
+      await client.query('COMMIT');
+      await this.recalculateJobCounts(eq.jobId);
+
+      return { success: true, question: publishedQuestion };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      return { success: false, error: err.message || 'Database error publishing question' };
+    } finally {
+      client.release();
+    }
+  }
+
+  async publishEntireJobToPyq(
+    jobId: string,
+    metadata?: {
+      exam?: string;
+      year?: number;
+      paper?: string;
+      subjectId?: string;
+      topicId?: string;
+      conceptId?: string;
+      difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+    }
+  ): Promise<{ success: boolean; publishedCount: number; blockedCount: number; paperId?: string; error?: string }> {
+    const job = await this.getJobById(jobId);
+    if (!job) return { success: false, publishedCount: 0, blockedCount: 0, error: 'Job not found' };
+
+    const questions = await this.getQuestionsByJobId(jobId);
+    if (questions.length === 0) {
+      return { success: false, publishedCount: 0, blockedCount: 0, error: 'No questions in job' };
+    }
+
+    let publishedCount = 0;
+    let blockedCount = 0;
+
+    for (const q of questions) {
+      if (!q.correctAnswer || q.options.length < 2 || !q.question || q.question.trim().length < 5) {
+        blockedCount++;
+        continue;
+      }
+      const res = await this.approveAndPublishQuestion(q.id, {
+        subjectId: metadata?.subjectId || q.subjectId,
+        topicId: metadata?.topicId || q.topicId,
+        conceptId: metadata?.conceptId || q.conceptId,
+        difficulty: (metadata?.difficulty || (q.difficulty === 'EASY' || q.difficulty === 'HARD' ? q.difficulty : 'MEDIUM')) as 'EASY' | 'MEDIUM' | 'HARD',
+        exam: metadata?.exam || job.exam,
+        pyqYear: metadata?.year || job.year,
+        paper: metadata?.paper || job.paper,
+      });
+
+      if (res.success) {
+        publishedCount++;
+      } else {
+        blockedCount++;
+      }
+    }
+
+    await this.updateJob(jobId, {
+      status: publishedCount > 0 ? 'PUBLISHED' : job.status,
+      approvedCount: publishedCount,
     });
 
-    // Update job approved count
-    await this.recalculateJobCounts(eq.jobId);
+    const finalExam = metadata?.exam || job.exam || 'UPSC CSE';
+    const finalYear = metadata?.year || job.year || 2025;
+    const finalPaper = metadata?.paper || job.paper || 'General Studies Paper-I';
+    const paperId = `${finalExam.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalYear}_${finalPaper.toLowerCase().replace(/[^a-z0-9]/g, '_')}`.replace(/__+/g, '_');
 
-    return { success: true, question: publishedQ };
+    return { success: true, publishedCount, blockedCount, paperId };
+  }
+
+  async bulkApproveQuestions(
+    jobId: string,
+    questionIds: string[],
+    targetMeta?: {
+      subjectId?: string;
+      topicId?: string;
+      conceptId?: string;
+      difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+      destination?: 'PRACTICE_BANK' | 'MOCK_TEST' | 'BOTH';
+      examTag?: string;
+      pyqYear?: number;
+    }
+  ): Promise<{
+    affectedCount: number;
+    publishBlockedCount: number;
+    approvedIds: string[];
+    rejectedIds: string[];
+    blockedReasons: { questionId: string; questionNum?: number; reason: string }[];
+    questions: ExtractedQuestionRecord[];
+  }> {
+    const approvedIds: string[] = [];
+    const rejectedIds: string[] = [];
+    const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const qId of questionIds) {
+        const res = await client.query('SELECT * FROM public.ocr_extracted_questions WHERE id = $1', [qId]);
+        if (res.rows.length === 0) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, reason: 'Question not found in database' });
+          continue;
+        }
+        const eq = this.mapRowToExtractedQuestion(res.rows[0]);
+
+        // Validate approval prerequisites
+        if (!eq.question || eq.question.trim().length < 5) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Question text is missing or too short' });
+          continue;
+        }
+        if (!eq.options || !Array.isArray(eq.options) || eq.options.length < 2) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Incomplete options set (< 2 options)' });
+          continue;
+        }
+        if (eq.correctAnswer === undefined || eq.correctAnswer === null || eq.correctAnswer.trim() === '') {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Missing verified correct answer' });
+          continue;
+        }
+
+        // Check option alignment if letter-based
+        const optIds = eq.options.map(o => o.id?.toUpperCase());
+        const ans = eq.correctAnswer.trim().toUpperCase();
+        if (optIds.length > 0 && ['A', 'B', 'C', 'D', 'E'].includes(ans) && !optIds.includes(ans)) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: `Answer (${ans}) not found in options (${optIds.join(', ')})` });
+          continue;
+        }
+
+        const finalSubjectId = targetMeta?.subjectId || eq.subjectId || 'sub_polity';
+        const finalTopicId = targetMeta?.topicId || eq.topicId || 'top_rights';
+        const finalConceptId = targetMeta?.conceptId || eq.conceptId || 'c_art32';
+        const finalDifficulty = targetMeta?.difficulty || eq.difficulty || 'MEDIUM';
+        const finalExamTag = targetMeta?.examTag || eq.examTag || null;
+        const finalPyqYear = targetMeta?.pyqYear || eq.pyqYear || null;
+        const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
+
+        await client.query(
+          `UPDATE public.ocr_extracted_questions 
+           SET status = 'READY_TO_PUBLISH',
+               subject_id = $1, topic_id = $2, concept_id = $3,
+               difficulty = $4, exam_tag = $5, pyq_year = $6, destination = $7,
+               updated_at = NOW()
+           WHERE id = $8`,
+          [finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, qId]
+        );
+        approvedIds.push(qId);
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const effectiveJobId = jobId || (approvedIds.length > 0 ? (await this.getExtractedQuestionById(approvedIds[0]))?.jobId : undefined);
+    if (effectiveJobId) {
+      await this.recalculateJobCounts(effectiveJobId);
+    }
+    const refreshed = effectiveJobId ? await this.getQuestionsByJobId(effectiveJobId) : [];
+
+    return {
+      affectedCount: approvedIds.length,
+      publishBlockedCount: rejectedIds.length,
+      approvedIds,
+      rejectedIds,
+      blockedReasons,
+      questions: refreshed,
+    };
+  }
+
+  async bulkPublishQuestions(
+    jobId: string,
+    questionIds: string[],
+    targetMeta?: {
+      subjectId?: string;
+      topicId?: string;
+      conceptId?: string;
+      difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+      destination?: 'PRACTICE_BANK' | 'MOCK_TEST' | 'BOTH';
+      examTag?: string;
+      pyqYear?: number;
+    },
+    overrideWarnings = false
+  ): Promise<{
+    affectedCount: number;
+    publishBlockedCount: number;
+    approvedIds: string[];
+    rejectedIds: string[];
+    blockedReasons: { questionId: string; questionNum?: number; reason: string }[];
+    questions: ExtractedQuestionRecord[];
+  }> {
+    let affectedCount = 0;
+    const approvedIds: string[] = [];
+    const rejectedIds: string[] = [];
+    const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
+
+    for (const qId of questionIds) {
+      const eq = await this.getExtractedQuestionById(qId);
+      if (!eq) {
+        rejectedIds.push(qId);
+        blockedReasons.push({ questionId: qId, reason: 'Question not found in database' });
+        continue;
+      }
+
+      if (!overrideWarnings) {
+        if (!eq.question || eq.question.trim().length < 5) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Missing question text' });
+          continue;
+        }
+        if (!eq.options || eq.options.length < 2) {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Incomplete options (< 2 options)' });
+          continue;
+        }
+        if (eq.correctAnswer === undefined || eq.correctAnswer === null || eq.correctAnswer.trim() === '') {
+          rejectedIds.push(qId);
+          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Missing correct answer' });
+          continue;
+        }
+      }
+
+      const res = await this.approveAndPublishQuestion(qId, targetMeta);
+      if (res.success) {
+        affectedCount++;
+        approvedIds.push(qId);
+      } else {
+        rejectedIds.push(qId);
+        blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: res.error || 'Publish failed' });
+      }
+    }
+
+    const effectiveJobId = jobId || (questionIds.length > 0 ? (await this.getExtractedQuestionById(questionIds[0]))?.jobId : undefined);
+    if (effectiveJobId) {
+      await this.recalculateJobCounts(effectiveJobId);
+    }
+    const refreshed = effectiveJobId ? await this.getQuestionsByJobId(effectiveJobId) : [];
+
+    return {
+      affectedCount,
+      publishBlockedCount: rejectedIds.length,
+      approvedIds,
+      rejectedIds,
+      blockedReasons,
+      questions: refreshed,
+    };
   }
 
   async bulkApproveAndPublish(
@@ -426,44 +957,31 @@ export class OcrRepository {
     publishBlockedCount: number;
     blockedReasons: { questionId: string; questionNum?: number; reason: string }[];
   }> {
-    let affectedCount = 0;
-    let publishBlockedCount = 0;
-    const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
+    const res = await this.bulkPublishQuestions(jobId, questionIds, targetMeta, overrideWarnings);
+    return {
+      affectedCount: res.affectedCount,
+      publishBlockedCount: res.publishBlockedCount,
+      blockedReasons: res.blockedReasons,
+    };
+  }
 
-    for (const qId of questionIds) {
-      const eq = await this.getExtractedQuestionById(qId);
-      if (!eq) continue;
+  async deleteExtractedQuestion(questionId: string): Promise<boolean> {
+    const eq = await this.getExtractedQuestionById(questionId);
+    if (!eq) return false;
+    await pool.query('DELETE FROM public.ocr_extracted_questions WHERE id = $1', [questionId]);
+    await this.recalculateJobCounts(eq.jobId);
+    return true;
+  }
 
-      if (!overrideWarnings) {
-        if (!eq.question || eq.question.trim().length < 5) {
-          publishBlockedCount++;
-          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Missing question text' });
-          continue;
-        }
-        if (!eq.options || eq.options.length < 2) {
-          publishBlockedCount++;
-          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Incomplete options' });
-          continue;
-        }
-        if (!eq.correctAnswer || eq.correctAnswer === '') {
-          publishBlockedCount++;
-          blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: 'Missing correct answer' });
-          continue;
-        }
-      }
-
-      const res = await this.approveAndPublishQuestion(qId, targetMeta);
-      if (res.success) {
-        affectedCount++;
-      } else {
-        publishBlockedCount++;
-        blockedReasons.push({ questionId: qId, questionNum: eq.questionNum, reason: res.error || 'Approval failed' });
-      }
+  async bulkDeleteQuestions(jobId: string, questionIds: string[]): Promise<number> {
+    if (!questionIds || questionIds.length === 0) return 0;
+    const res = await pool.query('DELETE FROM public.ocr_extracted_questions WHERE id = ANY($1)', [questionIds]);
+    const deletedCount = res.rowCount || 0;
+    const effectiveJobId = jobId || (questionIds.length > 0 ? (await this.getExtractedQuestionById(questionIds[0]))?.jobId : undefined);
+    if (effectiveJobId) {
+      await this.recalculateJobCounts(effectiveJobId);
     }
-
-    await this.recalculateJobCounts(jobId);
-
-    return { affectedCount, publishBlockedCount, blockedReasons };
+    return deletedCount;
   }
 
   async rejectQuestion(questionId: string): Promise<boolean> {
@@ -596,7 +1114,7 @@ export class OcrRepository {
       storageKey: row.storage_key || undefined,
       fileSizeBytes: row.file_size_bytes || 0,
       pageCount: row.page_count || 1,
-      strategy: row.strategy || 'VISION_OCR',
+      strategy: row.strategy || 'TEXT_EXTRACTION',
       exam: row.exam || 'UPSC CSE',
       expectedQuestionCount: row.expected_question_count || 100,
       status: row.status || 'UPLOADED',
@@ -621,6 +1139,21 @@ export class OcrRepository {
         ? JSON.parse(row.review_state)
         : {},
       errorMessage: row.error_message || undefined,
+      documentHash: row.document_hash || undefined,
+      officialSourceUrl: row.official_source_url || undefined,
+      sourceDomain: row.source_domain || undefined,
+      commission: row.commission || undefined,
+      paper: row.paper || undefined,
+      year: row.year ? Number(row.year) : undefined,
+      examCycle: row.exam_cycle || undefined,
+      parserVersion: row.parser_version || 'v2.1',
+      ocrEngineVersion: row.ocr_engine_version || 'deterministic_pdfparse_v2',
+      structureReport: typeof row.structure_report === 'object' && row.structure_report !== null
+        ? row.structure_report
+        : typeof row.structure_report === 'string'
+        ? JSON.parse(row.structure_report)
+        : {},
+      answerKeyStatus: row.answer_key_status || 'ANSWER_KEY_PENDING',
       createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
       updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
     };
@@ -669,6 +1202,30 @@ export class OcrRepository {
       ? JSON.parse(row.field_confidence)
       : {};
 
+    const statements = Array.isArray(row.statements)
+      ? row.statements
+      : typeof row.statements === 'string'
+      ? JSON.parse(row.statements)
+      : undefined;
+
+    const statements_hi = Array.isArray(row.statements_hi)
+      ? row.statements_hi
+      : typeof row.statements_hi === 'string'
+      ? JSON.parse(row.statements_hi)
+      : undefined;
+
+    const matchData = typeof row.match_data === 'object' && row.match_data !== null && Object.keys(row.match_data).length > 0
+      ? row.match_data
+      : typeof row.match_data === 'string' && row.match_data !== '{}'
+      ? JSON.parse(row.match_data)
+      : undefined;
+
+    const matchData_hi = typeof row.match_data_hi === 'object' && row.match_data_hi !== null && Object.keys(row.match_data_hi).length > 0
+      ? row.match_data_hi
+      : typeof row.match_data_hi === 'string' && row.match_data_hi !== '{}'
+      ? JSON.parse(row.match_data_hi)
+      : undefined;
+
     return {
       id: row.id,
       jobId: row.job_id,
@@ -679,9 +1236,14 @@ export class OcrRepository {
       topicId: row.topic_id,
       conceptId: row.concept_id,
       type: 'MCQ',
+      questionType: row.question_type || (matchData ? 'MATCH_FOLLOWING' : (statements && statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE')),
       question: row.question_text,
       question_en: row.question_en || undefined,
       question_hi: row.question_hi || undefined,
+      statements,
+      statements_hi,
+      matchData,
+      matchData_hi,
       options,
       options_en,
       options_hi,
@@ -702,6 +1264,13 @@ export class OcrRepository {
       destination: row.destination || 'PRACTICE_BANK',
       validationErrors,
       duplicateWarning,
+      aiAssisted: row.ai_assisted || false,
+      parseConfidence: row.parse_confidence !== undefined ? row.parse_confidence : 1.0,
+      structureStatus: row.structure_status || 'AUTO_VERIFIED',
+      answerKeyStatus: row.answer_key_status || (row.correct_answer ? 'ANSWER_BOUND' : 'ANSWER_PENDING'),
+      solutionSource: row.solution_source || undefined,
+      solutionPageNumber: row.solution_page_number ? Number(row.solution_page_number) : undefined,
+      solutionQuestionNumber: row.solution_question_number ? Number(row.solution_question_number) : undefined,
       isPublished: row.status === 'PUBLISHED' || row.status === 'APPROVED',
     };
   }

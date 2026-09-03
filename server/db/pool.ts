@@ -10,15 +10,9 @@ const hasExplicitHost = Boolean(process.env.SQL_HOST || process.env.PGHOST);
 const isProduction = process.env.NODE_ENV === 'production';
 
 if (!connectionString && !hasExplicitHost) {
-  if (isProduction) {
-    throw new Error(
-      '[PostgreSQL Pool Error] CRITICAL: DATABASE_URL (or POSTGRES_URL/SUPABASE_DB_URL) is required in production environment! Production cannot connect without database credentials.'
-    );
-  } else {
-    console.warn(
-      '[PostgreSQL Pool Warning] No DATABASE_URL or SQL_HOST defined. Defaulting to local connection settings.'
-    );
-  }
+  console.warn(
+    '[PostgreSQL Pool Warning] No DATABASE_URL or SQL_HOST defined. Defaulting to local connection settings.'
+  );
 }
 
 function resolveSSL(connStr?: string): boolean | { rejectUnauthorized: boolean } {
@@ -42,7 +36,7 @@ function resolveSSL(connStr?: string): boolean | { rejectUnauthorized: boolean }
       return { rejectUnauthorized: false };
     }
   }
-  if (isProduction) {
+  if (process.env.SQL_HOST && !process.env.SQL_HOST.includes('localhost') && !process.env.SQL_HOST.includes('127.0.0.1')) {
     return { rejectUnauthorized: false };
   }
   return false;
@@ -74,5 +68,6 @@ pool.on('error', (err) => {
   console.error('[PostgreSQL Pool Error]', err.message);
 });
 
+export { pool };
 export default pool;
 

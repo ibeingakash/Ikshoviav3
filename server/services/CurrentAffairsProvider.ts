@@ -136,7 +136,7 @@ export class PibGovtProvider implements CurrentAffairsProvider {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (indexRes.ok) {
@@ -144,130 +144,146 @@ export class PibGovtProvider implements CurrentAffairsProvider {
         const pridRegex = /PRID=(\d+)/gi;
         const prids = Array.from(new Set(Array.from(html.matchAll(pridRegex), m => m[1])));
 
-        // Fetch each discovered release, ensuring English content
-        for (const prid of prids.slice(0, 25)) {
-          try {
-            const pageRes = await fetch(`https://pib.gov.in/PressReleasePage.aspx?PRID=${prid}`, {
-              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-              signal: AbortSignal.timeout(4000),
-            });
-            if (!pageRes.ok) continue;
-
-            const pageHtml = await pageRes.text();
-
-            // Check if this page has an English version link
-            const englishMatch = pageHtml.match(/<a\s+href=[\'\"](https:\/\/pib\.gov\.in\/PressReleasePage\.aspx\?PRID=(\d+))[\'\"][^>]*>\s*English\s*<\/a>/i);
-
-            let effectivePrid = prid;
-            let effectiveUrl = `https://pib.gov.in/PressReleasePage.aspx?PRID=${prid}`;
-            let activeHtml = pageHtml;
-
-            if (englishMatch) {
-              effectiveUrl = englishMatch[1];
-              effectivePrid = englishMatch[2];
-              const enRes = await fetch(effectiveUrl, {
+        // Fetch discovered releases in batches
+        const batchSize = 6;
+        for (let i = 0; i < Math.min(prids.length, 50); i += batchSize) {
+          const batch = prids.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (prid) => {
+            try {
+              const pageRes = await fetch(`https://pib.gov.in/PressReleasePage.aspx?PRID=${prid}`, {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-                signal: AbortSignal.timeout(4000),
+                signal: AbortSignal.timeout(5000),
               });
-              if (enRes.ok) {
-                activeHtml = await enRes.text();
+              if (!pageRes.ok) return;
+
+              const pageHtml = await pageRes.text();
+
+              // Check if this page has an English version link
+              const englishMatch = pageHtml.match(/<a\s+href=[\'\"](https:\/\/pib\.gov\.in\/PressReleasePage\.aspx\?PRID=(\d+))[\'\"][^>]*>\s*English\s*<\/a>/i);
+
+              let effectivePrid = prid;
+              let effectiveUrl = `https://pib.gov.in/PressReleasePage.aspx?PRID=${prid}`;
+              let activeHtml = pageHtml;
+
+              if (englishMatch) {
+                effectiveUrl = englishMatch[1];
+                effectivePrid = englishMatch[2];
+                const enRes = await fetch(effectiveUrl, {
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                  signal: AbortSignal.timeout(4000),
+                });
+                if (enRes.ok) {
+                  activeHtml = await enRes.text();
+                }
               }
-            }
 
-            const titleMatch = activeHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i) || activeHtml.match(/<title>([\s\S]*?)<\/title>/i);
-            const rawTitle = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+              const titleMatch = activeHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i) || activeHtml.match(/<title>([\s\S]*?)<\/title>/i);
+              const rawTitle = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
 
-            // Skip non-English titles or ceremonial announcements
-            if (!rawTitle || isDevanagari(rawTitle) || rawTitle.length < 15) continue;
-            if (rawTitle.startsWith('President greets') || rawTitle.startsWith('PM greets on birthday')) continue;
+              // Skip non-English titles or ceremonial announcements
+              if (!rawTitle || isDevanagari(rawTitle) || rawTitle.length < 15) return;
+              if (rawTitle.startsWith('President greets') || rawTitle.startsWith('PM greets on birthday')) return;
 
-            // Extract release content paragraphs
-            const paragraphs: string[] = [];
-            const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-            let pMatch;
-            while ((pMatch = pRegex.exec(activeHtml)) !== null) {
-              const cleanP = cleanHtml(pMatch[1]);
-              if (cleanP.length > 25 && !cleanP.includes('PIB Delhi') && !cleanP.includes('Release ID') && !isDevanagari(cleanP)) {
-                paragraphs.push(cleanP);
+              // Extract Posted On date if available
+              let articleDate = todayStr;
+              let articleIso = new Date().toISOString();
+              const postedOnMatch = activeHtml.match(/Posted\s+On:\s*(\d{1,2}\s+[A-Za-z]{3}\s+\d{4})/i);
+              if (postedOnMatch) {
+                const parsed = parsePublishedDate(postedOnMatch[1]);
+                if (parsed.isValid) {
+                  articleDate = parsed.dateStr;
+                  articleIso = parsed.isoStr;
+                }
               }
-            }
 
-            const bodyContent = paragraphs.slice(0, 4).join(' ') || rawTitle;
+              // Extract release content paragraphs
+              const paragraphs: string[] = [];
+              const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+              let pMatch;
+              while ((pMatch = pRegex.exec(activeHtml)) !== null) {
+                const cleanP = cleanHtml(pMatch[1]);
+                if (cleanP.length > 25 && !cleanP.includes('PIB Delhi') && !cleanP.includes('Release ID') && !isDevanagari(cleanP)) {
+                  paragraphs.push(cleanP);
+                }
+              }
 
-            // Ministry & GS Paper mapping
-            let category = 'Polity & Governance';
-            let gsPaper = 'GS Paper II';
-            let subtopic = 'Government Policies & Interventions';
+              const bodyContent = paragraphs.slice(0, 4).join(' ') || rawTitle;
 
-            const titleLower = rawTitle.toLowerCase();
-            if (titleLower.includes('environment') || titleLower.includes('climate') || titleLower.includes('forest') || titleLower.includes('pollution') || titleLower.includes('wildlife') || titleLower.includes('caqm')) {
-              category = 'Environment & Ecology';
-              gsPaper = 'GS Paper III';
-              subtopic = 'Conservation, Environmental Pollution & Degradation';
-            } else if (titleLower.includes('economy') || titleLower.includes('tax') || titleLower.includes('finance') || titleLower.includes('msme') || titleLower.includes('commerce') || titleLower.includes('railway') || titleLower.includes('mineral') || titleLower.includes('infra')) {
-              category = 'Economy & Infrastructure';
-              gsPaper = 'GS Paper III';
-              subtopic = 'Infrastructure: Energy, Ports, Roads, Airports, Railways & Mineral Regulation';
-            } else if (titleLower.includes('isro') || titleLower.includes('space') || titleLower.includes('science') || titleLower.includes('technology') || titleLower.includes('ai') || titleLower.includes('cancer') || titleLower.includes('drug')) {
-              category = 'Science & Technology';
-              gsPaper = 'GS Paper III';
-              subtopic = 'Achievements of Indians in Science & Technology; Indigenization';
-            } else if (titleLower.includes('tribal') || titleLower.includes('health') || titleLower.includes('education') || titleLower.includes('women') || titleLower.includes('welfare') || titleLower.includes('janjatiya')) {
-              category = 'Social Justice & Schemes';
-              gsPaper = 'GS Paper II';
-              subtopic = 'Welfare Schemes for Vulnerable Sections & Social Development';
-            } else if (titleLower.includes('brics') || titleLower.includes('summit') || titleLower.includes('bilateral') || titleLower.includes('defence') || titleLower.includes('treaty')) {
-              category = 'International Relations';
-              gsPaper = 'GS Paper II';
-              subtopic = 'Bilateral, Regional & Global Groupings Involving India';
-            }
+              // Ministry & GS Paper mapping
+              let category = 'Polity & Governance';
+              let gsPaper = 'GS Paper II';
+              let subtopic = 'Government Policies & Interventions';
 
-            const isBihar = titleLower.includes('bihar') || titleLower.includes('patna') || titleLower.includes('gaya') || titleLower.includes('nalanda');
+              const titleLower = rawTitle.toLowerCase();
+              if (titleLower.includes('environment') || titleLower.includes('climate') || titleLower.includes('forest') || titleLower.includes('pollution') || titleLower.includes('wildlife') || titleLower.includes('caqm')) {
+                category = 'Environment & Ecology';
+                gsPaper = 'GS Paper III';
+                subtopic = 'Conservation, Environmental Pollution & Degradation';
+              } else if (titleLower.includes('economy') || titleLower.includes('tax') || titleLower.includes('finance') || titleLower.includes('msme') || titleLower.includes('commerce') || titleLower.includes('railway') || titleLower.includes('mineral') || titleLower.includes('infra')) {
+                category = 'Economy & Infrastructure';
+                gsPaper = 'GS Paper III';
+                subtopic = 'Infrastructure: Energy, Ports, Roads, Airports, Railways & Mineral Regulation';
+              } else if (titleLower.includes('isro') || titleLower.includes('space') || titleLower.includes('science') || titleLower.includes('technology') || titleLower.includes('ai') || titleLower.includes('cancer') || titleLower.includes('drug')) {
+                category = 'Science & Technology';
+                gsPaper = 'GS Paper III';
+                subtopic = 'Achievements of Indians in Science & Technology; Indigenization';
+              } else if (titleLower.includes('tribal') || titleLower.includes('health') || titleLower.includes('education') || titleLower.includes('women') || titleLower.includes('welfare') || titleLower.includes('janjatiya')) {
+                category = 'Social Justice & Schemes';
+                gsPaper = 'GS Paper II';
+                subtopic = 'Welfare Schemes for Vulnerable Sections & Social Development';
+              } else if (titleLower.includes('brics') || titleLower.includes('summit') || titleLower.includes('bilateral') || titleLower.includes('defence') || titleLower.includes('treaty')) {
+                category = 'International Relations';
+                gsPaper = 'GS Paper II';
+                subtopic = 'Bilateral, Regional & Global Groupings Involving India';
+              }
 
-            articles.push({
-              title: rawTitle,
-              sourceUrl: effectiveUrl,
-              source: 'Press Information Bureau (PIB)',
-              sourceType: 'PRIMARY_GOVT',
-              content: bodyContent,
-              date: todayStr,
-              publishedAt: new Date().toISOString(),
-              category,
-              subtopic,
-              gsPaper,
-              articleType: 'CURRENT_AFFAIR',
-              isBiharSpecial: isBihar,
-              biharRelevance: isBihar ? 'Directly impacts Bihar state development and infrastructure initiatives.' : undefined,
-              examRelevance: isBihar ? 'BOTH' : 'UPSC',
-              relevanceScore: 94,
-              relevanceReason: `Official primary government release issued via Press Information Bureau (PRID: ${effectivePrid}) mapped to ${gsPaper}.`,
-              verificationStatus: 'VERIFIED',
-              keyFacts: [
-                `Official Release Identifier: PIB PRID ${effectivePrid}`,
-                `Issuing Authority: Government of India / Press Information Bureau`,
-                `Policy Impact Domain: ${subtopic}`,
-                `Official Verification Link: ${effectiveUrl}`
-              ],
-              prelimsPointers: [
-                `Nodal agency / Ministry: Government of India`,
-                `Core policy mandate: ${rawTitle}`
-              ],
-              mainsDimensions: [
-                `Policy Framework: Objectives, statutory provisions, and budgetary mechanism.`,
-                `Socio-Economic Impact: Target beneficiaries and structural governance improvements.`,
-                `Way Forward: Robust inter-ministerial coordination and transparent progress tracking.`
-              ],
-              sourceProvenance: {
-                discovered_from: 'PIB Official Government Portal',
-                reference_source: 'Press Information Bureau, Government of India',
-                verification_source: 'Official National Government Press Portal (pib.gov.in)',
-                final_source_type: 'PRIMARY_GOVERNMENT_RECORD',
-                domain: 'pib.gov.in',
-                prid: effectivePrid,
-                verifiedAt: new Date().toISOString(),
-              },
-            });
-          } catch {}
+              const isBihar = titleLower.includes('bihar') || titleLower.includes('patna') || titleLower.includes('gaya') || titleLower.includes('nalanda');
+
+              articles.push({
+                title: rawTitle,
+                sourceUrl: effectiveUrl,
+                source: 'Press Information Bureau (PIB)',
+                sourceType: 'PRIMARY_GOVT',
+                content: bodyContent,
+                date: articleDate,
+                publishedAt: articleIso,
+                category,
+                subtopic,
+                gsPaper,
+                articleType: 'CURRENT_AFFAIR',
+                isBiharSpecial: isBihar,
+                biharRelevance: isBihar ? 'Directly impacts Bihar state development and infrastructure initiatives.' : undefined,
+                examRelevance: isBihar ? 'BOTH' : 'UPSC',
+                relevanceScore: 94,
+                relevanceReason: `Official primary government release issued via Press Information Bureau (PRID: ${effectivePrid}) mapped to ${gsPaper}.`,
+                verificationStatus: 'VERIFIED',
+                keyFacts: [
+                  `Official Release Identifier: PIB PRID ${effectivePrid}`,
+                  `Issuing Authority: Government of India / Press Information Bureau`,
+                  `Policy Impact Domain: ${subtopic}`,
+                  `Official Verification Link: ${effectiveUrl}`
+                ],
+                prelimsPointers: [
+                  `Nodal agency / Ministry: Government of India`,
+                  `Core policy mandate: ${rawTitle}`
+                ],
+                mainsDimensions: [
+                  `Policy Framework: Objectives, statutory provisions, and budgetary mechanism.`,
+                  `Socio-Economic Impact: Target beneficiaries and structural governance improvements.`,
+                  `Way Forward: Robust inter-ministerial coordination and transparent progress tracking.`
+                ],
+                sourceProvenance: {
+                  discovered_from: 'PIB Official Government Portal',
+                  reference_source: 'Press Information Bureau, Government of India',
+                  verification_source: 'Official National Government Press Portal (pib.gov.in)',
+                  final_source_type: 'PRIMARY_GOVERNMENT_RECORD',
+                  domain: 'pib.gov.in',
+                  prid: effectivePrid,
+                  verifiedAt: new Date().toISOString(),
+                },
+              });
+            } catch {}
+          }));
         }
       }
     } catch (err: any) {
@@ -402,6 +418,347 @@ export class TheHinduProvider implements CurrentAffairsProvider {
         }
       } catch (err: any) {
         console.warn(`[TheHinduProvider] Feed fetch warning: ${err?.message}`);
+      }
+    }
+
+    return articles;
+  }
+}
+
+// =========================================================================
+// 2b. The Indian Express Editorial, Explained & National Provider
+// =========================================================================
+export class TheIndianExpressProvider implements CurrentAffairsProvider {
+  providerCode = 'INDIAN_EXPRESS_EDITORIALS_EXPLAINED';
+  providerName = 'The Indian Express';
+  sourceType = 'SECONDARY_NEWS' as const;
+  domain = 'indianexpress.com';
+
+  async fetchLatest(): Promise<RawDiscoveredArticle[]> {
+    const articles: RawDiscoveredArticle[] = [];
+    const feeds = [
+      { url: 'https://indianexpress.com/section/opinion/editorials/feed/', isEditorial: true, type: 'EDITORIAL' },
+      { url: 'https://indianexpress.com/section/opinion/columns/feed/', isEditorial: true, type: 'OPINION' },
+      { url: 'https://indianexpress.com/section/explained/feed/', isEditorial: false, type: 'EXPLAINER' },
+      { url: 'https://indianexpress.com/section/india/feed/', isEditorial: false, type: 'CURRENT_AFFAIR' },
+    ];
+
+    for (const feed of feeds) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(feed.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/rss+xml, text/xml, application/xml, */*',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) continue;
+        const xml = await res.text();
+        const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+
+        for (const item of items) {
+          const rawTitle = (item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || item.match(/<title>([\s\S]*?)<\/title>/i))?.[1] || '';
+          const rawLink = (item.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || item.match(/<link>([\s\S]*?)<\/link>/i) || item.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i))?.[1] || '';
+          const rawPubDate = (item.match(/<pubDate><!\[CDATA\[([\s\S]*?)\]\]><\/pubDate>/i) || item.match(/<pubDate>([\s\S]*?)<\/pubDate>/i))?.[1] || '';
+          const rawDesc = (item.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || item.match(/<description>([\s\S]*?)<\/description>/i))?.[1] || '';
+
+          const title = cleanHtml(rawTitle);
+          const link = rawLink.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+          if (!title || !link || !link.includes('indianexpress.com') || isDevanagari(title)) continue;
+
+          const { dateStr, isoStr, isValid } = parsePublishedDate(rawPubDate);
+          const content = cleanHtml(rawDesc) || title;
+
+          let gsPaper = 'GS Paper II';
+          let category = 'Polity & Governance';
+          let subtopic = 'Governance, Public Policy & Judicial Review';
+
+          const textLower = `${title} ${content}`.toLowerCase();
+          if (textLower.includes('economy') || textLower.includes('tax') || textLower.includes('gdp') || textLower.includes('rbi') || textLower.includes('trade') || textLower.includes('rupee')) {
+            gsPaper = 'GS Paper III';
+            category = 'Economy & Infrastructure';
+            subtopic = 'Macroeconomics, Fiscal Policies & Banking';
+          } else if (textLower.includes('space') || textLower.includes('isro') || textLower.includes('ai') || textLower.includes('tech') || textLower.includes('quantum') || textLower.includes('science')) {
+            gsPaper = 'GS Paper III';
+            category = 'Science & Technology';
+            subtopic = 'Science, Indigenization & Applied Tech';
+          } else if (textLower.includes('forest') || textLower.includes('climate') || textLower.includes('carbon') || textLower.includes('ecology') || textLower.includes('cop')) {
+            gsPaper = 'GS Paper III';
+            category = 'Environment & Ecology';
+            subtopic = 'Climate Policy & Environmental Protection';
+          } else if (textLower.includes('china') || textLower.includes('us') || textLower.includes('un') || textLower.includes('foreign') || textLower.includes('diplomacy') || textLower.includes('quad')) {
+            gsPaper = 'GS Paper II';
+            category = 'International Relations';
+            subtopic = 'International Institutions & Bilateral Relations';
+          }
+
+          const isBihar = textLower.includes('bihar') || textLower.includes('patna') || textLower.includes('bpsc');
+
+          articles.push({
+            title,
+            sourceUrl: link,
+            source: 'The Indian Express',
+            sourceType: 'SECONDARY_NEWS',
+            content,
+            date: dateStr,
+            publishedAt: isoStr,
+            category,
+            subtopic,
+            gsPaper,
+            articleType: feed.type as any,
+            editorialSource: feed.isEditorial ? 'The Indian Express' : undefined,
+            isBiharSpecial: isBihar,
+            biharRelevance: isBihar ? 'Relevant for BPSC Mains state governance and developmental issues.' : undefined,
+            examRelevance: 'BOTH',
+            relevanceScore: feed.isEditorial ? 94 : 89,
+            relevanceReason: `Analytical coverage from The Indian Express (${feed.type}) mapped to ${gsPaper}.`,
+            verificationStatus: isValid ? 'VERIFIED' : 'UNVERIFIED',
+            keyFacts: [
+              `Source: The Indian Express (${feed.type})`,
+              `Canonical Link: ${link}`,
+              `Curriculum Alignment: UPSC / BPSC ${gsPaper}`
+            ],
+            prelimsPointers: [
+              `Key Topic: ${title}`,
+              `Syllabus Relevance: ${subtopic}`
+            ],
+            mainsDimensions: [
+              `Analytical Perspective: Structural insights into policy implications and constitutional boundaries.`,
+              `Critical Dimensions: Balancing administrative efficacy with federal and democratic accountability.`
+            ],
+            editorialAnalysis: feed.isEditorial ? {
+              coreArgument: content,
+              context: `Published in The Indian Express on ${dateStr}. Discusses ${subtopic}.`,
+              counterView: 'Considers institutional constraints, implementation bottlenecks, and regulatory trade-offs.',
+              mainsQuestion: `Critically examine the issues raised in "${title}". How does this impact Indian policy execution? (250 words, 15 marks)`,
+              pyqLinkages: [`UPSC Mains ${gsPaper} Current Policy Question Pattern`]
+            } : undefined,
+            sourceProvenance: {
+              discovered_from: 'The Indian Express RSS Feeds',
+              reference_source: 'The Indian Express Editorial Board',
+              verification_source: 'Official Indian Express Portal (indianexpress.com)',
+              final_source_type: feed.isEditorial ? 'EDITORIAL_ANALYSIS' : 'SECONDARY_NEWS',
+              domain: 'indianexpress.com',
+              verifiedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[TheIndianExpressProvider] Feed fetch warning: ${err?.message}`);
+      }
+    }
+
+    return articles;
+  }
+}
+
+// =========================================================================
+// 2c. Drishti IAS & Educational Synthesis Provider
+// =========================================================================
+export class DrishtiIasAnalysisProvider implements CurrentAffairsProvider {
+  providerCode = 'DRISHTI_IAS_DAILY_ANALYSIS';
+  providerName = 'Drishti IAS (Daily News & Editorial Synthesis)';
+  sourceType = 'SUPPLEMENTARY_REFERENCE' as const;
+  domain = 'drishtiias.com';
+
+  async fetchLatest(): Promise<RawDiscoveredArticle[]> {
+    const articles: RawDiscoveredArticle[] = [];
+    const feeds = [
+      'https://www.drishtiias.com/current-affairs-news-analysis-editorials/rss',
+      'https://www.drishtiias.com/rss/daily-news-editorials.xml',
+    ];
+
+    for (const feedUrl of feeds) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(feedUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/rss+xml, text/xml, application/xml, */*',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) continue;
+        const xml = await res.text();
+        const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+
+        for (const item of items) {
+          const rawTitle = (item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || item.match(/<title>([\s\S]*?)<\/title>/i))?.[1] || '';
+          const rawLink = (item.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || item.match(/<link>([\s\S]*?)<\/link>/i) || item.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i))?.[1] || '';
+          const rawPubDate = (item.match(/<pubDate><!\[CDATA\[([\s\S]*?)\]\]><\/pubDate>/i) || item.match(/<pubDate>([\s\S]*?)<\/pubDate>/i))?.[1] || '';
+          const rawDesc = (item.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || item.match(/<description>([\s\S]*?)<\/description>/i))?.[1] || '';
+
+          const title = cleanHtml(rawTitle);
+          const link = rawLink.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+          if (!title || !link || isDevanagari(title)) continue;
+
+          const { dateStr, isoStr, isValid } = parsePublishedDate(rawPubDate);
+          const content = cleanHtml(rawDesc) || title;
+
+          let gsPaper = 'GS Paper II';
+          let category = 'Polity & Governance';
+          let subtopic = 'UPSC Current Affairs Synthesis';
+
+          const textLower = `${title} ${content}`.toLowerCase();
+          if (textLower.includes('economy') || textLower.includes('finance') || textLower.includes('trade')) {
+            gsPaper = 'GS Paper III';
+            category = 'Economy & Infrastructure';
+            subtopic = 'Economic Developments & Governance';
+          } else if (textLower.includes('environment') || textLower.includes('biodiversity') || textLower.includes('wildlife')) {
+            gsPaper = 'GS Paper III';
+            category = 'Environment & Ecology';
+            subtopic = 'Biodiversity & Climate Action';
+          } else if (textLower.includes('science') || textLower.includes('isro') || textLower.includes('satellite') || textLower.includes('ai')) {
+            gsPaper = 'GS Paper III';
+            category = 'Science & Technology';
+            subtopic = 'Scientific Innovations & Indigenous Tech';
+          }
+
+          const isBihar = textLower.includes('bihar') || textLower.includes('bpsc');
+
+          articles.push({
+            title,
+            sourceUrl: link,
+            source: 'Drishti IAS (Daily News Synthesis)',
+            sourceType: 'SUPPLEMENTARY_REFERENCE',
+            content,
+            date: dateStr,
+            publishedAt: isoStr,
+            category,
+            subtopic,
+            gsPaper,
+            articleType: 'UPSC_GUIDE',
+            isBiharSpecial: isBihar,
+            biharRelevance: isBihar ? 'Supplementary BPSC study notes and analysis.' : undefined,
+            examRelevance: 'BOTH',
+            relevanceScore: 91,
+            relevanceReason: `Educational synthesis and GS syllabus mapping provided by Drishti IAS for ${gsPaper}.`,
+            verificationStatus: isValid ? 'VERIFIED' : 'UNVERIFIED',
+            keyFacts: [
+              `Educational Source: Drishti IAS Current Affairs Analysis`,
+              `Canonical URL: ${link}`,
+              `Curriculum Alignment: UPSC Civil Services / State PSCs`
+            ],
+            prelimsPointers: [
+              `Prelims High-Yield Topic: ${title}`,
+              `Subject linkage: ${category}`
+            ],
+            mainsDimensions: [
+              `Mains Analytical Dimensions: Syllabus alignment with GS Paper and model answering pointers.`,
+              `Way Forward & Policy Options: Structural recommendations for exam candidates.`
+            ],
+            sourceProvenance: {
+              discovered_from: 'Drishti IAS Educational RSS Feeds',
+              reference_source: 'Drishti IAS Academic Team',
+              verification_source: 'Drishti IAS Portal (drishtiias.com)',
+              final_source_type: 'EDUCATIONAL_ANALYSIS',
+              domain: 'drishtiias.com',
+              verifiedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[DrishtiIasAnalysisProvider] Feed fetch warning: ${err?.message}`);
+      }
+    }
+
+    return articles;
+  }
+}
+
+// =========================================================================
+// 2d. Vajiram & Ravi Current Affairs Provider
+// =========================================================================
+export class VajiramRaviProvider implements CurrentAffairsProvider {
+  providerCode = 'VAJIRAM_RAVI_DAILY_ANALYSIS';
+  providerName = 'Vajiram & Ravi (Current Affairs Analysis)';
+  sourceType = 'SUPPLEMENTARY_REFERENCE' as const;
+  domain = 'vajiramandravi.com';
+
+  async fetchLatest(): Promise<RawDiscoveredArticle[]> {
+    const articles: RawDiscoveredArticle[] = [];
+    const feeds = [
+      'https://vajiramandravi.com/quest-upsc-notes/feed/',
+      'https://vajiramandravi.com/feed/',
+    ];
+
+    for (const feedUrl of feeds) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const res = await fetch(feedUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/rss+xml, text/xml, application/xml, */*',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) continue;
+        const xml = await res.text();
+        const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+
+        for (const item of items) {
+          const rawTitle = (item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || item.match(/<title>([\s\S]*?)<\/title>/i))?.[1] || '';
+          const rawLink = (item.match(/<link><!\[CDATA\[([\s\S]*?)\]\]><\/link>/i) || item.match(/<link>([\s\S]*?)<\/link>/i) || item.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i))?.[1] || '';
+          const rawPubDate = (item.match(/<pubDate><!\[CDATA\[([\s\S]*?)\]\]><\/pubDate>/i) || item.match(/<pubDate>([\s\S]*?)<\/pubDate>/i))?.[1] || '';
+          const rawDesc = (item.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || item.match(/<description>([\s\S]*?)<\/description>/i))?.[1] || '';
+
+          const title = cleanHtml(rawTitle);
+          const link = rawLink.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+          if (!title || !link || isDevanagari(title)) continue;
+
+          const { dateStr, isoStr, isValid } = parsePublishedDate(rawPubDate);
+          const content = cleanHtml(rawDesc) || title;
+
+          articles.push({
+            title,
+            sourceUrl: link,
+            source: 'Vajiram & Ravi (Current Affairs)',
+            sourceType: 'SUPPLEMENTARY_REFERENCE',
+            content,
+            date: dateStr,
+            publishedAt: isoStr,
+            category: 'Polity & Governance',
+            subtopic: 'UPSC CSE Syllabus Integration',
+            gsPaper: 'GS Paper II',
+            articleType: 'UPSC_GUIDE',
+            examRelevance: 'UPSC',
+            relevanceScore: 90,
+            relevanceReason: `Structured exam-oriented current affairs synthesis by Vajiram & Ravi.`,
+            verificationStatus: isValid ? 'VERIFIED' : 'UNVERIFIED',
+            keyFacts: [
+              `Source: Vajiram & Ravi Current Affairs Desk`,
+              `Canonical URL: ${link}`,
+              `Target Exam: UPSC Civil Services Examination`
+            ],
+            prelimsPointers: [
+              `Exam Concept: ${title}`,
+              `Prelims Pointer: Mapped to GS Core Subjects`
+            ],
+            mainsDimensions: [
+              `Mains Answer Writing Dimension: Key stakeholders, policy bottlenecks, and global best practices.`
+            ],
+            sourceProvenance: {
+              discovered_from: 'Vajiram & Ravi RSS Feeds',
+              reference_source: 'Vajiram & Ravi Faculty & Research Desk',
+              verification_source: 'Vajiram & Ravi Official Website (vajiramandravi.com)',
+              final_source_type: 'EDUCATIONAL_ANALYSIS',
+              domain: 'vajiramandravi.com',
+              verifiedAt: new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[VajiramRaviProvider] Feed fetch warning: ${err?.message}`);
       }
     }
 
@@ -845,7 +1202,10 @@ export class CurrentAffairsIngestionManager {
   private providers: CurrentAffairsProvider[] = [
     new PibGovtProvider(),
     new TheHinduProvider(),
+    new TheIndianExpressProvider(),
     new LiveMintProvider(),
+    new DrishtiIasAnalysisProvider(),
+    new VajiramRaviProvider(),
     new RbiGovtProvider(),
     new SupremeCourtJudiciaryProvider(),
     new BiharStateGovProvider(),

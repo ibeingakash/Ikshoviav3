@@ -13,16 +13,315 @@ export interface MockAnswerRecord {
 }
 
 export class MockTestRepository {
-  async getPublishedTests(): Promise<MockTest[]> {
+  private schemaChecked = false;
+
+  async ensureSchema(): Promise<void> {
+    if (this.schemaChecked) return;
+    try {
+      await pool.query(`
+        ALTER TABLE public.mock_tests 
+        ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'IKSHOVIA_CREATED',
+        ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE,
+        ADD COLUMN IF NOT EXISTS deleted_by TEXT;
+      `);
+      this.schemaChecked = true;
+    } catch (err: any) {
+      console.warn('[MockTestRepository] ensureSchema notice:', err.message);
+    }
+  }
+
+  async ensureDefaultTests(): Promise<void> {
+    await this.ensureSchema();
+    try {
+      const countRes = await pool.query('SELECT COUNT(*) FROM public.mock_tests WHERE is_published = true');
+      const count = parseInt(countRes.rows[0]?.count || '0', 10);
+      if (count > 0) return;
+
+      console.log('[MockTestRepository] Seeding standard IKSHOVIA Full-Length & Subject Mock Tests...');
+
+      const defaultMocks = [
+        {
+          id: 'mock_flt_01',
+          title: 'UPSC CSE Prelims 2026 - All India Full Mock 01 (General Studies)',
+          type: 'FULL',
+          subjectIds: ['sub_polity', 'sub_economy', 'sub_history', 'sub_geography', 'sub_ca', 'sub_scitech'],
+          durationMinutes: 120,
+          totalQuestions: 100,
+          totalMarks: 200,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_flt_02',
+          title: 'UPSC CSE Prelims 2026 - All India Full Mock 02 (Polity & Governance Heavy)',
+          type: 'FULL',
+          subjectIds: ['sub_polity', 'sub_economy', 'sub_history', 'sub_geography', 'sub_ca'],
+          durationMinutes: 120,
+          totalQuestions: 100,
+          totalMarks: 200,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_bpsc_01',
+          title: '71st BPSC CCE Prelims Full Mock 01 (General Studies & Bihar Special)',
+          type: 'FULL',
+          subjectIds: ['sub_polity', 'sub_economy', 'sub_history', 'sub_geography', 'sub_bihar_special'],
+          durationMinutes: 120,
+          totalQuestions: 150,
+          totalMarks: 150,
+          negativeMarkingRate: 0.33,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_subj_polity',
+          title: 'Indian Polity & Constitutional Dynamics - Sectional Mock',
+          type: 'SUBJECT',
+          subjectIds: ['sub_polity'],
+          durationMinutes: 60,
+          totalQuestions: 50,
+          totalMarks: 100,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_subj_economy',
+          title: 'Indian Economy, Banking & Fiscal Policy - Sectional Mock',
+          type: 'SUBJECT',
+          subjectIds: ['sub_economy'],
+          durationMinutes: 60,
+          totalQuestions: 50,
+          totalMarks: 100,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_subj_history',
+          title: 'Modern Indian History & Freedom Struggle - Sectional Mock',
+          type: 'SUBJECT',
+          subjectIds: ['sub_history'],
+          durationMinutes: 60,
+          totalQuestions: 50,
+          totalMarks: 100,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_subj_geography',
+          title: 'Physical Geography & Environment - Sectional Mock',
+          type: 'SUBJECT',
+          subjectIds: ['sub_geography'],
+          durationMinutes: 60,
+          totalQuestions: 50,
+          totalMarks: 100,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_sprint_rights',
+          title: 'Fundamental Rights & Constitutional Writs - Rapid Topic Sprint',
+          type: 'QUICK',
+          subjectIds: ['sub_polity'],
+          durationMinutes: 20,
+          totalQuestions: 20,
+          totalMarks: 40,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+        {
+          id: 'mock_sprint_macro',
+          title: 'Monetary Policy & Inflation Targeting - Rapid Topic Sprint',
+          type: 'QUICK',
+          subjectIds: ['sub_economy'],
+          durationMinutes: 20,
+          totalQuestions: 20,
+          totalMarks: 40,
+          negativeMarkingRate: 0.66,
+          sourceType: 'IKSHOVIA_CREATED',
+        },
+      ];
+
+      for (const m of defaultMocks) {
+        await pool.query(`
+          INSERT INTO public.mock_tests (
+            id, title, type, subject_ids, duration_minutes, total_questions, total_marks,
+            negative_marking_rate, source_type, is_published, created_at
+          ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, true, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            title = EXCLUDED.title,
+            type = EXCLUDED.type,
+            source_type = EXCLUDED.source_type,
+            total_questions = EXCLUDED.total_questions,
+            duration_minutes = EXCLUDED.duration_minutes;
+        `, [
+          m.id,
+          m.title,
+          m.type,
+          JSON.stringify(m.subjectIds),
+          m.durationMinutes,
+          m.totalQuestions,
+          m.totalMarks,
+          m.negativeMarkingRate,
+          m.sourceType,
+        ]);
+      }
+      console.log('[MockTestRepository] Successfully initialized standard mock tests.');
+    } catch (err: any) {
+      console.warn('[MockTestRepository] Failed to seed default mock tests:', err.message);
+    }
+  }
+
+  async getPublishedTests(filters?: { testType?: string; sourceType?: string }): Promise<MockTest[]> {
+    await this.ensureDefaultTests();
+
+    let whereClauses: string[] = ['is_published = true', '(is_deleted IS NULL OR is_deleted = false)'];
+    let params: any[] = [];
+    let idx = 1;
+
+    if (filters?.testType && filters.testType !== 'ALL') {
+      whereClauses.push(`type = $${idx++}`);
+      params.push(filters.testType);
+    }
+
+    if (filters?.sourceType && filters.sourceType !== 'ALL') {
+      whereClauses.push(`source_type = $${idx++}`);
+      params.push(filters.sourceType);
+    }
+
+    const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
     const res = await pool.query(`
       SELECT * FROM public.mock_tests 
-      WHERE is_published = true 
+      ${whereSql} 
       ORDER BY created_at DESC;
-    `);
+    `, params);
     return res.rows.map(this.mapRowToMockTest);
   }
 
+  async getAllAdminTests(filters?: { testType?: string; sourceType?: string; includeArchived?: boolean }): Promise<MockTest[]> {
+    await this.ensureDefaultTests();
+
+    let whereClauses: string[] = [];
+    let params: any[] = [];
+    let idx = 1;
+
+    if (!filters?.includeArchived) {
+      whereClauses.push('(mt.is_deleted IS NULL OR mt.is_deleted = false)');
+    }
+
+    if (filters?.testType && filters.testType !== 'ALL') {
+      whereClauses.push(`mt.type = $${idx++}`);
+      params.push(filters.testType);
+    }
+
+    if (filters?.sourceType && filters.sourceType !== 'ALL') {
+      whereClauses.push(`mt.source_type = $${idx++}`);
+      params.push(filters.sourceType);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const query = `
+      SELECT mt.*,
+             COALESCE(att.attempt_count, 0)::integer AS attempt_count,
+             COALESCE(mq.question_count, 0)::integer AS actual_question_count
+      FROM public.mock_tests mt
+      LEFT JOIN (
+        SELECT mock_test_id, COUNT(*) AS attempt_count
+        FROM public.mock_attempts
+        GROUP BY mock_test_id
+      ) att ON att.mock_test_id = mt.id
+      LEFT JOIN (
+        SELECT mock_test_id, COUNT(*) AS question_count
+        FROM public.mock_questions
+        GROUP BY mock_test_id
+      ) mq ON mq.mock_test_id = mt.id
+      ${whereSql}
+      ORDER BY mt.created_at DESC;
+    `;
+    const res = await pool.query(query, params);
+    return res.rows.map((r: any) => ({
+      ...this.mapRowToMockTest(r),
+      attemptCount: r.attempt_count || 0,
+      actualQuestionCount: r.actual_question_count || r.total_questions || 0,
+      isDeleted: r.is_deleted ?? false,
+      deletedAt: r.deleted_at ? new Date(r.deleted_at).toISOString() : undefined,
+      deletedBy: r.deleted_by || undefined,
+    }));
+  }
+
+  async archiveOrDeleteTest(testId: string, actorId: string): Promise<{ success: boolean; testId: string; title: string; attemptsPreserved: number; message: string }> {
+    await this.ensureSchema();
+    const testRes = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [testId]);
+    if (testRes.rows.length === 0) {
+      const err: any = new Error(`Mock test with id '${testId}' not found.`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const test = testRes.rows[0];
+
+    // Backend protection rule: Never delete official commission tests
+    if (test.source_type === 'OFFICIAL_COMMISSION' || testId.startsWith('pyq_paper_')) {
+      const err: any = new Error('Official Commission tests are protected and cannot be deleted.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Check learner attempts count to confirm preservation
+    const attemptsRes = await pool.query(
+      'SELECT COUNT(*) FROM public.mock_attempts WHERE mock_test_id = $1',
+      [testId]
+    );
+    const attemptsCount = parseInt(attemptsRes.rows[0]?.count || '0', 10);
+
+    // Soft-delete / Archive the test record
+    await pool.query(`
+      UPDATE public.mock_tests
+      SET is_published = false,
+          is_deleted = true,
+          deleted_at = NOW(),
+          deleted_by = $1
+      WHERE id = $2;
+    `, [actorId, testId]);
+
+    console.log(`[MockTestRepository] Safely archived mock test '${testId}' (${test.title}). Preserved ${attemptsCount} attempts and canonical questions.`);
+
+    return {
+      success: true,
+      testId,
+      title: test.title,
+      attemptsPreserved: attemptsCount,
+      message: `Mock test "${test.title}" safely archived. All ${attemptsCount} learner attempt history records and canonical questions remain fully preserved.`,
+    };
+  }
+
+  async restoreTest(testId: string, actorId: string): Promise<{ success: boolean; testId: string; message: string }> {
+    await this.ensureSchema();
+    const testRes = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [testId]);
+    if (testRes.rows.length === 0) {
+      const err: any = new Error(`Mock test with id '${testId}' not found.`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    await pool.query(`
+      UPDATE public.mock_tests
+      SET is_published = true,
+          is_deleted = false,
+          deleted_at = NULL,
+          deleted_by = NULL
+      WHERE id = $1;
+    `, [testId]);
+
+    return {
+      success: true,
+      testId,
+      message: `Mock test "${testRes.rows[0].title}" restored to active catalog.`,
+    };
+  }
+
   async getTestById(id: string): Promise<MockTest | null> {
+    await this.ensureSchema();
     const res = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [id]);
     if (res.rows.length === 0) return null;
     return this.mapRowToMockTest(res.rows[0]);
@@ -45,10 +344,15 @@ export class MockTestRepository {
       return mappedQuestions.slice(0, targetCount);
     }
 
-    // Supplement with questions matching test subjects if available
+    // Supplement with questions matching test subjects and test source_type if available
     const existingIds = mappedQuestions.map(q => q.id);
     let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
     const queryParams: any[] = [];
+
+    if (test.sourceType) {
+      queryParams.push(test.sourceType);
+      questionQuery += ` AND source_type = $${queryParams.length}`;
+    }
 
     if (test.subjectIds && test.subjectIds.length > 0) {
       queryParams.push(test.subjectIds);
@@ -201,29 +505,37 @@ export class MockTestRepository {
     userId?: string;
     title: string;
     type?: 'QUICK' | 'SUBJECT' | 'FULL';
-    subjectIds: string[];
-    totalQuestions: number;
+    subjectIds?: string[];
+    totalQuestions?: number;
     durationMinutes?: number;
     difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'ADAPTIVE';
     examTag?: string;
+    questionIds?: string[];
+    sourceType?: 'IKSHOVIA_CREATED' | 'ADMIN_IMPORTED';
+    isPublished?: boolean;
   }): Promise<{ test: MockTest; questions: Question[] }> {
+    await this.ensureSchema();
     const {
       title,
       type = 'QUICK',
-      subjectIds,
+      subjectIds = ['sub_polity', 'sub_economy'],
       totalQuestions = 10,
       durationMinutes = Math.round(totalQuestions * 1.2),
       difficulty = 'MEDIUM',
+      questionIds = [],
+      sourceType = 'IKSHOVIA_CREATED',
+      isPublished = true,
     } = params;
 
+    const actualQuestionCount = questionIds.length > 0 ? questionIds.length : totalQuestions;
     const testId = `mock_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const totalMarks = totalQuestions * 2;
+    const totalMarks = actualQuestionCount * 2;
 
     const query = `
       INSERT INTO public.mock_tests (
         id, title, type, subject_ids, duration_minutes, total_questions, total_marks,
-        negative_marking_rate, is_published, created_at
-      ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, 0.66, true, NOW())
+        negative_marking_rate, source_type, is_published, created_at
+      ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, 0.66, $8, $9, NOW())
       RETURNING *;
     `;
     const res = await pool.query(query, [
@@ -232,9 +544,22 @@ export class MockTestRepository {
       type,
       JSON.stringify(subjectIds.length ? subjectIds : ['sub_polity', 'sub_economy']),
       durationMinutes,
-      totalQuestions,
+      actualQuestionCount,
       totalMarks,
+      sourceType,
+      isPublished,
     ]);
+
+    // If specific question IDs were selected by the user/admin, link them into mock_questions
+    if (questionIds.length > 0) {
+      for (let i = 0; i < questionIds.length; i++) {
+        await pool.query(`
+          INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
+        `, [testId, questionIds[i], i + 1]);
+      }
+    }
 
     const test = this.mapRowToMockTest(res.rows[0]);
     const questions = await this.getTestQuestions(testId);
@@ -358,12 +683,17 @@ export class MockTestRepository {
       id: row.id,
       title: row.title,
       type: row.type || 'QUICK',
+      sourceType: row.source_type || 'IKSHOVIA_CREATED',
       subjectIds,
       durationMinutes: row.duration_minutes || 30,
       totalQuestions: row.total_questions || 10,
       totalMarks: row.total_marks || 20,
       negativeMarkingRate: row.negative_marking_rate || 0.66,
       isPublished: row.is_published ?? true,
+      isDeleted: row.is_deleted ?? false,
+      deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : undefined,
+      deletedBy: row.deleted_by || undefined,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     };
   }
 
@@ -420,6 +750,7 @@ export class MockTestRepository {
       paper: row.paper || undefined,
       questionNumber: row.question_number || undefined,
       isPyq: row.is_pyq,
+      sourceType: row.source_type || 'OFFICIAL_COMMISSION',
       source: row.source || undefined,
       verifiedStatus: row.verified_status,
       isPublished: row.is_published,
@@ -555,31 +886,52 @@ export class MockTestRepository {
         subjectStats[subj].total += 1;
 
         const userAns = answerMap.get(q.id);
+        const optionsList = q.options || [];
+        const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
+        const isOptENotAttempted = optE && (
+          optE.text.toLowerCase().includes('not attempted') ||
+          optE.text.toLowerCase().includes('अनुत्तरित') ||
+          optE.text.toLowerCase().includes('unattempted')
+        );
+
         if (userAns !== undefined && userAns !== null && userAns !== '') {
-          attemptedCount++;
-          const isCorrect = String(userAns).trim().toUpperCase() === String(q.correctAnswer).trim().toUpperCase();
+          const userAnsUpper = String(userAns).trim().toUpperCase();
+          const correctAnsUpper = String(q.correctAnswer).trim().toUpperCase();
+          const isCorrect = userAnsUpper === correctAnsUpper;
 
-          await client.query(
-            'UPDATE public.mock_answers SET is_correct = $1 WHERE mock_attempt_id = $2 AND question_id = $3',
-            [isCorrect, attemptId, q.id]
-          );
+          // Check if user specifically selected Option E as "Not Attempted"
+          const userChoseNotAttempted = userAnsUpper === 'E' && isOptENotAttempted && correctAnsUpper !== 'E';
 
-          if (isCorrect) {
-            score += markPerQ;
-            correctCount++;
-            subjectStats[subj].correct += 1;
-            subjectStats[subj].score += markPerQ;
-            if (q.conceptId) {
-              await recordQuestionAttempt(userId, q.conceptId, true, 45, 4, undefined, client);
-            }
+          if (userChoseNotAttempted) {
+            // Option E selected as deliberate safe skip: 0 marks, 0 penalty
+            await client.query(
+              'UPDATE public.mock_answers SET is_correct = false WHERE mock_attempt_id = $1 AND question_id = $2',
+              [attemptId, q.id]
+            );
           } else {
-            const penalty = markPerQ * (test.negativeMarkingRate || 0.33);
-            score -= penalty;
-            subjectStats[subj].score -= penalty;
-            mistakeSummary.CONCEPT_CONFUSION += 1;
-            if (q.conceptId) {
-              weakConceptIdsSet.add(q.conceptId);
-              await recordQuestionAttempt(userId, q.conceptId, false, 45, 3, 'CONCEPT_GAP', client);
+            attemptedCount++;
+            await client.query(
+              'UPDATE public.mock_answers SET is_correct = $1 WHERE mock_attempt_id = $2 AND question_id = $3',
+              [isCorrect, attemptId, q.id]
+            );
+
+            if (isCorrect) {
+              score += markPerQ;
+              correctCount++;
+              subjectStats[subj].correct += 1;
+              subjectStats[subj].score += markPerQ;
+              if (q.conceptId) {
+                await recordQuestionAttempt(userId, q.conceptId, true, 45, 4, undefined, client);
+              }
+            } else {
+              const penalty = markPerQ * (test.negativeMarkingRate || 0.33);
+              score -= penalty;
+              subjectStats[subj].score -= penalty;
+              mistakeSummary.CONCEPT_CONFUSION += 1;
+              if (q.conceptId) {
+                weakConceptIdsSet.add(q.conceptId);
+                await recordQuestionAttempt(userId, q.conceptId, false, 45, 3, 'CONCEPT_GAP', client);
+              }
             }
           }
         }
