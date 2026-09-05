@@ -7,11 +7,13 @@ export interface QuestionRendererProps {
   questionNumber?: number;
   language?: 'en' | 'hi';
   selectedOption?: string | string[];
+  selectedOptionId?: string | string[];
   isSubmitted?: boolean;
   isCorrect?: boolean;
   onSelectOption?: (optionId: string) => void;
   mode?: 'interactive' | 'exam' | 'study' | 'review';
   showSolution?: boolean;
+  showCorrectAnswer?: boolean;
   onToggleSolution?: () => void;
   onAskAiTutor?: (prompt: string) => void;
   marks?: number;
@@ -24,11 +26,13 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
   questionNumber,
   language = 'en',
   selectedOption,
+  selectedOptionId,
   isSubmitted = false,
   isCorrect,
   onSelectOption,
   mode = 'interactive',
   showSolution = false,
+  showCorrectAnswer,
   onToggleSolution,
   onAskAiTutor,
   marks = 2.0,
@@ -45,6 +49,24 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
   // Determine effective texts based on language
   const isHindi = language === 'hi';
+
+  const renderSafeText = (val: any): string => {
+    if (val === undefined || val === null) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'object') {
+      if (isHindi && val.hi) return String(val.hi);
+      if (val.en) return String(val.en);
+      if (val.text) return String(val.text);
+      try {
+        return JSON.stringify(val);
+      } catch {
+        return '';
+      }
+    }
+    return String(val);
+  };
+
   const qText = isHindi && question.question_hi ? question.question_hi : (question.question_en || question.question);
   
   const options: QuestionOption[] = (isHindi && question.options_hi && question.options_hi.length > 0)
@@ -59,20 +81,33 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
     ? question.statements_hi
     : question.statements;
 
-  const matchData = isHindi && question.matchData_hi && question.matchData_hi.leftColumn && question.matchData_hi.leftColumn.length > 0
-    ? question.matchData_hi
-    : question.matchData;
+  const rawMatch = isHindi && question.matchData_hi ? question.matchData_hi : question.matchData;
+  const matchData = rawMatch ? {
+    leftColumn: ((rawMatch as any).leftColumn || (rawMatch as any).listI || (rawMatch as any).left_column || []) as any[],
+    rightColumn: ((rawMatch as any).rightColumn || (rawMatch as any).listII || (rawMatch as any).right_column || []) as any[],
+    leftHeader: rawMatch.leftHeader || (rawMatch as any).left_header,
+    rightHeader: rawMatch.rightHeader || (rawMatch as any).right_header,
+    codes: rawMatch.codes || [],
+  } : undefined;
 
-  const qType = question.questionType || (matchData ? 'MATCH_FOLLOWING' : (statements && statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE'));
+  const qType = question.questionType || (matchData && matchData.leftColumn.length > 0 ? 'MATCH_FOLLOWING' : (statements && statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE'));
+
+  // Support both selectedOption and selectedOptionId props
+  const effectiveSelectedOption = selectedOption !== undefined ? selectedOption : selectedOptionId;
+  const effectiveShowSolution = showSolution || Boolean(showCorrectAnswer);
 
   const isSelected = (optId: string) => {
-    if (Array.isArray(selectedOption)) {
-      return selectedOption.includes(optId);
+    if (effectiveSelectedOption === undefined || effectiveSelectedOption === null || effectiveSelectedOption === '') {
+      return false;
     }
-    return selectedOption === optId;
+    const cleanOptId = String(optId).trim().toUpperCase();
+    if (Array.isArray(effectiveSelectedOption)) {
+      return effectiveSelectedOption.some(s => String(s).trim().toUpperCase() === cleanOptId);
+    }
+    return String(effectiveSelectedOption).trim().toUpperCase() === cleanOptId;
   };
 
-  const isMatchFollowing = qType === 'MATCH_FOLLOWING' && matchData && matchData.leftColumn && matchData.leftColumn.length > 0;
+  const isMatchFollowing = (qType === 'MATCH_FOLLOWING' || Boolean(matchData && matchData.leftColumn.length > 0)) && Boolean(matchData && matchData.leftColumn.length > 0);
   const isStatementBased = qType === 'STATEMENT_BASED' && statements && statements.length > 0;
 
   return (
@@ -155,7 +190,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
                 <span className="w-6 h-6 rounded-md bg-stone-200 text-stone-800 font-bold font-mono text-xs flex items-center justify-center shrink-0 mt-0.5">
                   {stmt.id}
                 </span>
-                <span className="flex-1 font-medium">{stmt.text}</span>
+                <span className="flex-1 font-medium">{renderSafeText(stmt.text)}</span>
               </div>
             ))}
           </div>
@@ -172,7 +207,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
             {/* Left Column (List-I) */}
             <div className="space-y-2.5 bg-white p-4 rounded-xl border border-stone-200">
               <div className="text-xs font-bold uppercase tracking-wider text-stone-700 font-mono border-b border-stone-100 pb-2 flex items-center justify-between">
-                <span>{matchData.leftHeader || (isHindi ? 'सूची-I' : 'List-I')}</span>
+                <span>{renderSafeText(matchData.leftHeader) || (isHindi ? 'सूची-I' : 'List-I')}</span>
                 <span className="text-[10px] text-stone-400 font-normal">Items</span>
               </div>
               <div className="space-y-2">
@@ -181,7 +216,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
                     <span className="w-6 h-6 rounded-md bg-amber-100 text-amber-900 font-bold font-mono text-xs flex items-center justify-center shrink-0">
                       {item.key}
                     </span>
-                    <span className="font-medium text-stone-800 leading-snug pt-0.5">{item.text}</span>
+                    <span className="font-medium text-stone-800 leading-snug pt-0.5">{renderSafeText(item.text)}</span>
                   </div>
                 ))}
               </div>
@@ -190,7 +225,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
             {/* Right Column (List-II) */}
             <div className="space-y-2.5 bg-white p-4 rounded-xl border border-stone-200">
               <div className="text-xs font-bold uppercase tracking-wider text-stone-700 font-mono border-b border-stone-100 pb-2 flex items-center justify-between">
-                <span>{matchData.rightHeader || (isHindi ? 'सूची-II' : 'List-II')}</span>
+                <span>{renderSafeText(matchData.rightHeader) || (isHindi ? 'सूची-II' : 'List-II')}</span>
                 <span className="text-[10px] text-stone-400 font-normal">Matches</span>
               </div>
               <div className="space-y-2">
@@ -199,7 +234,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
                     <span className="w-6 h-6 rounded-md bg-stone-100 text-stone-700 font-bold font-mono text-xs flex items-center justify-center shrink-0">
                       {item.key}
                     </span>
-                    <span className="font-medium text-stone-800 leading-snug pt-0.5">{item.text}</span>
+                    <span className="font-medium text-stone-800 leading-snug pt-0.5">{renderSafeText(item.text)}</span>
                   </div>
                 ))}
               </div>
@@ -215,16 +250,17 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
       {/* Options Matrix */}
       <div className="space-y-3 pt-1">
         {options.map((opt) => {
+          const optTextStr = renderSafeText(opt.text);
           const selected = isSelected(opt.id);
-          const isCorrectAnswer = opt.id === question.correctAnswer;
-          const isOptENotAttempted = opt.id.toUpperCase() === 'E' && (
-            opt.text.toLowerCase().includes('not attempted') ||
-            opt.text.toLowerCase().includes('अनुत्तरित') ||
-            opt.text.toLowerCase().includes('unattempted')
+          const isCorrectAnswer = String(opt.id).trim().toUpperCase() === String(question.correctAnswer).trim().toUpperCase();
+          const isOptENotAttempted = String(opt.id).trim().toUpperCase() === 'E' && (
+            optTextStr.toLowerCase().includes('not attempted') ||
+            optTextStr.toLowerCase().includes('अनुत्तरित') ||
+            optTextStr.toLowerCase().includes('unattempted')
           );
           const userChoseNotAttempted = selected && isOptENotAttempted && !isCorrectAnswer;
 
-          let optionStyle = 'border-[#EAE6DF] hover:border-amber-400 bg-stone-50/50 text-stone-800';
+          let optionStyle = 'border-[#EAE6DF] hover:border-amber-400 bg-stone-50/60 text-stone-800 hover:bg-stone-50';
 
           if (isSubmitted || mode === 'study' || mode === 'review') {
             if (isCorrectAnswer) {
@@ -237,18 +273,24 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
               optionStyle = 'border-[#EAE6DF] opacity-60 text-stone-400 bg-transparent';
             }
           } else if (selected) {
-            optionStyle = 'border-amber-500 bg-amber-50/80 text-amber-950 font-bold shadow-2xs ring-1 ring-amber-500';
+            optionStyle = 'border-amber-500 bg-amber-50 text-amber-950 font-bold shadow-2xs ring-2 ring-amber-500';
           }
 
           return (
             <button
               key={opt.id}
-              onClick={() => onSelectOption && onSelectOption(opt.id)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isSubmitted && mode !== 'study' && mode !== 'review') {
+                  onSelectOption?.(opt.id);
+                }
+              }}
               disabled={isSubmitted || mode === 'study' || mode === 'review'}
-              className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-3.5 cursor-pointer disabled:cursor-default ${optionStyle}`}
+              className={`w-full text-left p-3.5 sm:p-4 rounded-xl border transition-all flex items-start gap-3.5 min-h-[48px] touch-manipulation cursor-pointer disabled:cursor-default ${optionStyle}`}
             >
               <div
-                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 transition-colors font-mono ${
+                className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 transition-colors font-mono select-none ${
                   (isSubmitted || mode === 'study' || mode === 'review') && isCorrectAnswer
                     ? 'bg-emerald-600 text-white'
                     : (isSubmitted || mode === 'study' || mode === 'review') && userChoseNotAttempted
@@ -256,15 +298,15 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
                     : (isSubmitted || mode === 'study' || mode === 'review') && selected && !isCorrectAnswer
                     ? 'bg-rose-600 text-white'
                     : selected
-                    ? 'bg-amber-500 text-stone-950'
+                    ? 'bg-amber-500 text-stone-950 font-bold shadow-2xs'
                     : 'bg-stone-200 text-stone-700'
                 }`}
               >
                 {opt.id}
               </div>
 
-              <div className="flex-1 text-sm sm:text-base leading-relaxed font-sans">
-                {opt.text}
+              <div className="flex-1 text-sm sm:text-base leading-relaxed font-sans select-none">
+                {optTextStr}
                 {userChoseNotAttempted && (isSubmitted || mode === 'study' || mode === 'review') && (
                   <span className="block text-xs font-mono font-medium text-stone-500 mt-1">
                     (Candidate marked Not Attempted — 0 marks / 0 penalty)
@@ -284,7 +326,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
       </div>
 
       {/* Expandable Official Solution & Explanation */}
-      {(isSubmitted || showSolution || mode === 'study' || mode === 'review') && (
+      {(isSubmitted || effectiveShowSolution || mode === 'study' || mode === 'review') && (
         <div className="mt-5 p-5 rounded-2xl bg-[#FCFBF9] border border-amber-200/80 space-y-4 animate-in fade-in duration-200">
           {/* Status Header */}
           <div className="flex flex-wrap items-center justify-between gap-3">

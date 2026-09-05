@@ -6,6 +6,7 @@ import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './syllabu
 import { currentAffairsRepository } from '../repositories/CurrentAffairsRepository.js';
 import { pyqRepository } from '../repositories/PyqRepository.js';
 import { ocrRepository } from '../repositories/OcrRepository.js';
+import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
 
 export async function ensureSyllabusSeed(): Promise<void> {
   try {
@@ -149,6 +150,15 @@ export async function ensureDatabaseSchema(): Promise<void> {
       ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS exam TEXT;
       ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS paper TEXT;
       ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question_number INT;
+      ALTER TABLE public.questions DROP CONSTRAINT IF EXISTS questions_type_check;
+      ALTER TABLE public.questions ADD CONSTRAINT questions_type_check CHECK (type = ANY (ARRAY['MCQ'::text, 'TRUE_FALSE'::text, 'SHORT_ANSWER'::text, 'MAINS'::text, 'MATCH_FOLLOWING'::text]));
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS question_type TEXT DEFAULT 'SINGLE_CHOICE';
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS statements JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS statements_hi JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS match_data JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS match_data_hi JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE public.mock_tests ADD COLUMN IF NOT EXISTS display_name TEXT;
+      ALTER TABLE public.mock_tests ADD COLUMN IF NOT EXISTS original_source_name TEXT;
       ALTER TABLE public.mock_attempts ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SUBMITTED';
       ALTER TABLE public.mock_attempts ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE public.mock_answers ADD COLUMN IF NOT EXISTS marked_for_review BOOLEAN DEFAULT FALSE;
@@ -261,6 +271,47 @@ export async function ensureDatabaseSchema(): Promise<void> {
       CREATE OR REPLACE VIEW public.current_affair_source_freshness AS
       SELECT * FROM public.source_freshness;
 
+      -- Google OAuth & Third-party Integrations
+      CREATE TABLE IF NOT EXISTS public.oauth_integrations (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL UNIQUE,
+        account_email TEXT,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        expiry_date BIGINT,
+        token_type TEXT DEFAULT 'Bearer',
+        scopes TEXT[],
+        root_folder_id TEXT,
+        folders_json JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      -- Expand resources table for Google Drive Resource Library
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS author TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS resource_type TEXT DEFAULT 'BOOK';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS subject TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS subject_id TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS topic TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS concept_id TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS exam TEXT DEFAULT 'ALL';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS exam_tag TEXT DEFAULT 'ALL';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS drive_file_id TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS file_name TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS file_size BIGINT DEFAULT 0;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS mime_type TEXT DEFAULT 'application/pdf';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS page_count INT DEFAULT 0;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'READY';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS visibility TEXT DEFAULT 'PUBLIC';
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS uploaded_by TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS url TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS summary TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS read_time_minutes INT DEFAULT 10;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS is_bookmarked BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
       DO $$
       BEGIN
         IF NOT EXISTS (
@@ -282,6 +333,38 @@ export async function ensureDatabaseSchema(): Promise<void> {
       REVOKE ALL ON TABLE public.role_permissions FROM anon, authenticated;
       GRANT ALL ON TABLE public.permissions TO postgres, service_role;
       GRANT ALL ON TABLE public.role_permissions TO postgres, service_role;
+
+      -- Native Mobile App Releases & Version Management
+      CREATE TABLE IF NOT EXISTS public.app_releases (
+        id VARCHAR(64) PRIMARY KEY,
+        platform VARCHAR(16) NOT NULL DEFAULT 'android',
+        version_name VARCHAR(32) NOT NULL,
+        version_code INT NOT NULL,
+        min_supported_version_code INT NOT NULL,
+        apk_url TEXT NOT NULL,
+        sha256_checksum VARCHAR(64) NOT NULL,
+        file_size_bytes BIGINT NOT NULL,
+        release_notes TEXT,
+        is_mandatory BOOLEAN DEFAULT false,
+        status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_app_releases_platform_status ON public.app_releases(platform, status, version_code DESC);
+
+      -- Mobile App Early Access Subscribers
+      CREATE TABLE IF NOT EXISTS public.app_early_access_subscribers (
+        id VARCHAR(64) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL,
+        platform VARCHAR(16) NOT NULL DEFAULT 'android',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        ip_address TEXT,
+        CONSTRAINT uq_early_access_email_platform UNIQUE (email, platform)
+      );
+      CREATE INDEX IF NOT EXISTS idx_early_access_email ON public.app_early_access_subscribers(email);
+
+      ALTER TABLE public.app_early_access_subscribers ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE public.app_early_access_subscribers FROM anon, authenticated;
+      GRANT ALL ON TABLE public.app_early_access_subscribers TO postgres, service_role;
     `);
 
     // 2b. Apply full Supabase Security Advisor Hardening (Migration 005)
@@ -568,24 +651,28 @@ async function ensureContentOriginSeparation(): Promise<void> {
         const mockTestId = `mock_${job.id}`;
         const cleanName = job.original_file_name ? job.original_file_name.replace(/\.pdf$/i, '').replace(/_/g, ' ') : '';
         const title = cleanName ? `${job.exam} - ${cleanName}` : `${job.exam} ${job.year} - ${job.paper || 'Full Mock'}`;
+        const defaultDisplayName = job.paper && !job.paper.includes('.pdf') ? `${job.exam || 'BPSC'} — ${job.paper}` : title;
         const qCount = qRes.rows.length;
 
         await pool.query(`
           INSERT INTO public.mock_tests (
-            id, title, type, subject_ids, duration_minutes, total_questions, total_marks,
+            id, title, display_name, original_source_name, type, subject_ids, duration_minutes, total_questions, total_marks,
             negative_marking_rate, source_type, is_published, created_at
           ) VALUES (
-            $1, $2, 'FULL', '["sub_polity", "sub_economy", "sub_history", "sub_geography"]'::jsonb,
-            120, $3, $4, $5, 'ADMIN_IMPORTED', true, NOW()
+            $1, $2, $3, $4, 'FULL', '["sub_polity", "sub_economy", "sub_history", "sub_geography"]'::jsonb,
+            120, $5, $6, $7, 'ADMIN_IMPORTED', true, NOW()
           )
           ON CONFLICT (id) DO UPDATE SET
-            title = EXCLUDED.title,
+            display_name = COALESCE(public.mock_tests.display_name, EXCLUDED.display_name),
+            original_source_name = COALESCE(public.mock_tests.original_source_name, EXCLUDED.original_source_name),
             total_questions = EXCLUDED.total_questions,
             source_type = 'ADMIN_IMPORTED',
             is_published = true;
         `, [
           mockTestId,
           title,
+          defaultDisplayName,
+          job.original_file_name || title,
           qCount,
           job.exam === 'BPSC' ? qCount * 1 : qCount * 2,
           job.exam === 'BPSC' ? 0.33 : 0.66
@@ -634,6 +721,9 @@ async function ensureContentOriginSeparation(): Promise<void> {
     }
 
     console.log('[Content Origin Separation] Content provenance separation verified: Official PYQs separated from Admin & Custom content.');
+
+    // Ensure Match-the-Column questions are structured into canonical match_data
+    await runMatchQuestionsMigration();
   } catch (err: any) {
     console.error('[Content Origin Separation] Error during classification:', err.message);
   }

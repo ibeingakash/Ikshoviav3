@@ -36,15 +36,58 @@ import { UserManagementView } from './components/admin/UserManagementView.js';
 import { CoursesPricingView } from './components/admin/CoursesPricingView.js';
 import { EntitlementsView } from './components/admin/EntitlementsView.js';
 import { AdminPaymentsView } from './components/admin/AdminPaymentsView.js';
+import { CommercialHubView } from './components/admin/CommercialHubView.js';
+import { CouponsAdminView } from './components/admin/CouponsAdminView.js';
 import { CourseCatalogView } from './components/courses/CourseCatalogView.js';
 import { LearnerPurchasesView } from './components/courses/LearnerPurchasesView.js';
+import { DownloadAppView } from './components/download/DownloadAppView.js';
+import { initCapacitorApp } from './lib/capacitor.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
 const MainContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const { activeSection, setActiveSection, appTheme } = useLearner();
+  const { activeSection, setActiveSection, appTheme, navigateBack } = useLearner();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
+
+  // Track /download and /app direct URL routing
+  const [isDownloadPath, setIsDownloadPath] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const p = window.location.pathname.toLowerCase();
+    return p === '/download' || p === '/app' || p.startsWith('/download/') || p.startsWith('/app/');
+  });
+
+  React.useEffect(() => {
+    const handleUrlChange = () => {
+      const p = window.location.pathname.toLowerCase();
+      if (p === '/app' || p.startsWith('/app/')) {
+        window.history.replaceState(null, '', '/download');
+        setIsDownloadPath(true);
+      } else if (p === '/download' || p.startsWith('/download/')) {
+        setIsDownloadPath(true);
+      } else {
+        setIsDownloadPath(false);
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  // Initialize Android back button handling via Capacitor
+  React.useEffect(() => {
+    initCapacitorApp({
+      onNavigateBack: () => {
+        if (isDownloadPath) {
+          setIsDownloadPath(false);
+          window.history.pushState(null, '', '/');
+          return true;
+        }
+        return navigateBack();
+      }
+    });
+  }, [navigateBack, isDownloadPath]);
 
   if (loading) {
     return (
@@ -59,7 +102,22 @@ const MainContent: React.FC = () => {
     );
   }
 
-  // Unauthenticated visitors ALWAYS see the Public Landing Page
+  // If visitor is directly on /download or /app, show the Download App page
+  if (isDownloadPath) {
+    return (
+      <DownloadAppView
+        onBackToHome={() => {
+          setIsDownloadPath(false);
+          window.history.pushState(null, '', '/');
+          if (user) {
+            setActiveSection('dashboard');
+          }
+        }}
+      />
+    );
+  }
+
+  // Unauthenticated visitors see the Public Landing Page
   if (!user) {
     return (
       <>
@@ -137,6 +195,8 @@ const MainContent: React.FC = () => {
       case 'settings':
       case 'admin-settings':
         return <SettingsView />;
+      case 'download':
+        return <DownloadAppView onBackToHome={() => setActiveSection('dashboard')} />;
       case 'admin-dashboard':
         return <AdminDashboardView />;
       case 'admin-questions':
@@ -155,6 +215,12 @@ const MainContent: React.FC = () => {
       case 'courses-catalog':
       case 'course-catalog':
         return <CourseCatalogView />;
+      case 'admin-commercial':
+      case 'admin-revenue':
+        return <CommercialHubView />;
+      case 'admin-coupons':
+      case 'admin-offers':
+        return <CouponsAdminView />;
       case 'admin-users':
         return <UserManagementView />;
       case 'admin-courses':
@@ -186,7 +252,7 @@ const MainContent: React.FC = () => {
       <Header />
       <div className="flex flex-1 w-full max-w-[1600px] mx-auto min-w-0">
         <Sidebar />
-        <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-4 pb-24 sm:p-6 sm:pb-12 lg:p-8 overflow-y-auto">
+        <main id="app-main-content" className="flex-1 min-w-0 w-full max-w-full p-3 sm:p-6 pb-28 sm:pb-12 lg:p-8 overflow-y-auto overflow-x-hidden">
           <ErrorBoundary key={activeSection} onReset={() => setActiveSection('dashboard')}>
             {renderSection()}
           </ErrorBoundary>

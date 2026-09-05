@@ -547,6 +547,17 @@ export const api = {
     return data;
   },
 
+  updateMockTest: async (id: string, updates: { displayName?: string; title?: string }): Promise<{ success: boolean; test: MockTest }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${id}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update mock test');
+    return data;
+  },
+
   createCustomMockTest: async (params: {
     title?: string;
     subjectIds?: string[];
@@ -573,7 +584,7 @@ export const api = {
     };
   },
 
-  startMockAttempt: async (mockTestId: string): Promise<{ attempt: MockAttempt; test: MockTest; questions: Question[] }> => {
+  startMockAttempt: async (mockTestId: string): Promise<{ attempt: MockAttempt; test: MockTest; questions: Question[]; answers?: any[] }> => {
     const res = await apiFetch(`/api/mock-tests/${mockTestId}/start`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -584,7 +595,21 @@ export const api = {
       attempt: data.attempt,
       test: data.test,
       questions: Array.isArray(data.questions) ? data.questions : [],
+      answers: Array.isArray(data.answers) ? data.answers : [],
     };
+  },
+
+  saveMockAnswer: async (attemptId: string, questionId: string, userAnswer: string, timeSpentSeconds?: number, markedForReview?: boolean) => {
+    try {
+      const res = await apiFetch(`/api/mock-tests/attempts/${attemptId}/answer`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ questionId, userAnswer, timeSpentSeconds, markedForReview }),
+      });
+      return res.json();
+    } catch {
+      return null;
+    }
   },
 
   submitMockTest: async (mockTestId: string, answers: Record<string, string>, timeTakenSeconds: number, userId?: string) => {
@@ -1252,15 +1277,149 @@ export const api = {
     }
   },
 
-  getResources: async (): Promise<LearningResource[]> => {
+  getResources: async (filters?: {
+    subject?: string;
+    exam?: string;
+    type?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ resources: LearningResource[]; total: number; page: number; totalPages: number }> => {
     try {
-      const res = await apiFetch('/api/resources');
-      if (!res.ok) return [];
+      const params = new URLSearchParams();
+      if (filters?.subject) params.append('subject', filters.subject);
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.type) params.append('type', filters.type);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/resources?${params.toString()}`);
+      if (!res.ok) return { resources: [], total: 0, page: 1, totalPages: 1 };
       const data = await res.json();
-      return Array.isArray(data) ? data : (Array.isArray(data?.resources) ? data.resources : []);
+      if (Array.isArray(data)) {
+        return { resources: data, total: data.length, page: 1, totalPages: 1 };
+      }
+      return {
+        resources: Array.isArray(data?.resources) ? data.resources : [],
+        total: Number(data?.total || 0),
+        page: Number(data?.page || 1),
+        totalPages: Number(data?.totalPages || 1),
+      };
     } catch {
-      return [];
+      return { resources: [], total: 0, page: 1, totalPages: 1 };
     }
+  },
+
+  getAdminResources: async (filters?: {
+    status?: string;
+    subject?: string;
+    exam?: string;
+    type?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ resources: LearningResource[]; total: number; page: number; totalPages: number }> => {
+    try {
+      const params = new URLSearchParams();
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.subject) params.append('subject', filters.subject);
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.type) params.append('type', filters.type);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', String(filters.page));
+      if (filters?.limit) params.append('limit', String(filters.limit));
+
+      const res = await apiFetch(`/api/admin/resources?${params.toString()}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { resources: [], total: 0, page: 1, totalPages: 1 };
+      const data = await res.json();
+      return {
+        resources: Array.isArray(data?.resources) ? data.resources : [],
+        total: Number(data?.total || 0),
+        page: Number(data?.page || 1),
+        totalPages: Number(data?.totalPages || 1),
+      };
+    } catch {
+      return { resources: [], total: 0, page: 1, totalPages: 1 };
+    }
+  },
+
+  uploadResource: async (payload: {
+    pdfBase64: string;
+    fileName: string;
+    title: string;
+    author?: string;
+    description?: string;
+    tags?: string[];
+    resourceType: string;
+    subject: string;
+    topic?: string;
+    exam: string;
+    visibility: string;
+    autoPublish?: boolean;
+  }) => {
+    const res = await apiFetch('/api/admin/resources/upload', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(err.error || 'Failed to upload resource');
+    }
+    return res.json();
+  },
+
+  updateResource: async (id: string, updates: Partial<LearningResource>) => {
+    const res = await apiFetch(`/api/admin/resources/${id}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Update failed' }));
+      throw new Error(err.error || 'Failed to update resource');
+    }
+    return res.json();
+  },
+
+  deleteResource: async (id: string) => {
+    const res = await apiFetch(`/api/admin/resources/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Delete failed' }));
+      throw new Error(err.error || 'Failed to delete resource');
+    }
+    return res.json();
+  },
+
+  // Google Drive Admin Integration
+  getDriveStatus: async (): Promise<{ connected: boolean; accountEmail?: string; folders?: any; lastSync?: string }> => {
+    try {
+      const res = await apiFetch('/api/admin/drive/status', { headers: getAuthHeaders() });
+      if (!res.ok) return { connected: false };
+      return res.json();
+    } catch {
+      return { connected: false };
+    }
+  },
+
+  disconnectDrive: async () => {
+    const res = await apiFetch('/api/admin/drive/disconnect', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
+  },
+
+  ensureDriveFolders: async () => {
+    const res = await apiFetch('/api/admin/drive/ensure-folders', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.json();
   },
 
   // Goals

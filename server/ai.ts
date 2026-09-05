@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { db } from './db.js';
+import { pool } from './db/pool.js';
 import { userRepository } from './repositories/UserRepository.js';
 import { learnerRepository } from './repositories/LearnerRepository.js';
 
@@ -88,6 +89,75 @@ Mistake Category: ${context.mistakeType || 'N/A'}
 `;
   }
 
+  // 1b. Knowledge Base / Google Drive Resource Library Grounded Retrieval
+  let groundedResourceContext = '';
+  try {
+    const resourceIdFilter = context?.resourceId;
+    const cleanPrompt = userPrompt.trim();
+    const keywords = cleanPrompt
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 4 && !['what', 'when', 'where', 'which', 'explain', 'samjhao', 'according', 'book'].includes(w.toLowerCase()))
+      .slice(0, 4);
+
+    let chunkQuery = '';
+    let queryParams: any[] = [];
+
+    if (resourceIdFilter) {
+      chunkQuery = `
+        SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+        FROM public.data_chunks c
+        JOIN public.data_documents d ON c.document_id = d.id
+        JOIN public.resources r ON d.resource_id = r.id
+        WHERE d.resource_id = $1
+        ORDER BY c.chunk_index ASC
+        LIMIT 5
+      `;
+      queryParams = [resourceIdFilter];
+    } else if (keywords.length > 0) {
+      const patterns = keywords.map((k) => `%${k}%`);
+      chunkQuery = `
+        SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+        FROM public.data_chunks c
+        JOIN public.data_documents d ON c.document_id = d.id
+        JOIN public.resources r ON d.resource_id = r.id
+        WHERE (c.content ILIKE ANY($1) OR c.heading ILIKE ANY($1) OR r.title ILIKE ANY($1))
+          AND r.status IN ('READY', 'PUBLISHED')
+        ORDER BY c.created_at DESC
+        LIMIT 4
+      `;
+      queryParams = [patterns];
+    }
+
+    if (chunkQuery) {
+      const chunkRes = await pool.query(chunkQuery, queryParams);
+      if (chunkRes.rows.length > 0) {
+        const citations = chunkRes.rows.map((row: any) => {
+          let pageNumStr = 'Page 1';
+          if (row.metadata_json) {
+            const meta = typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : row.metadata_json;
+            if (meta.pageNumber) pageNumStr = `Page ${meta.pageNumber}`;
+          } else if (row.section) {
+            pageNumStr = row.section;
+          }
+          return `[Source: "${row.resource_title}", ${pageNumStr}]\n"${row.content.substring(0, 600)}..."`;
+        });
+
+        groundedResourceContext = `
+GROUNDED KNOWLEDGE FROM DEDICATED RESOURCE LIBRARY:
+${citations.join('\n\n')}
+
+CITATION INSTRUCTION (STRICT):
+When answering or explaining concepts grounded in these resources, you MUST explicitly cite them in the required format:
+"[Resource Title, Page X]" (e.g. "[${chunkRes.rows[0].resource_title}, Page 1]").
+Do not invent or hallucinate page numbers not present in the excerpts above.
+`;
+      }
+    }
+  } catch (chunkErr) {
+    console.warn('[AI Tutor] Grounding retrieval notice:', chunkErr);
+  }
+
   // Construct Gemini system prompt with strict context hierarchy
   const systemContext = `You are IKSHOVIA AI, an elite civil services personal learning intelligence tutor specialized in ${targetExam} and State PSCs.
 
@@ -96,7 +166,8 @@ CONTEXT PRIORITY HIERARCHY (STRICT):
 2. CONVERSATION CONTEXT: Maintain flow from previous messages if relevant.
 3. CURRENT PRACTICE QUESTION / MISTAKE: ${questionContextStr ? questionContextStr : 'None'}
 4. ACTIVE CONCEPT CONTEXT: ${activeConceptTitle ? `${activeConceptTitle} (${activeConceptSummary}) [Subject: ${subjectName}, Topic: ${topicName}]` : 'None'} (Only use as primary focus if the user prompt is vague, e.g. "Explain this", "Simplify", or clicked a quick action).
-5. LEARNER PROFILE:
+5. GROUNDED RESOURCE CONTEXT & CITATIONS: ${groundedResourceContext ? groundedResourceContext : 'None'}
+6. LEARNER PROFILE:
    - Aspirant Name: ${user?.name || 'IKSHOVIA User'}
    - Target Exam: ${targetExam}
    - Experience Level: ${expLevel}

@@ -11,9 +11,14 @@ import {
   Zap,
   Target,
   BarChart2,
+  FileCheck2,
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
+import { getMockDisplayTitle } from '../../utils/mockUtils.js';
 import {
   BarChart,
   Bar,
@@ -27,7 +32,7 @@ import {
 } from 'recharts';
 
 export const AnalyticsView: React.FC = () => {
-  const { learnerModel } = useLearner();
+  const { learnerModel, setActiveSection } = useLearner();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,16 +45,21 @@ export const AnalyticsView: React.FC = () => {
 
   const COLORS = ['#35156B', '#C9953C', '#6B3FD4', '#10B981', '#E0B35D', '#F43F5E'];
 
-  const mistakePieData = learnerModel?.mistakeBreakdown
-    ? Object.entries(learnerModel.mistakeBreakdown).map(([key, val]) => ({
-        name: key.replace('_', ' '),
-        value: val,
-      }))
+  const activeModel = analyticsData?.model || learnerModel;
+
+  const mistakePieData = activeModel?.mistakeBreakdown
+    ? Object.entries(activeModel.mistakeBreakdown)
+        .filter(([_, val]) => Number(val) > 0)
+        .map(([key, val]) => ({
+          name: key.replace(/_/g, ' '),
+          value: Number(val),
+        }))
     : [];
+
+  const recentMockAttempts: any[] = analyticsData?.recentMockAttempts || [];
 
   return (
     <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto font-sans-editorial">
-      
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
         <div>
@@ -62,16 +72,16 @@ export const AnalyticsView: React.FC = () => {
           </p>
         </div>
 
-        {learnerModel && (
+        {activeModel && (
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-xl text-xs text-amber-900 font-bold self-start">
             <Award className="w-4 h-4 text-amber-700" />
-            <span>Overall Score: {learnerModel.overallScore}%</span>
+            <span>Overall Score: {activeModel.overallScore ?? 0}%</span>
           </div>
         )}
       </div>
 
       {loading && (
-        <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
+        <div className="py-16 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
           <Sparkles className="w-4 h-4 animate-spin text-[#35156B]" />
           Aggregating intelligence metrics...
         </div>
@@ -80,16 +90,33 @@ export const AnalyticsView: React.FC = () => {
       {!loading && analyticsData?.hasEnoughData === false && (
         <div className="bg-white border border-stone-200 p-8 rounded-2xl text-center space-y-4 my-8 shadow-2xs">
           <BarChart2 className="w-10 h-10 text-[#35156B] mx-auto" />
-          <h2 className="text-lg font-serif-editorial font-bold text-[#111426]">Not enough data yet</h2>
+          <h2 className="text-lg font-serif-editorial font-bold text-[#111426]">
+            No activity recorded yet
+          </h2>
           <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-            Complete at least 3 practice questions or mock tests to unlock deep analytical breakdown of retention decay, confidence alignment, and speed metrics.
+            Take a Daily Quiz or complete a Mock Test to unlock deep diagnostic analytics, retention tracking, and subject mastery graphs.
           </p>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => setActiveSection('practice')}
+              className="px-4 py-2 bg-[#35156B] hover:bg-[#250d4f] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Launch Daily Quiz</span>
+            </button>
+            <button
+              onClick={() => setActiveSection('mock')}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileCheck2 className="w-3.5 h-3.5" />
+              <span>Take Full Mock Test</span>
+            </button>
+          </div>
         </div>
       )}
 
-      {!loading && (analyticsData?.hasEnoughData !== false) && (
+      {!loading && analyticsData?.hasEnoughData !== false && (
         <div className="space-y-6">
-          
           {/* Top Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
@@ -97,7 +124,9 @@ export const AnalyticsView: React.FC = () => {
                 <Target className="w-3.5 h-3.5 text-[#35156B] shrink-0" />
                 <span className="truncate">Understanding Score</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">{learnerModel?.overallScore ?? 0}%</div>
+              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">
+                {activeModel?.overallScore ?? 0}%
+              </div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
@@ -105,7 +134,9 @@ export const AnalyticsView: React.FC = () => {
                 <Zap className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="truncate">Application Accuracy</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-emerald-700">{learnerModel?.accuracyRate ?? 0}%</div>
+              <div className="text-2xl font-serif-editorial font-bold text-emerald-700">
+                {activeModel?.accuracyRate ?? 0}%
+              </div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
@@ -114,7 +145,7 @@ export const AnalyticsView: React.FC = () => {
                 <span className="truncate">Study Streak</span>
               </div>
               <div className="text-2xl font-serif-editorial font-bold text-amber-900 flex items-center gap-1">
-                {learnerModel?.currentStreak ?? 0}d
+                {activeModel?.currentStreak ?? 0}d
               </div>
             </div>
 
@@ -124,7 +155,7 @@ export const AnalyticsView: React.FC = () => {
                 <span className="truncate">Avg Speed / Q</span>
               </div>
               <div className="text-2xl font-serif-editorial font-bold text-[#111426] font-mono">
-                {learnerModel?.avgTimePerQuestionSeconds ? `${learnerModel.avgTimePerQuestionSeconds}s` : '0s'}
+                {activeModel?.avgTimePerQuestionSeconds ? `${activeModel.avgTimePerQuestionSeconds}s` : '45s'}
               </div>
             </div>
           </div>
@@ -134,21 +165,21 @@ export const AnalyticsView: React.FC = () => {
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Confidence Bias Alignment</div>
               <div className="text-sm font-bold text-[#35156B] uppercase font-mono mt-1">
-                {learnerModel?.confidenceBias || 'BALANCED'}
+                {activeModel?.confidenceBias || 'BALANCED'}
               </div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Retention Decay Index</div>
               <div className="text-sm font-bold text-amber-800 font-mono mt-1">
-                {learnerModel?.dueRevisionCount ? `${learnerModel.dueRevisionCount} Due` : 'Optimal (100%)'}
+                {activeModel?.dueRevisionCount ? `${activeModel.dueRevisionCount} Due for Revision` : 'Optimal (100%)'}
               </div>
             </div>
 
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Total Practice Attempts</div>
               <div className="text-sm font-bold text-[#111426] font-mono mt-1">
-                {learnerModel?.totalAttempts ?? learnerModel?.totalQuestionsAttempted ?? 0} Questions
+                {activeModel?.totalAttempts ?? activeModel?.totalQuestionsAttempted ?? 0} Questions
               </div>
             </div>
           </div>
@@ -166,7 +197,12 @@ export const AnalyticsView: React.FC = () => {
                   <XAxis dataKey="subjectName" stroke="#78716c" fontSize={12} />
                   <YAxis stroke="#78716c" domain={[0, 100]} fontSize={12} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e7e5e4', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                    contentStyle={{
+                      backgroundColor: '#ffffff',
+                      borderColor: '#e7e5e4',
+                      borderRadius: '12px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    }}
                   />
                   <Bar dataKey="mastery" fill="#35156B" radius={[8, 8, 0, 0]} />
                 </BarChart>
@@ -174,15 +210,15 @@ export const AnalyticsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Mistake Breakdown Pie Chart */}
-          {mistakePieData.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4">
-                <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-                  <PieChart className="w-4 h-4 text-[#35156B]" />
-                  <span>Mistake Category Distribution</span>
-                </h2>
+          {/* Mistake Breakdown Pie Chart & AI Advice */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4">
+              <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
+                <PieChart className="w-4 h-4 text-[#35156B]" />
+                <span>Mistake Category Distribution</span>
+              </h2>
 
+              {mistakePieData.length > 0 ? (
                 <div className="h-56 w-full flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
                     <RePieChart>
@@ -203,32 +239,91 @@ export const AnalyticsView: React.FC = () => {
                     </RePieChart>
                   </ResponsiveContainer>
                 </div>
+              ) : (
+                <div className="h-56 flex flex-col items-center justify-center text-stone-400 text-xs text-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" />
+                  <span>No mistakes recorded yet. Excellent performance!</span>
+                </div>
+              )}
+            </div>
+
+            {/* Diagnostic Recommendation */}
+            <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4 flex flex-col justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-rose-800 uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
+                  <ShieldAlert className="w-4 h-4 text-rose-700" />
+                  <span>Diagnostic Feedback</span>
+                </h2>
+
+                <p className="text-xs text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-xl border border-stone-200/80">
+                  {activeModel?.weakConceptsCount && activeModel.weakConceptsCount > 0
+                    ? `You currently have ${activeModel.weakConceptsCount} priority concepts identified for review. Attempting targeted practice in high-weightage topics will rapidly boost your composite score.`
+                    : 'Your preparation indicators are tracking steadily across general syllabus categories. Continue consistent daily quizzes to maintain high recall velocity.'}
+                </p>
               </div>
 
-              {/* Diagnostic Recommendation */}
-              <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4 flex flex-col justify-between">
-                <div>
-                  <h2 className="text-sm font-bold text-rose-800 uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
-                    <ShieldAlert className="w-4 h-4 text-rose-700" />
-                    <span>AI Diagnostic Advice</span>
-                  </h2>
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-[11px] font-semibold text-amber-950 flex items-center justify-between">
+                <span>⚡ Calibrated after every test attempt</span>
+                <button
+                  onClick={() => setActiveSection('practice')}
+                  className="text-amber-800 hover:text-amber-900 font-bold underline cursor-pointer flex items-center gap-0.5"
+                >
+                  <span>Practice Now</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
 
-                  <p className="text-xs text-stone-700 leading-relaxed bg-stone-50 p-4 rounded-xl border border-stone-200/80">
-                    Your highest error rate stems from <strong>Concept Confusion</strong> between related institutional bodies and articles.
-                    We recommend attempting 5 application MCQs specifically targeting <em>Finance Commission vs GST Council</em> to convert this gap into mastery.
-                  </p>
-                </div>
+          {/* Recent Mock Test History */}
+          {recentMockAttempts.length > 0 && (
+            <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
+                  <FileCheck2 className="w-4 h-4 text-[#35156B]" />
+                  <span>Recent Mock Test Submissions</span>
+                </h2>
+                <button
+                  onClick={() => setActiveSection('mock')}
+                  className="text-xs font-bold text-[#35156B] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <span>View All Mocks</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-[11px] font-semibold text-amber-950">
-                  ⚡ IKSHOVIA automatically recalibrates your revision queue after every practice session.
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {recentMockAttempts.slice(0, 6).map((attempt, idx) => (
+                  <div
+                    key={attempt.id || idx}
+                    className="p-3.5 rounded-xl border border-stone-150 bg-stone-50/60 flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {getMockDisplayTitle({ title: attempt.mockTitle || attempt.mock_title })}
+                      </div>
+                      <div className="text-[11px] text-stone-500 font-mono mt-0.5 flex items-center gap-2">
+                        <span>{attempt.completedAt ? new Date(attempt.completedAt).toLocaleDateString() : 'Recent'}</span>
+                        <span>•</span>
+                        <span>{Math.round((attempt.timeTakenSeconds || 0) / 60)} mins</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-bold text-stone-900 font-mono">
+                        {attempt.score} / {attempt.maxScore || attempt.max_score}
+                      </div>
+                      <div className="text-[10px] font-bold text-emerald-700">
+                        {attempt.accuracy}% Acc
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-
         </div>
       )}
-
     </div>
   );
 };

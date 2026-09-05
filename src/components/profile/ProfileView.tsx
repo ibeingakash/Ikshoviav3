@@ -14,6 +14,8 @@ import {
   TrendingUp,
   Shield,
   Sparkles,
+  Smartphone,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
@@ -237,6 +239,29 @@ export const ProfileView: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* Android Mobile App Card */}
+      <div className="bg-[#FAF8F5] border border-amber-200/80 p-6 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 flex items-center justify-center shrink-0">
+            <Smartphone className="w-6 h-6 text-amber-700" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-[#111426] font-serif-editorial">IKSHOVIA for Android</h3>
+            <p className="text-xs text-stone-600">
+              Practice timed prelims MCQs, access daily current affairs, and consult your personal AI Tutor wherever you are.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setActiveSection('download')}
+          className="w-full sm:w-auto px-4 py-2.5 bg-[#0C1024] hover:bg-[#1B2144] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all shrink-0 cursor-pointer"
+        >
+          <span>Get Android App</span>
+          <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+        </button>
       </div>
     </div>
   );

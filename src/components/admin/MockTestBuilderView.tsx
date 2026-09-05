@@ -27,7 +27,8 @@ import {
   Filter,
   Users,
   ShieldAlert,
-  Info
+  Info,
+  Edit2
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { MockTest, Question, Subject } from '../../types/index.js';
@@ -83,6 +84,30 @@ export const MockTestBuilderView: React.FC = () => {
   const [searchTestQuery, setSearchTestQuery] = useState<string>('');
   const [testToDelete, setTestToDelete] = useState<MockTest | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Test Display Name Editing State
+  const [editingTestId, setEditingTestId] = useState<string | null>(null);
+  const [editingTitleValue, setEditingTitleValue] = useState<string>('');
+  const [savingTitle, setSavingTitle] = useState<boolean>(false);
+
+  const handleStartEditTitle = (test: MockTest) => {
+    setEditingTestId(test.id);
+    setEditingTitleValue(test.displayName || test.title);
+  };
+
+  const handleSaveTitle = async (testId: string) => {
+    if (!editingTitleValue.trim()) return;
+    setSavingTitle(true);
+    try {
+      await api.updateMockTest(testId, { displayName: editingTitleValue.trim() });
+      setAdminTests(prev => prev.map(t => t.id === testId ? { ...t, displayName: editingTitleValue.trim(), title: editingTitleValue.trim() } : t));
+      setEditingTestId(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update mock test title');
+    } finally {
+      setSavingTitle(false);
+    }
+  };
 
   // Test Settings for Builder
   const [title, setTitle] = useState<string>('UPSC CSE Prelims Full Mock 2026 - Test 01');
@@ -579,10 +604,57 @@ export const MockTestBuilderView: React.FC = () => {
 
                     {/* Test Title & Stats */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <h3 className="text-base font-serif-editorial font-bold text-stone-900">
-                          {test.title}
-                        </h3>
+                      <div className="flex-1">
+                        {editingTestId === test.id ? (
+                          <div className="flex items-center gap-2 max-w-xl">
+                            <input
+                              type="text"
+                              value={editingTitleValue}
+                              onChange={(e) => setEditingTitleValue(e.target.value)}
+                              placeholder="Enter clean public display title..."
+                              className="flex-1 text-sm font-semibold text-stone-900 border border-amber-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50/40"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveTitle(test.id);
+                                if (e.key === 'Escape') setEditingTestId(null);
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveTitle(test.id)}
+                              disabled={savingTitle || !editingTitleValue.trim()}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>{savingTitle ? 'Saving...' : 'Save'}</span>
+                            </button>
+                            <button
+                              onClick={() => setEditingTestId(null)}
+                              className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2 group">
+                            <div>
+                              <h3 className="text-base font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+                                <span>{test.displayName || test.title}</span>
+                                <button
+                                  onClick={() => handleStartEditTitle(test)}
+                                  title="Edit public display title"
+                                  className="opacity-60 hover:opacity-100 text-stone-400 hover:text-amber-700 p-1 rounded transition-opacity cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              </h3>
+                              {test.originalSourceName && (
+                                <p className="text-[11px] text-stone-500 font-mono mt-0.5">
+                                  Source File: <span className="text-stone-700">{test.originalSourceName}</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500 font-mono mt-1">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3 text-stone-400" />

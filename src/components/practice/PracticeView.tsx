@@ -8,6 +8,7 @@ import {
   Star,
   AlertTriangle,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   RotateCcw,
   ShieldAlert,
@@ -15,26 +16,34 @@ import {
   Award,
   Send,
   Bot,
+  CheckSquare,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
 import { Question, MistakeCategory } from '../../types/index.js';
 import { QuestionRenderer } from '../common/QuestionRenderer.js';
+import { ExamExitModal } from '../common/ExamExitModal.js';
+import { registerBackButtonHandler } from '../../lib/capacitor.js';
 import confetti from 'canvas-confetti';
 
+interface QuestionAttemptState {
+  selectedOption: string;
+  confidenceRating: number;
+  selectedMistakeCategory?: MistakeCategory;
+  submitted: boolean;
+  attemptResult?: any;
+  startTime: number;
+}
+
 export const PracticeView: React.FC = () => {
-  const { selectedSubjectId, selectedConceptId, refreshLearnerData, setActiveSection, askTutorWithContext } = useLearner();
+  const { selectedSubjectId, selectedConceptId, refreshLearnerData, setActiveSection, askTutorWithContext, activeSection } = useLearner();
+  const isDailyQuiz = activeSection === 'daily-quiz';
   const [practiceMode, setPracticeMode] = useState<'prelims' | 'mains'>('prelims');
   
   // Prelims state
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<string>('');
-  const [confidenceRating, setConfidenceRating] = useState<number>(3);
-  const [selectedMistakeCategory, setSelectedMistakeCategory] = useState<MistakeCategory | undefined>();
-  const [submitted, setSubmitted] = useState(false);
-  const [attemptResult, setAttemptResult] = useState<any>(null);
-  const [startTime, setStartTime] = useState<number>(Date.now());
+  const [questionStates, setQuestionStates] = useState<Record<string, QuestionAttemptState>>({});
   const [loading, setLoading] = useState(true);
   const [displayLanguage, setDisplayLanguage] = useState<'en' | 'hi'>('en');
 
@@ -45,26 +54,104 @@ export const PracticeView: React.FC = () => {
   const [mainsAnswerText, setMainsAnswerText] = useState('');
   const [mainsEvaluating, setMainsEvaluating] = useState(false);
   const [mainsResult, setMainsResult] = useState<any>(null);
+  const [showQuizExitModal, setShowQuizExitModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    api.getPracticeQuestions(selectedSubjectId || undefined, selectedConceptId || undefined, 10).then(qs => {
+    // For Daily Quiz, pull 10 high-yield questions from the whole canonical pool
+    const subjectParam = isDailyQuiz ? undefined : (selectedSubjectId || undefined);
+    const conceptParam = isDailyQuiz ? undefined : (selectedConceptId || undefined);
+
+    api.getPracticeQuestions(subjectParam, conceptParam, 10).then(qs => {
       setQuestions(qs);
       setCurrentIndex(0);
-      setSelectedOption('');
-      setSubmitted(false);
-      setAttemptResult(null);
-      setStartTime(Date.now());
+      setQuestionStates({});
       setLoading(false);
     });
-  }, [selectedSubjectId, selectedConceptId]);
+  }, [isDailyQuiz, selectedSubjectId, selectedConceptId]);
+
+  // Back button protection for active Daily Quiz
+  useEffect(() => {
+    const hasStarted = Object.values(questionStates).some((s: any) => Boolean(s?.selectedOption));
+    if (isDailyQuiz && hasStarted) {
+      (window as any).__IKSHOVIA_ACTIVE_TEST__ = true;
+      const unregister = registerBackButtonHandler(() => {
+        setShowQuizExitModal(true);
+        return true; // consumed
+      });
+      return () => {
+        (window as any).__IKSHOVIA_ACTIVE_TEST__ = false;
+        unregister();
+      };
+    } else {
+      (window as any).__IKSHOVIA_ACTIVE_TEST__ = false;
+    }
+  }, [isDailyQuiz, questionStates]);
 
   const currentQ = questions[currentIndex];
+  const currentState: QuestionAttemptState = (currentQ && questionStates[currentQ.id]) || {
+    selectedOption: '',
+    confidenceRating: 3,
+    submitted: false,
+    startTime: Date.now(),
+  };
+
+  const selectedOption = currentState.selectedOption;
+  const confidenceRating = currentState.confidenceRating;
+  const selectedMistakeCategory = currentState.selectedMistakeCategory;
+  const submitted = currentState.submitted;
+  const attemptResult = currentState.attemptResult;
+
+  const handleSelectOption = (optId: string) => {
+    if (!currentQ || submitted) return;
+    setQuestionStates(prev => ({
+      ...prev,
+      [currentQ.id]: {
+        ...(prev[currentQ.id] || {
+          confidenceRating: 3,
+          submitted: false,
+          startTime: Date.now(),
+        }),
+        selectedOption: optId,
+      },
+    }));
+  };
+
+  const handleSetConfidence = (rating: number) => {
+    if (!currentQ || submitted) return;
+    setQuestionStates(prev => ({
+      ...prev,
+      [currentQ.id]: {
+        ...(prev[currentQ.id] || {
+          selectedOption: '',
+          submitted: false,
+          startTime: Date.now(),
+        }),
+        confidenceRating: rating,
+      },
+    }));
+  };
+
+  const handleSetMistakeCategory = (cat: MistakeCategory) => {
+    if (!currentQ) return;
+    setQuestionStates(prev => ({
+      ...prev,
+      [currentQ.id]: {
+        ...(prev[currentQ.id] || {
+          selectedOption: '',
+          confidenceRating: 3,
+          submitted: false,
+          startTime: Date.now(),
+        }),
+        selectedMistakeCategory: cat,
+      },
+    }));
+  };
 
   const handleSubmitAnswer = async () => {
     if (!currentQ || !selectedOption || submitted) return;
 
-    const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+    const elapsedSeconds = Math.max(1, Math.round((Date.now() - (currentState.startTime || Date.now())) / 1000));
     const result = await api.submitQuestionAttempt(
       currentQ.id,
       selectedOption,
@@ -73,8 +160,18 @@ export const PracticeView: React.FC = () => {
       selectedMistakeCategory
     );
 
-    setAttemptResult(result);
-    setSubmitted(true);
+    setQuestionStates(prev => ({
+      ...prev,
+      [currentQ.id]: {
+        ...(prev[currentQ.id] || {
+          selectedOption,
+          confidenceRating,
+          startTime: Date.now(),
+        }),
+        submitted: true,
+        attemptResult: result,
+      },
+    }));
 
     if (result.isCorrect) {
       confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
@@ -83,15 +180,15 @@ export const PracticeView: React.FC = () => {
     refreshLearnerData();
   };
 
+  const handlePrevQuestion = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+    }
+  };
+
   const handleNextQuestion = () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex(prev => prev + 1);
-      setSelectedOption('');
-      setConfidenceRating(3);
-      setSelectedMistakeCategory(undefined);
-      setSubmitted(false);
-      setAttemptResult(null);
-      setStartTime(Date.now());
     } else {
       setActiveSection('analytics');
     }
@@ -143,11 +240,25 @@ export const PracticeView: React.FC = () => {
             </button>
           </div>
           <h1 className="text-2xl font-black text-[#111827] flex items-center gap-2">
-            <Target className="w-6 h-6 text-indigo-600" />
-            <span>Topic & Subject Practice Engine</span>
+            {isDailyQuiz ? (
+              <>
+                <CheckSquare className="w-6 h-6 text-emerald-600" />
+                <span>Daily Quiz</span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  Live
+                </span>
+              </>
+            ) : (
+              <>
+                <Target className="w-6 h-6 text-indigo-600" />
+                <span>Topic & Subject Practice Engine</span>
+              </>
+            )}
           </h1>
           <p className="text-slate-500 text-xs mt-0.5 font-medium">
-            Adaptive Concept MCQs and Gemini Mains Answer Evaluator for UPSC & BPSC syllabus.
+            {isDailyQuiz
+              ? '10 high-yield curated questions drawn from across the 3,300+ canonical question bank to test daily retention and syllabus discipline.'
+              : 'Adaptive Concept MCQs and Gemini Mains Answer Evaluator for UPSC & BPSC syllabus.'}
           </p>
         </div>
 
@@ -201,6 +312,45 @@ export const PracticeView: React.FC = () => {
 
           {!loading && currentQ && (
             <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-2xs">
+              {/* Question Navigation Palette */}
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                  {questions.map((q, idx) => {
+                    const qState = questionStates[q.id];
+                    const isCurrent = idx === currentIndex;
+                    const isAnswered = Boolean(qState?.selectedOption);
+                    const isSub = Boolean(qState?.submitted);
+                    const isCorr = qState?.attemptResult?.isCorrect;
+
+                    let chipClass = "border text-slate-700 bg-white border-slate-200 hover:bg-slate-50";
+                    if (isSub) {
+                      chipClass = isCorr 
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-300 font-bold" 
+                        : "bg-rose-50 text-rose-800 border-rose-300 font-bold";
+                    } else if (isAnswered) {
+                      chipClass = "bg-indigo-50 text-indigo-800 border-indigo-300 font-bold";
+                    }
+
+                    return (
+                      <button
+                        key={q.id || idx}
+                        onClick={() => setCurrentIndex(idx)}
+                        className={`min-w-[36px] sm:min-w-[40px] h-9 sm:h-10 px-2 rounded-lg text-xs font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${chipClass} ${
+                          isCurrent ? "ring-2 ring-indigo-600 ring-offset-1 shadow-xs" : ""
+                        }`}
+                        title={`Question ${idx + 1}`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="text-xs font-bold text-slate-500 font-mono shrink-0">
+                  {currentIndex + 1} / {questions.length}
+                </div>
+              </div>
+
               {/* Question Tag & Difficulty */}
               <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -257,7 +407,7 @@ export const PracticeView: React.FC = () => {
                 selectedOption={selectedOption}
                 isSubmitted={submitted}
                 isCorrect={attemptResult?.isCorrect}
-                onSelectOption={(optId) => setSelectedOption(optId)}
+                onSelectOption={handleSelectOption}
                 mode="interactive"
                 showSolution={false}
                 hideHeaderMeta={true}
@@ -274,8 +424,8 @@ export const PracticeView: React.FC = () => {
                     {[1, 2, 3, 4, 5].map(star => (
                       <button
                         key={star}
-                        onClick={() => setConfidenceRating(star)}
-                        className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                        onClick={() => handleSetConfidence(star)}
+                        className={`flex-1 min-h-[44px] py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
                           confidenceRating === star
                             ? 'bg-indigo-600 border-indigo-600 text-white'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -288,25 +438,40 @@ export const PracticeView: React.FC = () => {
                 </div>
               )}
 
-              {/* Submit / Next Button */}
-              <div className="pt-2 flex justify-end">
-                {!submitted ? (
-                  <button
-                    onClick={handleSubmitAnswer}
-                    disabled={!selectedOption}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
-                  >
-                    Submit Answer
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleNextQuestion}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <span>Next Question</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
+              {/* Navigation & Submit Controls */}
+              <div className="pt-4 flex items-center justify-between gap-3 border-t border-slate-100">
+                <button
+                  onClick={handlePrevQuestion}
+                  disabled={currentIndex === 0}
+                  className="min-h-[44px] px-4 py-2 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Previous</span>
+                </button>
+
+                <div className="text-xs font-bold text-slate-500 font-mono">
+                  Question {currentIndex + 1} of {questions.length}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {!submitted ? (
+                    <button
+                      onClick={handleSubmitAnswer}
+                      disabled={!selectedOption}
+                      className="min-h-[44px] px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center justify-center"
+                    >
+                      Submit Answer
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleNextQuestion}
+                      className="min-h-[44px] px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>{currentIndex < questions.length - 1 ? 'Next Question' : 'View Analytics'}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Submitted Explanation & AI Diagnostic */}
@@ -396,6 +561,19 @@ export const PracticeView: React.FC = () => {
         </div>
       )}
 
+      {/* Exit Protection Confirmation Modal for Daily Quiz */}
+      <ExamExitModal
+        isOpen={showQuizExitModal}
+        title="Leave this quiz?"
+        message="Your daily quiz attempt is in progress. Leaving now will interrupt your session. Would you like to continue or exit to the dashboard?"
+        continueLabel="Continue Quiz"
+        leaveLabel="Leave Quiz"
+        onContinue={() => setShowQuizExitModal(false)}
+        onLeave={() => {
+          setShowQuizExitModal(false);
+          setActiveSection('dashboard');
+        }}
+      />
     </div>
   );
 };

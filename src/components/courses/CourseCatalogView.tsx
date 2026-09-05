@@ -62,6 +62,17 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
     expiresAt?: string;
   } | null>(null);
 
+  // Coupon State
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    name?: string;
+    discountAmount: number;
+    finalAmount: number;
+  } | null>(null);
+
   const featureIconMap: Record<PlatformFeatureCode, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
     PYQ_PRACTICE: { label: 'PYQ Practice', icon: FolderArchive },
     MOCK_TESTS: { label: 'Mock Test Simulator', icon: FileCheck2 },
@@ -108,7 +119,43 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
     setCheckoutError(null);
     setCheckoutSuccessData(null);
     setIsProcessingCheckout(false);
+    setCouponCodeInput('');
+    setCouponError(null);
+    setAppliedCoupon(null);
     setShowCheckoutModal(true);
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!selectedCourse || !couponCodeInput.trim()) return;
+    setIsValidatingCoupon(true);
+    setCouponError(null);
+
+    try {
+      const res = await api.validateCoupon(couponCodeInput.trim().toUpperCase(), selectedCourse.id);
+      if (!res.isValid) {
+        setCouponError(res.error || 'Invalid or expired coupon code');
+        setAppliedCoupon(null);
+      } else {
+        setAppliedCoupon({
+          code: res.coupon?.code || couponCodeInput.trim().toUpperCase(),
+          name: res.coupon?.name,
+          discountAmount: res.discountAmount,
+          finalAmount: res.finalAmount,
+        });
+        setCouponError(null);
+      }
+    } catch (err: any) {
+      setCouponError(err.message || 'Failed to validate coupon');
+      setAppliedCoupon(null);
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCodeInput('');
+    setAppliedCoupon(null);
+    setCouponError(null);
   };
 
   // Helper to load Razorpay script on demand
@@ -144,8 +191,8 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
         throw new Error('Unable to connect to Razorpay secure checkout service. Please check your connection.');
       }
 
-      // 2. Create Order on backend (Server calculates canonical price)
-      const orderData = await api.createPaymentOrder(selectedCourse.id);
+      // 2. Create Order on backend (Server calculates canonical price with verified coupon discount)
+      const orderData = await api.createPaymentOrder(selectedCourse.id, appliedCoupon?.code);
 
       // 3. Configure Razorpay checkout options
       const options = {
@@ -512,6 +559,71 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                   </div>
                 </div>
 
+                {/* Coupon Code Section */}
+                <div className="p-3.5 bg-stone-50 border border-stone-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Promotional Coupon / Referral</span>
+                    </span>
+                    {appliedCoupon && (
+                      <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Applied</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {!appliedCoupon ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter coupon code (e.g. UPSC2026)"
+                        value={couponCodeInput}
+                        onChange={e => setCouponCodeInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyCoupon();
+                          }
+                        }}
+                        className="flex-1 bg-white border border-stone-200 rounded-xl px-3 py-1.5 text-xs font-mono font-bold uppercase text-stone-900 focus:outline-none focus:border-amber-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={isValidatingCoupon || !couponCodeInput.trim()}
+                        className="px-3 py-1.5 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        {isValidatingCoupon ? 'Checking...' : 'Apply'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-emerald-50/80 border border-emerald-200 rounded-xl p-2.5 text-xs">
+                      <div>
+                        <div className="font-mono font-bold text-emerald-900">{appliedCoupon.code}</div>
+                        <div className="text-[11px] text-emerald-700">
+                          {appliedCoupon.name || 'Promotional Discount'} (Savings: ₹{appliedCoupon.discountAmount.toLocaleString('en-IN')})
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="text-xs font-bold text-rose-700 hover:text-rose-900 cursor-pointer bg-white px-2 py-1 rounded-lg border border-rose-200 shadow-2xs"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+
+                  {couponError && (
+                    <div className="text-[11px] text-rose-700 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                      <span>{couponError}</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Canonical Server-Calculated Price Breakdown */}
                 <div className="p-4 bg-stone-900 text-white rounded-2xl space-y-2.5">
                   <div className="flex items-center justify-between border-b border-stone-800 pb-2">
@@ -527,16 +639,26 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                   {selectedCourse.currentPrice?.salePrice &&
                     selectedCourse.currentPrice.salePrice < selectedCourse.currentPrice.basePrice && (
                       <div className="flex items-center justify-between text-xs text-emerald-400">
-                        <span>Scholarship / Special Discount</span>
+                        <span>Course Catalog Discount</span>
                         <span className="font-mono">
                           -₹{(selectedCourse.currentPrice.basePrice - selectedCourse.currentPrice.salePrice).toLocaleString('en-IN')}
                         </span>
                       </div>
                     )}
+                  {appliedCoupon && appliedCoupon.discountAmount > 0 && (
+                    <div className="flex items-center justify-between text-xs text-amber-400 font-medium">
+                      <span>Coupon Discount ({appliedCoupon.code})</span>
+                      <span className="font-mono font-bold">
+                        -₹{appliedCoupon.discountAmount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-xs border-t border-stone-800 pt-2 font-bold">
                     <span className="text-amber-200">Total Payable Amount</span>
                     <span className="font-mono text-base text-amber-300">
-                      ₹{(selectedCourse.currentPrice?.salePrice || selectedCourse.currentPrice?.basePrice || 0).toLocaleString('en-IN')}
+                      ₹{appliedCoupon
+                        ? appliedCoupon.finalAmount.toLocaleString('en-IN')
+                        : (selectedCourse.currentPrice?.salePrice || selectedCourse.currentPrice?.basePrice || 0).toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>

@@ -25,13 +25,19 @@ import {
   Filter,
   Bot,
   Flame,
-  FolderArchive
+  FolderArchive,
+  Eye
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
 import { MockTest, Question, Subject, MockAttempt } from '../../types/index.js';
 import { QuestionRenderer } from '../common/QuestionRenderer.js';
+import { getMockDisplayTitle } from '../../utils/mockUtils.js';
 import confetti from 'canvas-confetti';
+import { registerBackButtonHandler, registerAppStateChangeHandler } from '../../lib/capacitor.js';
+import { queueMockAnswer, queueMockSubmission } from '../../lib/offlineQueue.js';
+import { ExamExitModal } from '../common/ExamExitModal.js';
+import { WifiOff } from 'lucide-react';
 
 export const MockTestView: React.FC = () => {
   const { refreshLearnerData, setActiveSection, askTutorWithContext } = useLearner();
@@ -64,7 +70,9 @@ export const MockTestView: React.FC = () => {
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [markedForReview, setMarkedForReview] = useState<Record<string, boolean>>({});
   const [inTest, setInTest] = useState(false);
+  const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null);
   const [submittedResult, setSubmittedResult] = useState<any>(null);
+  const [inReviewMode, setInReviewMode] = useState(false);
   const [displayLanguage, setDisplayLanguage] = useState<'en' | 'hi'>('en');
 
   // Custom Mock Test Generator Modal state
@@ -76,32 +84,69 @@ export const MockTestView: React.FC = () => {
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(['sub_polity', 'sub_economy']);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Timer state
+  // Timer & Lifecycle state
   const [timeRemainingSeconds, setTimeRemainingSeconds] = useState<number>(0);
+  const [testEndTimestamp, setTestEndTimestamp] = useState<number | null>(null);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
   useEffect(() => {
     loadInitialData();
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  // Countdown timer for active mock test
+  // Countdown timer for active mock test with background/foreground resilience
   useEffect(() => {
-    let timer: any = null;
-    if (inTest && timeRemainingSeconds > 0) {
-      timer = setInterval(() => {
-        setTimeRemainingSeconds(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            handleSubmitTest();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
+    if (!inTest || !testEndTimestamp) return;
+
+    const tick = () => {
+      const remaining = Math.max(0, Math.round((testEndTimestamp - Date.now()) / 1000));
+      setTimeRemainingSeconds(remaining);
+      if (remaining <= 0) {
+        handleSubmitTest();
+      }
     };
-  }, [inTest, timeRemainingSeconds]);
+
+    tick();
+    const interval = setInterval(tick, 1000);
+
+    // Re-synchronize timer immediately when app returns from background
+    const unregisterAppState = registerAppStateChangeHandler(isActive => {
+      if (isActive) {
+        tick();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      unregisterAppState();
+    };
+  }, [inTest, testEndTimestamp]);
+
+  // Protect active mock test from accidental Android back button navigation
+  useEffect(() => {
+    if (inTest) {
+      (window as any).__IKSHOVIA_ACTIVE_TEST__ = true;
+      const unregister = registerBackButtonHandler(() => {
+        setShowExitModal(true);
+        return true; // consumed, prevent silent exit
+      });
+      return () => {
+        (window as any).__IKSHOVIA_ACTIVE_TEST__ = false;
+        unregister();
+      };
+    } else {
+      (window as any).__IKSHOVIA_ACTIVE_TEST__ = false;
+    }
+  }, [inTest]);
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -126,14 +171,15 @@ export const MockTestView: React.FC = () => {
 
   // Launch Standard or Custom Mock Test
   const handleStartStandardTest = async (test: MockTest) => {
-    const isBpsc = test.title.toLowerCase().includes('bpsc');
+    const displayTitle = getMockDisplayTitle(test);
+    const isBpsc = displayTitle.toLowerCase().includes('bpsc') || (test.title || '').toLowerCase().includes('bpsc');
     const marksPerCorrect = isBpsc ? 1.0 : 2.0;
     const penaltyPerWrong = isBpsc ? 0.33 : test.negativeMarkingRate || 0.66;
     const duration = test.durationMinutes || (test.totalQuestions >= 50 ? 120 : 25);
 
     setActiveTestMeta({
       id: test.id,
-      title: test.title,
+      title: displayTitle,
       type: test.type,
       durationMinutes: duration,
       totalQuestions: test.totalQuestions || 20,
@@ -156,9 +202,39 @@ export const MockTestView: React.FC = () => {
       setCurrentQuestionIndex(0);
       setUserAnswers({});
       setMarkedForReview({});
+      const targetEnd = Date.now() + (duration * 60 * 1000);
+      setTestEndTimestamp(targetEnd);
       setTimeRemainingSeconds(duration * 60);
       setInTest(true);
+      setInReviewMode(false);
       setSubmittedResult(null);
+
+      // Attempt to start a tracked session on the backend
+      try {
+        const startRes = await api.startMockAttempt(test.id);
+        if (startRes?.attempt?.id) {
+          setCurrentAttemptId(startRes.attempt.id);
+          // Restore previously saved answers if resuming an in-progress attempt
+          if (Array.isArray(startRes.answers) && startRes.answers.length > 0) {
+            const restoredAnswers: Record<string, string> = {};
+            const restoredMarked: Record<string, boolean> = {};
+            startRes.answers.forEach((ans: any) => {
+              if (ans.questionId && ans.userAnswer) {
+                restoredAnswers[ans.questionId] = ans.userAnswer;
+              }
+              if (ans.questionId && ans.markedForReview) {
+                restoredMarked[ans.questionId] = true;
+              }
+            });
+            setUserAnswers(restoredAnswers);
+            setMarkedForReview(restoredMarked);
+          }
+        } else {
+          setCurrentAttemptId(null);
+        }
+      } catch {
+        setCurrentAttemptId(null);
+      }
     } catch (e) {
       console.error('Error starting test:', e);
     } finally {
@@ -196,13 +272,74 @@ export const MockTestView: React.FC = () => {
       ...prev,
       [questionId]: optionId,
     }));
+
+    // Persist answer in backend attempt if active, or queue locally if network drops
+    if (currentAttemptId) {
+      const timeSpent = activeTestMeta
+        ? (activeTestMeta.durationMinutes * 60) - timeRemainingSeconds
+        : 0;
+      const marked = Boolean(markedForReview[questionId]);
+
+      if (!navigator.onLine) {
+        queueMockAnswer({
+          attemptId: currentAttemptId,
+          questionId,
+          userAnswer: optionId,
+          timeSpentSeconds: Math.max(1, timeSpent),
+          markedForReview: marked,
+          timestamp: Date.now(),
+        });
+      } else {
+        api.saveMockAnswer(currentAttemptId, questionId, optionId, Math.max(1, timeSpent), marked)
+          .then(res => {
+            if (res === null) {
+              queueMockAnswer({
+                attemptId: currentAttemptId,
+                questionId,
+                userAnswer: optionId,
+                timeSpentSeconds: Math.max(1, timeSpent),
+                markedForReview: marked,
+                timestamp: Date.now(),
+              });
+            }
+          })
+          .catch(() => {
+            queueMockAnswer({
+              attemptId: currentAttemptId,
+              questionId,
+              userAnswer: optionId,
+              timeSpentSeconds: Math.max(1, timeSpent),
+              markedForReview: marked,
+              timestamp: Date.now(),
+            });
+          });
+      }
+    }
+  };
+
+  const handleClearResponse = (questionId: string) => {
+    setUserAnswers(prev => {
+      const updated = { ...prev };
+      delete updated[questionId];
+      return updated;
+    });
+
+    if (currentAttemptId) {
+      api.saveMockAnswer(currentAttemptId, questionId, '').catch(() => {});
+    }
   };
 
   const handleToggleMarkForReview = (questionId: string) => {
-    setMarkedForReview(prev => ({
-      ...prev,
-      [questionId]: !prev[questionId],
-    }));
+    setMarkedForReview(prev => {
+      const updated = {
+        ...prev,
+        [questionId]: !prev[questionId],
+      };
+      if (currentAttemptId && userAnswers[questionId]) {
+        api.saveMockAnswer(currentAttemptId, questionId, userAnswers[questionId], undefined, updated[questionId]).catch(() => {});
+      }
+      return updated;
+    });
   };
 
   const handleSubmitTest = async () => {
@@ -215,8 +352,22 @@ export const MockTestView: React.FC = () => {
       let incorrect = 0;
       testQuestions.forEach(q => {
         const chosen = userAnswers[q.id];
-        if (chosen !== undefined && chosen !== null) {
-          if (chosen.toUpperCase() === q.correctAnswer?.toUpperCase()) {
+        if (chosen !== undefined && chosen !== null && chosen !== '') {
+          const chosenUpper = String(chosen).trim().toUpperCase();
+          const correctUpper = String(q.correctAnswer).trim().toUpperCase();
+          
+          // BPSC Option E "Not Attempted" safe skip rule
+          const optionsList = q.options || [];
+          const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
+          const isOptENotAttempted = optE && (
+            (optE.text || '').toLowerCase().includes('not attempted') ||
+            (optE.text || '').toLowerCase().includes('अनुत्तरित') ||
+            (optE.text || '').toLowerCase().includes('unattempted')
+          );
+
+          if (chosenUpper === 'E' && isOptENotAttempted && correctUpper !== 'E') {
+            // Candidate intentionally marked Not Attempted - 0 marks, 0 penalty
+          } else if (chosenUpper === correctUpper) {
             correct++;
           } else {
             incorrect++;
@@ -244,11 +395,20 @@ export const MockTestView: React.FC = () => {
 
       setSubmittedResult(mockAttempt);
       setInTest(false);
+      setInReviewMode(false);
 
-      // Attempt to record in backend
+      // Attempt to record in backend, or queue if network fails
       try {
         await api.submitMockTest(activeTestMeta.id, userAnswers, Math.max(10, timeSpentSeconds));
-      } catch {}
+      } catch (submitErr) {
+        console.warn('Network submission failed, queueing for automatic background sync:', submitErr);
+        queueMockSubmission({
+          mockTestId: activeTestMeta.id,
+          answers: userAnswers,
+          timeTakenSeconds: Math.max(10, timeSpentSeconds),
+          timestamp: Date.now(),
+        });
+      }
 
       confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
       refreshLearnerData();
@@ -297,14 +457,10 @@ export const MockTestView: React.FC = () => {
         <div className="bg-white rounded-2xl border border-stone-200/90 shadow-2xs p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                if (window.confirm('Are you sure you want to end this mock test simulation?')) {
-                  setInTest(false);
-                  setActiveTestMeta(null);
-                }
-              }}
-              className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 transition-colors cursor-pointer"
+              onClick={() => setShowExitModal(true)}
+              className="p-2 hover:bg-stone-100 rounded-lg text-stone-500 transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Exit Test"
+              aria-label="Exit Test"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -314,6 +470,12 @@ export const MockTestView: React.FC = () => {
                 <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
                   {activeTestMeta.sourceType === 'ADMIN_IMPORTED' ? 'ADMIN IMPORTED' : 'IKSHOVIA CUSTOM'}
                 </span>
+                {!isOnline && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+                    <WifiOff className="w-3 h-3 text-amber-700" />
+                    <span>Offline (Saved)</span>
+                  </span>
+                )}
                 <span className="text-[11px] font-mono text-stone-500">
                   Q {currentQuestionIndex + 1} of {testQuestions.length}
                 </span>
@@ -378,6 +540,16 @@ export const MockTestView: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {userAnswers[currentQ.id] !== undefined && userAnswers[currentQ.id] !== '' && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearResponse(currentQ.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition-colors cursor-pointer"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleToggleMarkForReview(currentQ.id)}
                       className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -402,10 +574,16 @@ export const MockTestView: React.FC = () => {
 
                 <QuestionRenderer
                   question={currentQ}
+                  questionNumber={currentQuestionIndex + 1}
                   language={displayLanguage}
+                  selectedOption={userAnswers[currentQ.id]}
                   selectedOptionId={userAnswers[currentQ.id]}
                   onSelectOption={(optId) => handleSelectOption(currentQ.id, optId)}
+                  mode="interactive"
+                  showSolution={false}
                   showCorrectAnswer={false}
+                  marks={activeTestMeta?.marksPerCorrect || 2.0}
+                  negativeMarks={activeTestMeta?.penaltyPerWrong || 0.66}
                 />
 
                 {/* Navigation controls */}
@@ -451,36 +629,41 @@ export const MockTestView: React.FC = () => {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700">
                   Question Palette
                 </h3>
-                <div className="flex items-center gap-3 text-[10px] text-stone-500 mt-2">
+                <div className="flex flex-wrap items-center gap-2.5 text-[10px] text-stone-500 mt-2">
                   <span className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded bg-emerald-600 inline-block"></span>
-                    <span>Answered ({Object.keys(userAnswers).length})</span>
+                    <span>Answered ({Object.values(userAnswers).filter(a => a !== undefined && a !== '').length})</span>
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded bg-amber-400 inline-block"></span>
                     <span>Review ({Object.values(markedForReview).filter(Boolean).length})</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded bg-stone-300 inline-block"></span>
+                    <span>Unanswered ({testQuestions.length - Object.values(userAnswers).filter(a => a !== undefined && a !== '').length})</span>
                   </span>
                 </div>
               </div>
 
               <div className="grid grid-cols-5 gap-1.5 max-h-[380px] overflow-y-auto p-1">
                 {testQuestions.map((q, idx) => {
-                  const isAnswered = userAnswers[q.id] !== undefined;
+                  const isAnswered = userAnswers[q.id] !== undefined && userAnswers[q.id] !== '';
                   const isMarked = markedForReview[q.id];
                   const isCurrent = idx === currentQuestionIndex;
 
-                  let btnStyle = 'bg-stone-50 text-stone-600 border-stone-200';
+                  let btnStyle = 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100';
                   if (isCurrent) {
                     btnStyle = 'bg-stone-900 text-white border-stone-900 font-bold ring-2 ring-indigo-500';
                   } else if (isMarked) {
                     btnStyle = 'bg-amber-100 text-amber-900 border-amber-400 font-bold';
                   } else if (isAnswered) {
-                    btnStyle = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-600 font-bold';
                   }
 
                   return (
                     <button
                       key={q.id}
+                      type="button"
                       onClick={() => setCurrentQuestionIndex(idx)}
                       className={`h-8 rounded-lg text-xs font-mono border transition-all cursor-pointer flex items-center justify-center ${btnStyle}`}
                     >
@@ -491,10 +674,219 @@ export const MockTestView: React.FC = () => {
               </div>
 
               <button
+                type="button"
                 onClick={handleSubmitTest}
-                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
+                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer min-h-[44px]"
               >
                 Submit Mock Test
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Exit Protection Confirmation Modal */}
+        <ExamExitModal
+          isOpen={showExitModal}
+          title="Leave this test?"
+          message="An active mock test is in progress. Leaving now will interrupt your examination attempt. Your selected answers have been saved."
+          continueLabel="Continue Test"
+          leaveLabel="Leave Test"
+          onContinue={() => setShowExitModal(false)}
+          onLeave={() => {
+            setShowExitModal(false);
+            setInTest(false);
+            setActiveTestMeta(null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // RENDER: Review Mode (Post-submission solution walkthrough)
+  // -------------------------------------------------------------
+  if (inReviewMode && submittedResult) {
+    const currentQ = testQuestions[currentQuestionIndex];
+    return (
+      <div className="space-y-6 pb-16 max-w-7xl mx-auto font-sans-editorial animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                SOLUTION & DETAILED EXPLANATION REVIEW
+              </span>
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
+                Score: {submittedResult.score} / {submittedResult.maxScore}
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold font-serif-editorial text-stone-900 mt-1">
+              {submittedResult.mockTitle}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-stone-100 p-1 rounded-xl border border-stone-200">
+              <button
+                onClick={() => setDisplayLanguage('en')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  displayLanguage === 'en' ? 'bg-white text-stone-900 shadow-2xs' : 'text-stone-600'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setDisplayLanguage('hi')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  displayLanguage === 'hi' ? 'bg-white text-stone-900 shadow-2xs' : 'text-stone-600'
+                }`}
+              >
+                HI
+              </button>
+            </div>
+
+            <button
+              onClick={() => setInReviewMode(false)}
+              className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Scorecard</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Question + Palette Split */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-3 space-y-4">
+            {currentQ && (
+              <div className="bg-white rounded-2xl border border-stone-200/90 shadow-sm p-6 sm:p-7 space-y-6">
+                <div className="flex items-center justify-between gap-2 border-b border-stone-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-lg bg-indigo-700 text-white font-mono font-bold text-xs flex items-center justify-center">
+                      {currentQuestionIndex + 1}
+                    </span>
+                    <span className="text-xs font-bold text-stone-500">
+                      {currentQ.questionType === 'MATCH_FOLLOWING' ? 'Match the Following' : currentQ.questionType === 'STATEMENT_BASED' ? 'Statement Based' : 'Multiple Choice Question'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => askTutorWithContext(currentQ.question, `Mock Test Review: ${submittedResult.mockTitle}`)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-50 hover:bg-indigo-50 text-stone-700 hover:text-indigo-800 border border-stone-200 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Bot className="w-4 h-4 text-indigo-700" />
+                    <span>Ask AI Tutor</span>
+                  </button>
+                </div>
+
+                <QuestionRenderer
+                  question={currentQ}
+                  questionNumber={currentQuestionIndex + 1}
+                  language={displayLanguage}
+                  selectedOption={userAnswers[currentQ.id]}
+                  selectedOptionId={userAnswers[currentQ.id]}
+                  isSubmitted={true}
+                  mode="review"
+                  showSolution={true}
+                  showCorrectAnswer={true}
+                  isCorrect={userAnswers[currentQ.id] ? (userAnswers[currentQ.id].trim().toUpperCase() === currentQ.correctAnswer?.trim().toUpperCase()) : undefined}
+                  marks={activeTestMeta?.marksPerCorrect || 2.0}
+                  negativeMarks={activeTestMeta?.penaltyPerWrong || 0.66}
+                />
+
+                {/* Navigation controls */}
+                <div className="flex items-center justify-between pt-4 border-t border-stone-100">
+                  <button
+                    onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                    disabled={currentQuestionIndex === 0}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      currentQuestionIndex === 0
+                        ? 'bg-stone-50 text-stone-300 border-stone-200 cursor-not-allowed'
+                        : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Previous</span>
+                  </button>
+
+                  <span className="text-xs font-mono text-stone-400">
+                    {currentQuestionIndex + 1} / {testQuestions.length}
+                  </span>
+
+                  <button
+                    onClick={() => setCurrentQuestionIndex(prev => Math.min(testQuestions.length - 1, prev + 1))}
+                    disabled={currentQuestionIndex === testQuestions.length - 1}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      currentQuestionIndex === testQuestions.length - 1
+                        ? 'bg-stone-50 text-stone-300 border-stone-200 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-2xs'
+                    }`}
+                  >
+                    <span>Next</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Review Palette */}
+          <div className="lg:col-span-1 space-y-4">
+            <div className="bg-white rounded-2xl border border-stone-200/90 shadow-sm p-4 space-y-4">
+              <div className="border-b border-stone-100 pb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700">
+                  Question Review Palette
+                </h3>
+                <div className="flex flex-col gap-1.5 text-[10px] text-stone-500 mt-2">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-emerald-600 inline-block"></span>
+                    <span>Correct ({submittedResult.correctCount})</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-rose-600 inline-block"></span>
+                    <span>Incorrect ({submittedResult.incorrectCount})</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-stone-300 inline-block"></span>
+                    <span>Unattempted ({submittedResult.unattemptedCount})</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1.5 max-h-[380px] overflow-y-auto p-1">
+                {testQuestions.map((q, idx) => {
+                  const chosen = userAnswers[q.id];
+                  const isCurrent = idx === currentQuestionIndex;
+                  const isAnswered = chosen !== undefined && chosen !== '';
+                  const isCorrect = isAnswered && chosen.trim().toUpperCase() === q.correctAnswer?.trim().toUpperCase();
+
+                  let btnStyle = 'bg-stone-100 text-stone-600 border-stone-200';
+                  if (isCurrent) {
+                    btnStyle = 'ring-2 ring-indigo-600 font-bold ' + (isCorrect ? 'bg-emerald-600 text-white' : isAnswered ? 'bg-rose-600 text-white' : 'bg-stone-800 text-white');
+                  } else if (isCorrect) {
+                    btnStyle = 'bg-emerald-600 text-white border-emerald-600 font-bold';
+                  } else if (isAnswered) {
+                    btnStyle = 'bg-rose-600 text-white border-rose-600 font-bold';
+                  }
+
+                  return (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => setCurrentQuestionIndex(idx)}
+                      className={`h-8 rounded-lg text-xs font-mono border transition-all cursor-pointer flex items-center justify-center ${btnStyle}`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setInReviewMode(false)}
+                className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Back to Scorecard
               </button>
             </div>
           </div>
@@ -556,6 +948,17 @@ export const MockTestView: React.FC = () => {
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-4 border-t border-stone-100">
             <button
+              onClick={() => {
+                setInReviewMode(true);
+                setCurrentQuestionIndex(0);
+              }}
+              className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              <span>Review Questions & Solutions</span>
+            </button>
+
+            <button
               onClick={() => setActiveSection('analytics')}
               className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
             >
@@ -566,6 +969,7 @@ export const MockTestView: React.FC = () => {
             <button
               onClick={() => {
                 setSubmittedResult(null);
+                setInReviewMode(false);
                 loadInitialData();
               }}
               className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-2"
@@ -794,8 +1198,13 @@ export const MockTestView: React.FC = () => {
                   {/* Title */}
                   <div>
                     <h3 className="text-base font-bold font-serif-editorial text-stone-900 leading-snug">
-                      {test.title}
+                      {getMockDisplayTitle(test)}
                     </h3>
+                    {test.originalSourceName && test.displayName && (
+                      <p className="text-[11px] text-stone-500 truncate mt-0.5" title={test.originalSourceName}>
+                        Source: {test.originalSourceName}
+                      </p>
+                    )}
                   </div>
 
                   {/* Test Specs Grid */}

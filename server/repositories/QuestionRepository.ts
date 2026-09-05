@@ -412,27 +412,27 @@ export class QuestionRepository {
       let idx = 1;
 
       if (params.subjectId) {
-        whereConditions.push(`subject_id = ${idx++}`);
+        whereConditions.push(`subject_id = $${idx++}`);
         values.push(params.subjectId);
       }
       if (params.topicId) {
-        whereConditions.push(`topic_id = ${idx++}`);
+        whereConditions.push(`topic_id = $${idx++}`);
         values.push(params.topicId);
       }
       if (params.conceptId) {
-        whereConditions.push(`concept_id = ${idx++}`);
+        whereConditions.push(`concept_id = $${idx++}`);
         values.push(params.conceptId);
       }
       if (params.isPyq !== undefined) {
-        whereConditions.push(`is_pyq = ${idx++}`);
+        whereConditions.push(`is_pyq = $${idx++}`);
         values.push(params.isPyq);
       }
       if (params.isPublished !== undefined) {
-        whereConditions.push(`is_published = ${idx++}`);
+        whereConditions.push(`is_published = $${idx++}`);
         values.push(params.isPublished);
       }
       if (params.status) {
-        whereConditions.push(`status = ${idx++}`);
+        whereConditions.push(`status = $${idx++}`);
         values.push(params.status);
       }
       if (params.difficulty) {
@@ -444,12 +444,12 @@ export class QuestionRepository {
         values.push(params.sourceType);
       }
       if (params.examTag) {
-        whereConditions.push(`(exam_tag ILIKE ${idx} OR exam ILIKE ${idx})`);
+        whereConditions.push(`(exam_tag ILIKE $${idx} OR exam ILIKE $${idx})`);
         values.push(`%${params.examTag}%`);
         idx++;
       }
       if (params.searchQuery) {
-        whereConditions.push(`(question ILIKE ${idx} OR explanation ILIKE ${idx})`);
+        whereConditions.push(`(question ILIKE $${idx} OR explanation ILIKE $${idx})`);
         values.push(`%${params.searchQuery}%`);
         idx++;
       }
@@ -463,7 +463,8 @@ export class QuestionRepository {
       memoryQuestions.forEach(q => map.set(q.id, q));
       dbQuestions.forEach(q => map.set(q.id, q));
       return Array.from(map.values());
-    } catch {
+    } catch (err) {
+      console.error('[QuestionRepository] fetchCuratedQuestions fallback to memory due to:', err);
       return memoryQuestions;
     }
   }
@@ -551,24 +552,24 @@ export class QuestionRepository {
       let idx = 1;
 
       if (params.subjectId) {
-        whereConditions.push(`subject_id = ${idx++}`);
+        whereConditions.push(`subject_id = $${idx++}`);
         values.push(params.subjectId);
       }
       if (params.topicId) {
-        whereConditions.push(`topic_id = ${idx++}`);
+        whereConditions.push(`topic_id = $${idx++}`);
         values.push(params.topicId);
       }
       if (params.conceptId) {
-        whereConditions.push(`concept_id = ${idx++}`);
+        whereConditions.push(`concept_id = $${idx++}`);
         values.push(params.conceptId);
       }
       if (params.exam && params.exam !== 'All') {
-        whereConditions.push(`(exam ILIKE ${idx} OR exam_tag ILIKE ${idx})`);
+        whereConditions.push(`(exam ILIKE $${idx} OR exam_tag ILIKE $${idx})`);
         values.push(`%${params.exam}%`);
         idx++;
       }
       if (params.pyqYear) {
-        whereConditions.push(`pyq_year = ${idx++}`);
+        whereConditions.push(`pyq_year = $${idx++}`);
         values.push(params.pyqYear);
       }
 
@@ -580,7 +581,8 @@ export class QuestionRepository {
       memoryPYQs.forEach(q => map.set(q.id, q));
       dbPYQs.forEach(q => map.set(q.id, q));
       return Array.from(map.values());
-    } catch {
+    } catch (err) {
+      console.error('[QuestionRepository] fetchCuratedPYQs fallback to memory due to:', err);
       return memoryPYQs;
     }
   }
@@ -685,12 +687,32 @@ export class QuestionRepository {
       ? row.available_languages
       : (typeof row.available_languages === 'string' ? JSON.parse(row.available_languages) : undefined);
 
+    const matchData = row.match_data && typeof row.match_data === 'object' && (row.match_data.leftColumn || row.match_data.listI)
+      ? row.match_data
+      : (typeof row.match_data === 'string' ? JSON.parse(row.match_data) : undefined);
+    const matchData_hi = row.match_data_hi && typeof row.match_data_hi === 'object'
+      ? row.match_data_hi
+      : (typeof row.match_data_hi === 'string' ? JSON.parse(row.match_data_hi) : undefined);
+    const statements = Array.isArray(row.statements)
+      ? row.statements
+      : (typeof row.statements === 'string' ? JSON.parse(row.statements) : undefined);
+    const statements_hi = Array.isArray(row.statements_hi)
+      ? row.statements_hi
+      : (typeof row.statements_hi === 'string' ? JSON.parse(row.statements_hi) : undefined);
+
+    const questionType = row.question_type || (matchData ? 'MATCH_FOLLOWING' : row.type);
+
     return {
       id: row.id,
       subjectId: row.subject_id,
       topicId: row.topic_id,
       conceptId: row.concept_id,
       type: row.type,
+      questionType,
+      statements,
+      statements_hi,
+      matchData,
+      matchData_hi,
       question: row.question,
       question_en: row.question_en || undefined,
       question_hi: row.question_hi || undefined,

@@ -165,8 +165,21 @@ export const PyqPracticeView: React.FC = () => {
 
     paperQuestions.forEach(q => {
       const chosen = userAnswers[q.id];
-      if (chosen !== undefined && chosen !== null) {
-        if (chosen.toUpperCase() === q.correctAnswer?.toUpperCase()) {
+      if (chosen !== undefined && chosen !== null && chosen !== '') {
+        const chosenUpper = String(chosen).trim().toUpperCase();
+        const correctUpper = String(q.correctAnswer).trim().toUpperCase();
+
+        const optionsList = q.options || [];
+        const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
+        const isOptENotAttempted = optE && (
+          (optE.text || '').toLowerCase().includes('not attempted') ||
+          (optE.text || '').toLowerCase().includes('अनुत्तरित') ||
+          (optE.text || '').toLowerCase().includes('unattempted')
+        );
+
+        if (chosenUpper === 'E' && isOptENotAttempted && correctUpper !== 'E') {
+          // BPSC Candidate marked Not Attempted — safe skip (0 marks, 0 penalty)
+        } else if (chosenUpper === correctUpper) {
           correct++;
         } else {
           incorrect++;
@@ -434,9 +447,13 @@ export const PyqPracticeView: React.FC = () => {
                 {/* Render Question Content */}
                 <QuestionRenderer
                   question={currentQ}
+                  questionNumber={currentIndex + 1}
                   language={displayLanguage}
+                  selectedOption={userAnswers[currentQ.id]}
                   selectedOptionId={userAnswers[currentQ.id]}
                   onSelectOption={(optId) => handleSelectOption(currentQ.id, optId)}
+                  mode={practiceMode === 'STUDY' ? 'study' : 'interactive'}
+                  showSolution={practiceMode === 'STUDY' && Boolean(revealedSolutions[currentQ.id])}
                   showCorrectAnswer={practiceMode === 'STUDY' && Boolean(revealedSolutions[currentQ.id])}
                 />
 

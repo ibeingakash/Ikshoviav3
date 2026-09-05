@@ -61,6 +61,9 @@ import {
   extractAndParseSolutionPdf,
 } from './server/ocr.js';
 import { documentStorage } from './server/storage.js';
+import { googleDriveService } from './server/services/googleDriveService.js';
+import { resourceRepository } from './server/repositories/ResourceRepository.js';
+import { resourceIngestionService } from './server/services/resourceIngestionService.js';
 
 dotenv.config();
 
@@ -1043,48 +1046,69 @@ async function startServer() {
   });
 
   // Analytics Endpoint
-  app.get('/api/analytics', requireAuth, async (req, res) => {
-    const authUser = (req as any).user;
-    const userId = authUser.id;
-    const model = await learnerRepository.getLearnerModel(userId);
-    const userAttempts = await practiceRepository.getUserAttempts(userId);
+  app.get('/api/analytics', async (req, res) => {
+    try {
+      const authUser = await getAuthenticatedUser(req);
+      const userId = authUser?.id || (req.query.userId as string) || 'usr_demo';
+      const model = await updateLearnerModel(userId);
+      const userAttempts = await practiceRepository.getUserAttempts(userId);
+      const mockAttempts = await mockTestRepository.getUserHistory(userId);
+      const userMasteries = await learnerRepository.getUserMasteries(userId);
 
-    if (userAttempts.length < 3) {
-      return res.json({
-        model,
-        hasEnoughData: false,
-        message: 'Not enough data yet. Complete at least 3 practice questions to unlock deep analytics.',
-        subjectStats: [],
-        userMasteries: [],
-        recentAttempts: userAttempts,
+      const totalActivity = userAttempts.length + mockAttempts.length;
+
+      // Query real subjects from DB
+      const subjectsRes = await pool.query('SELECT * FROM public.subjects ORDER BY name ASC');
+      const conceptsRes = await pool.query('SELECT id, subject_id FROM public.concepts');
+
+      const conceptsBySub = new Map<string, string[]>();
+      conceptsRes.rows.forEach(r => {
+        if (!conceptsBySub.has(r.subject_id)) conceptsBySub.set(r.subject_id, []);
+        conceptsBySub.get(r.subject_id)!.push(r.id);
       });
+
+      const subjectStats = subjectsRes.rows.map(s => {
+        const cIds = new Set(conceptsBySub.get(s.id) || []);
+        const masteries = userMasteries.filter(m => cIds.has(m.conceptId));
+        const avgMastery = masteries.length > 0
+          ? Math.round(masteries.reduce((a, b) => a + b.overallMastery, 0) / masteries.length)
+          : (model.subjectMastery?.[s.id] || 50);
+        return {
+          subjectId: s.id,
+          subjectName: s.name,
+          color: s.color || '#3B82F6',
+          mastery: avgMastery,
+          conceptsCount: cIds.size,
+        };
+      });
+
+      const hasEnoughData = totalActivity > 0;
+
+      res.json({
+        model,
+        hasEnoughData,
+        message: hasEnoughData ? undefined : 'No test activity recorded yet. Take a Mock Test or solve Practice questions to view detailed performance analytics.',
+        subjectStats,
+        userMasteries,
+        recentAttempts: userAttempts.slice(0, 15),
+        recentMockAttempts: mockAttempts.slice(0, 10),
+      });
+    } catch (err: any) {
+      console.error('Analytics fetch error:', err);
+      res.status(500).json({ error: 'Failed to retrieve analytics data' });
     }
+  });
 
-    const userMasteries = await learnerRepository.getUserMasteries(userId);
-
-    const subjectStats = Array.from(db.subjects.values()).map(s => {
-      const conceptsInSub = Array.from(db.concepts.values()).filter(c => c.subjectId === s.id);
-      const conceptIds = new Set(conceptsInSub.map(c => c.id));
-      const masteries = userMasteries.filter(m => conceptIds.has(m.conceptId));
-      const avgMastery = masteries.length > 0
-        ? Math.round(masteries.reduce((a, b) => a + b.overallMastery, 0) / masteries.length)
-        : 50;
-      return {
-        subjectId: s.id,
-        subjectName: s.name,
-        color: s.color,
-        mastery: avgMastery,
-        conceptsCount: conceptsInSub.length,
-      };
-    });
-
-    res.json({
-      model,
-      hasEnoughData: true,
-      subjectStats,
-      userMasteries,
-      recentAttempts: userAttempts.slice(0, 15),
-    });
+  // Admin Mock Test Update (Display Name & Settings)
+  app.patch('/api/admin/mock-tests/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { displayName, title } = req.body;
+      const updated = await mockTestRepository.updateDisplayName(id, displayName || title);
+      res.json({ success: true, test: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // AI Tutor Endpoints
@@ -1252,8 +1276,9 @@ async function startServer() {
 
       const attempt = await mockTestRepository.startAttempt(userId, test.id);
       const questions = await mockTestRepository.getTestQuestions(test.id);
+      const answers = await mockTestRepository.getAttemptAnswers(userId, attempt.id);
 
-      res.json({ success: true, attempt, test, questions });
+      res.json({ success: true, attempt, test, questions, answers });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to start attempt' });
     }
@@ -1847,8 +1872,347 @@ async function startServer() {
     }
   });
 
-  app.get('/api/resources', (req, res) => {
-    res.json(Array.from(db.resources.values()));
+  // ==========================================
+  // GOOGLE DRIVE INTEGRATION & RESOURCE LIBRARY
+  // ==========================================
+
+  // Google OAuth 2.0 Authorization Endpoint
+  app.get('/api/auth/google', async (req, res) => {
+    try {
+      const state = (req.query.state as string) || 'admin_drive_auth';
+      const authUrl = googleDriveService.generateAuthUrl(state);
+      if (req.headers.accept?.includes('application/json') || req.query.format === 'json') {
+        return res.json({ url: authUrl });
+      }
+      return res.redirect(authUrl);
+    } catch (err: any) {
+      console.error('[OAuth Google] Error generating auth URL:', err);
+      return res.status(500).json({ error: err.message || 'Failed to initialize Google OAuth' });
+    }
+  });
+
+  // Google OAuth 2.0 Callback Endpoint
+  app.get('/api/auth/google/callback', async (req, res) => {
+    try {
+      const { code, state, error: oauthError } = req.query;
+      if (oauthError) {
+        console.error('[OAuth Google] Callback error from Google:', oauthError);
+        return res.redirect('/?section=admin-resources&error=' + encodeURIComponent(String(oauthError)));
+      }
+
+      if (!code || typeof code !== 'string') {
+        return res.status(400).send('<h3>Authorization code missing from Google response.</h3>');
+      }
+
+      const { email, folders } = await googleDriveService.handleOAuthCallback(code);
+      console.log(`[OAuth Google] Successfully connected account: ${email}`);
+
+      return res.redirect(`/?section=admin-resources&drive_connected=true&email=${encodeURIComponent(email)}`);
+    } catch (err: any) {
+      console.error('[OAuth Google] Callback failed:', err);
+      return res.status(500).send(`<h3>Failed to complete Google Drive connection</h3><p>${err.message}</p>`);
+    }
+  });
+
+  // Google Drive Connection Status
+  app.get('/api/admin/drive/status', requireAdmin, async (req, res) => {
+    try {
+      const status = await googleDriveService.getStatus();
+      return res.json(status);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Google Drive Disconnect
+  app.post('/api/admin/drive/disconnect', requireAdmin, async (req, res) => {
+    try {
+      await googleDriveService.disconnect();
+      return res.json({ success: true, message: 'Google Drive disconnected successfully' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Google Drive Ensure Folders
+  app.post('/api/admin/drive/ensure-folders', requireAdmin, async (req, res) => {
+    try {
+      const folders = await googleDriveService.ensureFolderStructure();
+      return res.json({ success: true, folders });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Learner / Public Resources List
+  app.get('/api/resources', async (req, res) => {
+    try {
+      const { subject, exam, type, search, page, limit } = req.query;
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 30));
+      const offset = (pageNum - 1) * limitNum;
+
+      // Allowed visibilities for learners (strictly excludes ADMIN_ONLY)
+      const allowedVisibilities: any[] = ['PUBLIC', 'ALL_LEARNERS', 'ENROLLED'];
+      const targetExamParam = (exam as string)?.toUpperCase();
+      if (targetExamParam === 'BPSC') {
+        allowedVisibilities.push('BPSC');
+      } else if (targetExamParam === 'UPSC' || targetExamParam === 'UPSC CSE') {
+        allowedVisibilities.push('UPSC');
+      } else {
+        allowedVisibilities.push('UPSC', 'BPSC', 'COURSE', 'BATCH');
+      }
+
+      const { resources, total } = await resourceRepository.findAll({
+        status: ['READY', 'PUBLISHED'],
+        visibility: allowedVisibilities,
+        subject: subject as string,
+        exam: exam as string,
+        resourceType: type as string,
+        search: search as string,
+        limit: limitNum,
+        offset,
+      });
+
+      // Fallback if postgres table is completely empty, populate with initial samples
+      if (resources.length === 0 && (!search || search === '')) {
+        const memResources = Array.from(db.resources.values());
+        if (memResources.length > 0) {
+          return res.json({
+            resources: memResources,
+            total: memResources.length,
+            page: 1,
+            totalPages: 1,
+          });
+        }
+      }
+
+      return res.json({
+        resources,
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      });
+    } catch (err: any) {
+      console.error('[GET /api/resources] Error:', err);
+      // Graceful fallback to memory
+      const memResources = Array.from(db.resources.values());
+      return res.json({ resources: memResources, total: memResources.length, page: 1, totalPages: 1 });
+    }
+  });
+
+  // Admin All Resources (includes drafts, processing, archived)
+  app.get('/api/admin/resources', requireAdmin, async (req, res) => {
+    try {
+      const { status, subject, exam, type, search, page, limit } = req.query;
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+      const offset = (pageNum - 1) * limitNum;
+
+      const { resources, total } = await resourceRepository.findAll({
+        status: status ? (status as any) : undefined,
+        subject: subject as string,
+        exam: exam as string,
+        resourceType: type as string,
+        search: search as string,
+        limit: limitNum,
+        offset,
+      });
+
+      return res.json({
+        resources,
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
+      });
+    } catch (err: any) {
+      console.error('[GET /api/admin/resources] Error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get Single Resource
+  app.get('/api/resources/:id', async (req, res) => {
+    try {
+      const resource = await resourceRepository.findById(req.params.id);
+      if (!resource) {
+        const mem = db.resources.get(req.params.id);
+        if (mem) return res.json(mem);
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+      return res.json(resource);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Secure In-Browser PDF Stream
+  app.get('/api/resources/:id/stream', async (req, res) => {
+    try {
+      const resource = await resourceRepository.findById(req.params.id);
+      if (!resource) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+
+      if (resource.visibility === 'ADMIN_ONLY') {
+        const authUser = (req as any).user;
+        if (!authUser || (authUser.role !== 'ADMIN' && authUser.role !== 'SUPER_ADMIN')) {
+          return res.status(403).json({ error: 'Access restricted to administrators' });
+        }
+      }
+
+      if (!resource.drive_file_id) {
+        return res.status(404).json({ error: 'Resource file is not linked to Google Drive storage' });
+      }
+
+      res.setHeader('Content-Type', resource.mime_type || 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(resource.file_name || `${resource.title}.pdf`)}"`);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+
+      const stream = await googleDriveService.downloadFileStream(resource.drive_file_id);
+      (stream as any).pipe(res);
+    } catch (err: any) {
+      console.error('[Resource Stream] Error streaming file:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || 'Failed to stream document' });
+      }
+    }
+  });
+
+  // Download PDF
+  app.get('/api/resources/:id/download', async (req, res) => {
+    try {
+      const resource = await resourceRepository.findById(req.params.id);
+      if (!resource) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+
+      if (!resource.drive_file_id) {
+        return res.status(404).json({ error: 'Resource file is not linked to Google Drive storage' });
+      }
+
+      res.setHeader('Content-Type', resource.mime_type || 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(resource.file_name || `${resource.title}.pdf`)}"`);
+
+      const stream = await googleDriveService.downloadFileStream(resource.drive_file_id);
+      (stream as any).pipe(res);
+    } catch (err: any) {
+      console.error('[Resource Download] Error downloading file:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || 'Failed to download document' });
+      }
+    }
+  });
+
+  // Admin Upload PDF Resource (Resumable Drive upload + Text extraction + RAG index)
+  app.post('/api/admin/resources/upload', requireAdmin, async (req, res) => {
+    try {
+      const {
+        pdfBase64,
+        title,
+        author,
+        description,
+        tags,
+        resourceType,
+        subject,
+        topic,
+        exam,
+        visibility,
+        autoPublish,
+        fileName,
+      } = req.body;
+
+      if (!pdfBase64) {
+        return res.status(400).json({ error: 'pdfBase64 payload is required for upload.' });
+      }
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: 'Resource title is required.' });
+      }
+
+      const driveStatus = await googleDriveService.getStatus();
+      if (!driveStatus.connected) {
+        return res.status(400).json({
+          error: 'Google Drive is not connected. Please connect Google Drive first in Admin Studio.',
+        });
+      }
+
+      const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+
+      const authUser = (req as any).user;
+      const uploadedBy = authUser?.email || authUser?.name || 'Admin';
+
+      let fullDescription = description?.trim() || '';
+      if (Array.isArray(tags) && tags.length > 0) {
+        const tagLine = `Tags: ${tags.join(', ')}`;
+        if (!fullDescription.includes(tagLine)) {
+          fullDescription = fullDescription ? `${fullDescription}\n${tagLine}` : tagLine;
+        }
+      }
+
+      const resource = await resourceIngestionService.ingestResource({
+        title: title.trim(),
+        author: author?.trim() || 'IKSHOVIA Faculty',
+        description: fullDescription,
+        resourceType: resourceType || 'BOOK',
+        subject: subject || 'General Studies',
+        topic: topic?.trim() || '',
+        exam: exam || 'ALL',
+        visibility: visibility || 'PUBLIC',
+        autoPublish: Boolean(autoPublish),
+        fileName: fileName || `${title.replace(/\s+/g, '_')}.pdf`,
+        buffer,
+        uploadedBy,
+      });
+
+      return res.status(201).json({
+        success: true,
+        resource,
+        message: 'Resource uploaded to Google Drive and indexed for AI Tutor successfully.',
+      });
+    } catch (err: any) {
+      console.error('[Resource Upload] Failed:', err);
+      return res.status(500).json({
+        error: err.message || 'Failed to process and upload resource',
+      });
+    }
+  });
+
+  // Admin Update Resource
+  app.patch('/api/admin/resources/:id', requireAdmin, async (req, res) => {
+    try {
+      const updated = await resourceRepository.update(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+      return res.json({ success: true, resource: updated });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Delete Resource
+  app.delete('/api/admin/resources/:id', requireAdmin, async (req, res) => {
+    try {
+      const resource = await resourceRepository.findById(req.params.id);
+      if (!resource) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+
+      if (resource.drive_file_id) {
+        try {
+          await googleDriveService.deleteFile(resource.drive_file_id);
+        } catch (dErr) {
+          console.warn('[Resource Delete] Could not delete file on Drive:', dErr);
+        }
+      }
+
+      await pool.query('DELETE FROM public.data_resources WHERE id = $1', [req.params.id]).catch(() => {});
+      await resourceRepository.delete(req.params.id);
+      return res.json({ success: true, message: 'Resource deleted successfully' });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   // Goals Endpoints
@@ -4214,6 +4578,218 @@ async function startServer() {
 
   app.get('/api/superadmin/audit-logs', requireSuperAdmin, (req, res) => {
     res.json(db.auditLogs);
+  });
+
+  // =============================================================
+  // NATIVE MOBILE APP (ANDROID) RELEASE & EARLY ACCESS FOUNDATION
+  // =============================================================
+
+  // Redirect /app -> /download
+  app.get(['/app', '/app/'], (req, res) => {
+    res.redirect(301, '/download');
+  });
+
+  // 1. Public Early Access Subscription Endpoint
+  app.post('/api/app/early-access', async (req, res) => {
+    try {
+      const { email, platform = 'android' } = req.body || {};
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ error: 'Valid email address is required.' });
+      }
+
+      const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail) || cleanEmail.length > 255) {
+        return res.status(400).json({ error: 'Please enter a valid email address.' });
+      }
+
+      const cleanPlatform = String(platform).toLowerCase() === 'ios' ? 'ios' : 'android';
+      const id = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
+
+      const query = `
+        INSERT INTO public.app_early_access_subscribers (id, email, platform, ip_address, created_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        ON CONFLICT (email, platform) DO NOTHING
+        RETURNING id, created_at;
+      `;
+      const result = await pool.query(query, [id, cleanEmail, cleanPlatform, ip]);
+
+      if (result.rowCount === 0) {
+        return res.json({
+          success: true,
+          alreadySubscribed: true,
+          message: "You are already registered on our priority early access list! We will notify you the moment the Android app is ready."
+        });
+      }
+
+      return res.json({
+        success: true,
+        alreadySubscribed: false,
+        message: "Thank you for joining! You are on our priority waitlist to receive the IKSHOVIA Android App invitation upon launch."
+      });
+    } catch (err: any) {
+      console.error('[EarlyAccess API Error]', err);
+      return res.status(500).json({ error: 'Failed to record subscription. Please try again later.' });
+    }
+  });
+
+  // 2. Truthful Latest Version Check Endpoint
+  app.get('/api/app/version/latest', async (req, res) => {
+    try {
+      const platform = (req.query.platform as string) || 'android';
+      const currentVersionCode = parseInt(req.query.currentVersionCode as string, 10);
+
+      // Strictly return only PUBLISHED releases (DRAFT/DEPRECATED are never exposed)
+      const query = `
+        SELECT id, platform, version_name, version_code, min_supported_version_code,
+               apk_url, sha256_checksum, file_size_bytes, release_notes, is_mandatory, status, created_at
+        FROM public.app_releases
+        WHERE platform = $1 AND status = 'PUBLISHED'
+        ORDER BY version_code DESC
+        LIMIT 1;
+      `;
+      const result = await pool.query(query, [platform]);
+
+      if (result.rows.length === 0) {
+        return res.json({
+          status: 'NO_RELEASE_AVAILABLE',
+          message: 'No published release available for this platform.',
+          platform,
+          release: null
+        });
+      }
+
+      const latest = result.rows[0];
+      let updateStatus = 'CURRENT';
+
+      if (!isNaN(currentVersionCode)) {
+        if (currentVersionCode < latest.min_supported_version_code) {
+          updateStatus = 'MANDATORY_UPDATE';
+        } else if (currentVersionCode < latest.version_code) {
+          updateStatus = latest.is_mandatory ? 'MANDATORY_UPDATE' : 'UPDATE_AVAILABLE';
+        } else {
+          updateStatus = 'CURRENT';
+        }
+      } else {
+        updateStatus = 'AVAILABLE';
+      }
+
+      return res.json({
+        status: updateStatus,
+        platform,
+        release: {
+          id: latest.id,
+          platform: latest.platform,
+          versionName: latest.version_name,
+          versionCode: latest.version_code,
+          minSupportedVersionCode: latest.min_supported_version_code,
+          apkUrl: latest.apk_url,
+          sha256Checksum: latest.sha256_checksum,
+          fileSizeBytes: Number(latest.file_size_bytes),
+          releaseNotes: latest.release_notes,
+          isMandatory: latest.is_mandatory,
+          createdAt: latest.created_at
+        }
+      });
+    } catch (err: any) {
+      console.error('[AppVersion API Error]', err);
+      return res.status(500).json({ error: 'Failed to retrieve application release information.' });
+    }
+  });
+
+  // 3. Admin Protected: View Early Access Subscribers
+  app.get('/api/admin/app/early-access-subscribers', requireAdmin, async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT id, email, platform, created_at
+        FROM public.app_early_access_subscribers
+        ORDER BY created_at DESC
+        LIMIT 500;
+      `);
+      res.json({ subscribers: result.rows, total: result.rowCount });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to retrieve subscribers' });
+    }
+  });
+
+  // 4. Admin Protected: List All App Releases (including DRAFTs)
+  app.get('/api/admin/app/releases', requireAdmin, async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT * FROM public.app_releases
+        ORDER BY version_code DESC;
+      `);
+      res.json({ releases: result.rows });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to retrieve releases' });
+    }
+  });
+
+  // 5. SuperAdmin Protected: Publish / Manage App Release
+  app.post('/api/admin/app/releases', requireSuperAdmin, async (req, res) => {
+    const actor = (req as any).user;
+    const {
+      platform = 'android',
+      versionName,
+      versionCode,
+      minSupportedVersionCode,
+      apkUrl,
+      sha256Checksum,
+      fileSizeBytes,
+      releaseNotes,
+      isMandatory = false,
+      status = 'DRAFT'
+    } = req.body || {};
+
+    if (!versionName || !versionCode || !apkUrl || !sha256Checksum) {
+      return res.status(400).json({ error: 'versionName, versionCode, apkUrl, and sha256Checksum are required' });
+    }
+
+    try {
+      const id = `rel_${platform}_${versionCode}_${Date.now()}`;
+      const query = `
+        INSERT INTO public.app_releases (
+          id, platform, version_name, version_code, min_supported_version_code,
+          apk_url, sha256_checksum, file_size_bytes, release_notes, is_mandatory, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          version_name = EXCLUDED.version_name,
+          min_supported_version_code = EXCLUDED.min_supported_version_code,
+          apk_url = EXCLUDED.apk_url,
+          sha256_checksum = EXCLUDED.sha256_checksum,
+          file_size_bytes = EXCLUDED.file_size_bytes,
+          release_notes = EXCLUDED.release_notes,
+          is_mandatory = EXCLUDED.is_mandatory,
+          status = EXCLUDED.status
+        RETURNING *;
+      `;
+      const result = await pool.query(query, [
+        id,
+        platform,
+        versionName,
+        Number(versionCode),
+        Number(minSupportedVersionCode || versionCode),
+        apkUrl,
+        sha256Checksum,
+        Number(fileSizeBytes || 0),
+        releaseNotes || null,
+        Boolean(isMandatory),
+        status
+      ]);
+
+      logAudit(actor.id, actor.role, 'APP_RELEASE_UPSERT', 'RELEASE', id, {
+        platform,
+        versionName,
+        versionCode,
+        status
+      });
+
+      res.json({ success: true, release: result.rows[0] });
+    } catch (err: any) {
+      console.error('[AppRelease Upsert Error]', err);
+      res.status(500).json({ error: err.message || 'Failed to save app release' });
+    }
   });
 
   // -------------------------------------------------------------

@@ -418,6 +418,8 @@ export interface RevisionItem {
 export interface MockTest {
   id: string;
   title: string;
+  displayName?: string;
+  originalSourceName?: string;
   type: 'QUICK' | 'SUBJECT' | 'FULL';
   subjectIds: string[];
   durationMinutes: number;
@@ -620,17 +622,40 @@ export interface CurrentAffairArticle {
   questions?: Question[];
 }
 
+export type ResourceType = 'BOOK' | 'OFFICIAL_DOCUMENT' | 'NOTES' | 'SYLLABUS' | 'PREVIOUS_YEAR_PAPER' | 'NOTE' | 'PDF' | 'ARTICLE' | 'VIDEO' | 'PYQ' | 'OFFICIAL' | 'CURRENT_AFFAIRS';
+export type ResourceStatus = 'DRAFT' | 'UPLOADING' | 'PROCESSING' | 'READY' | 'PUBLISHED' | 'ARCHIVED' | 'ERROR';
+export type ResourceVisibility = 'PUBLIC' | 'ALL_LEARNERS' | 'UPSC' | 'BPSC' | 'COURSE' | 'BATCH' | 'ENROLLED' | 'ADMIN_ONLY';
+
 export interface LearningResource {
   id: string;
   title: string;
-  type: 'NOTE' | 'PDF' | 'BOOK' | 'ARTICLE' | 'VIDEO' | 'PYQ';
+  author?: string;
+  description?: string;
+  resource_type?: ResourceType;
+  type: ResourceType;
+  subject?: string;
   subjectId: string;
+  topic?: string;
+  tags?: string[];
+  tags_str?: string;
   conceptId?: string;
+  exam?: string;
+  examTag?: string;
+  drive_file_id?: string;
+  drive_folder_id?: string;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  page_count?: number;
+  status?: ResourceStatus;
+  visibility?: ResourceVisibility;
+  uploaded_by?: string;
   url: string;
   summary: string;
   readTimeMinutes: number;
-  examTag?: string;
   isBookmarked?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StudyGoal {

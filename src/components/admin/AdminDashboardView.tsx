@@ -16,7 +16,9 @@ import {
   Plus,
   BookOpen,
   Zap,
-  GraduationCap
+  GraduationCap,
+  CreditCard,
+  Tag
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { useLearner } from '../../context/LearnerContext.js';
@@ -153,7 +155,7 @@ export const AdminDashboardView: React.FC = () => {
       </div>
 
       {/* Quick Launchpad & Operational Hubs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {/* Hub 1: Question & Content Operations */}
         <div className="bg-white border border-[#EAE6DF] p-6 rounded-2xl space-y-4 shadow-2xs">
           <div className="flex items-center gap-2">
@@ -258,6 +260,45 @@ export const AdminDashboardView: React.FC = () => {
               className="w-full p-2.5 bg-[#FCFBF9] hover:bg-emerald-50 border border-stone-200 rounded-xl text-left text-xs font-bold text-stone-800 flex items-center justify-between transition-all cursor-pointer"
             >
               <span>Super Admin Security Console</span>
+              <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Hub 4: Commercial, Entitlements & Coupons */}
+        <div className="bg-white border border-[#EAE6DF] p-6 rounded-2xl space-y-4 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-amber-700" />
+            <h2 className="text-sm font-serif-editorial font-bold text-stone-900">
+              Commercial & Access
+            </h2>
+          </div>
+          <p className="text-xs text-stone-500 leading-relaxed">
+            Monitor revenue analytics, configure coupons, and oversee subscriber lifecycle access.
+          </p>
+
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={() => setActiveSection('admin-commercial')}
+              className="w-full p-2.5 bg-[#FCFBF9] hover:bg-amber-50 border border-stone-200 rounded-xl text-left text-xs font-bold text-stone-800 flex items-center justify-between transition-all cursor-pointer"
+            >
+              <span>Commercial & Revenue Hub</span>
+              <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
+            </button>
+
+            <button
+              onClick={() => setActiveSection('admin-coupons')}
+              className="w-full p-2.5 bg-[#FCFBF9] hover:bg-amber-50 border border-stone-200 rounded-xl text-left text-xs font-bold text-stone-800 flex items-center justify-between transition-all cursor-pointer"
+            >
+              <span>Coupons & Offers Manager</span>
+              <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
+            </button>
+
+            <button
+              onClick={() => setActiveSection('admin-entitlements')}
+              className="w-full p-2.5 bg-[#FCFBF9] hover:bg-amber-50 border border-stone-200 rounded-xl text-left text-xs font-bold text-stone-800 flex items-center justify-between transition-all cursor-pointer"
+            >
+              <span>Course Entitlements & Registry</span>
               <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
             </button>
           </div>

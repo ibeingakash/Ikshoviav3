@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Bell, Sparkles, LogOut, ChevronDown } from 'lucide-react';
+import { Search, Bell, Sparkles, LogOut, ChevronDown, Smartphone } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
 import { IKLogo } from '../common/IKLogo.js';
@@ -46,7 +46,7 @@ export const Header: React.FC = () => {
           {/* Mobile Search Button */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="sm:hidden p-2 rounded-xl bg-white text-stone-700 border border-[#EAE6DF] cursor-pointer flex items-center justify-center shadow-2xs"
+            className="sm:hidden min-w-[40px] min-h-[40px] p-2 rounded-xl bg-white text-stone-700 border border-[#EAE6DF] cursor-pointer flex items-center justify-center shadow-2xs"
             aria-label="Search"
           >
             <Search className="w-4 h-4 text-amber-700" />
@@ -55,18 +55,30 @@ export const Header: React.FC = () => {
           {/* AI Assistant Quick Pill */}
           <button
             onClick={() => setActiveSection('ai-tutor')}
-            className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 text-amber-900 text-xs font-semibold px-3 py-1.5 rounded-full transition-all shadow-2xs cursor-pointer group"
+            className="inline-flex items-center gap-1.5 min-h-[40px] bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 text-amber-900 text-xs font-semibold px-3 py-1.5 rounded-full transition-all shadow-2xs cursor-pointer group"
             title="Open AI Assistant"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-600 group-hover:rotate-12 transition-transform" />
-            <span className="tracking-tight">AI Assistant</span>
+            <span className="tracking-tight hidden xs:inline">AI Assistant</span>
+            <span className="tracking-tight xs:hidden">AI</span>
+          </button>
+
+          {/* Download Android App Button */}
+          <button
+            onClick={() => setActiveSection('download')}
+            className="hidden md:inline-flex items-center gap-1.5 min-h-[40px] bg-white hover:bg-stone-100 border border-[#EAE6DF] text-stone-700 hover:text-stone-900 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-all shadow-2xs cursor-pointer"
+            title="IKSHOVIA Android App"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-stone-600" />
+            <span className="tracking-tight">Get App</span>
           </button>
 
           {/* Notifications Button */}
           <button
             onClick={() => setActiveSection('dashboard')}
-            className="relative p-2 rounded-full bg-white hover:bg-stone-100 text-stone-700 border border-[#EAE6DF] transition-colors cursor-pointer shrink-0 shadow-2xs flex items-center justify-center"
+            className="relative min-w-[40px] min-h-[40px] p-2 rounded-full bg-white hover:bg-stone-100 text-stone-700 border border-[#EAE6DF] transition-colors cursor-pointer shrink-0 shadow-2xs flex items-center justify-center"
             title="Notifications"
+            aria-label="Notifications"
           >
             <Bell className="w-4 h-4 text-stone-600" />
             {unreadCount > 0 && (
@@ -80,7 +92,7 @@ export const Header: React.FC = () => {
           <div className="flex items-center gap-1.5 border-l border-[#EAE6DF] pl-2 sm:pl-3 shrink-0">
             <div
               onClick={() => setActiveSection('profile')}
-              className="flex items-center gap-2 cursor-pointer group p-1 rounded-xl hover:bg-stone-100/70 transition-all"
+              className="flex items-center gap-2 cursor-pointer group min-h-[40px] p-1 rounded-xl hover:bg-stone-100/70 transition-all"
             >
               {user?.avatarUrl ? (
                 <img
@@ -98,8 +110,9 @@ export const Header: React.FC = () => {
 
             <button
               onClick={logout}
-              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
               title="Log Out"
+              aria-label="Log Out"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>

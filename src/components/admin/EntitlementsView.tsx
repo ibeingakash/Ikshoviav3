@@ -34,9 +34,17 @@ export const EntitlementsView: React.FC = () => {
   const [grantUserId, setGrantUserId] = useState('');
   const [grantCourseId, setGrantCourseId] = useState('');
   const [grantDurationDays, setGrantDurationDays] = useState(90);
+  const [grantStartDate, setGrantStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [grantSource, setGrantSource] = useState('ADMIN_GRANT');
   const [grantNotes, setGrantNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Extend Modal
+  const [extendModalOpen, setExtendModalOpen] = useState(false);
+  const [selectedEntitlementForExtend, setSelectedEntitlementForExtend] = useState<Entitlement | null>(null);
+  const [additionalDays, setAdditionalDays] = useState(30);
+  const [extendNotes, setExtendNotes] = useState('');
+  const [isExtending, setIsExtending] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -75,6 +83,7 @@ export const EntitlementsView: React.FC = () => {
         userId: grantUserId,
         courseId: grantCourseId,
         durationDays: Number(grantDurationDays),
+        startDate: grantStartDate ? new Date(grantStartDate).toISOString() : undefined,
         source: grantSource,
         notes: grantNotes || 'Manual grant from Access Registry',
       });
@@ -86,6 +95,37 @@ export const EntitlementsView: React.FC = () => {
       setNotification({ type: 'error', message: err.message || 'Failed to grant entitlement' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenExtendModal = (ent: Entitlement) => {
+    setSelectedEntitlementForExtend(ent);
+    setAdditionalDays(30);
+    setExtendNotes('');
+    setExtendModalOpen(true);
+  };
+
+  const handleExtendSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEntitlementForExtend) return;
+
+    setIsExtending(true);
+    try {
+      const updated = await api.extendEntitlement(
+        selectedEntitlementForExtend.id,
+        Number(additionalDays),
+        extendNotes || 'Extended via Access Registry'
+      );
+      setNotification({
+        type: 'success',
+        message: `Entitlement extended by ${additionalDays} days (New expiry: ${new Date(updated.expiresAt).toLocaleDateString()}).`,
+      });
+      setExtendModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Failed to extend entitlement' });
+    } finally {
+      setIsExtending(false);
     }
   };
 
@@ -297,9 +337,16 @@ export const EntitlementsView: React.FC = () => {
                       <td className="py-3 px-3">
                         {isActive ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              ACTIVE ({daysRemaining}d left)
-                            </span>
+                            {daysRemaining <= 7 ? (
+                              <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-amber-700" />
+                                <span>EXPIRING IN {daysRemaining}d</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                ACTIVE ({daysRemaining}d left)
+                              </span>
+                            )}
                           </div>
                         ) : isRevoked ? (
                           <span className="text-[10px] font-mono font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
@@ -327,14 +374,22 @@ export const EntitlementsView: React.FC = () => {
                       </td>
 
                       <td className="py-3 px-4 text-right">
-                        {isActive && (
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => handleRevoke(ent.id, ent.courseName)}
-                            className="px-2.5 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg cursor-pointer transition-colors"
+                            onClick={() => handleOpenExtendModal(ent)}
+                            className="px-2.5 py-1 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer transition-colors"
                           >
-                            Revoke Access
+                            Extend
                           </button>
-                        )}
+                          {isActive && (
+                            <button
+                              onClick={() => handleRevoke(ent.id, ent.courseName)}
+                              className="px-2.5 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg cursor-pointer transition-colors"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -403,7 +458,20 @@ export const EntitlementsView: React.FC = () => {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-mono font-bold text-stone-700 uppercase mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={grantStartDate}
+                    onChange={e => setGrantStartDate(e.target.value)}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:border-amber-600"
+                    required
+                  />
+                </div>
+
                 <div>
                   <label className="block text-[11px] font-mono font-bold text-stone-700 uppercase mb-1">
                     Duration (Days)
@@ -463,6 +531,108 @@ export const EntitlementsView: React.FC = () => {
                 className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'Granting...' : 'Confirm Grant'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL: EXTEND ACCESS VALIDITY */}
+      {extendModalOpen && selectedEntitlementForExtend && (
+        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <form
+            onSubmit={handleExtendSubmit}
+            className="bg-white border border-stone-200 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+              <h2 className="text-base font-bold font-serif-editorial text-stone-900 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-700" />
+                <span>Extend Entitlement Access</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setExtendModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl space-y-1 text-xs">
+              <div className="font-bold text-stone-900">
+                {selectedEntitlementForExtend.courseName || 'Course'}
+              </div>
+              <div className="text-stone-500 text-[11px]">
+                User ID: <span className="font-mono">{selectedEntitlementForExtend.userId}</span>
+              </div>
+              <div className="text-stone-600 text-[11px] pt-1">
+                Current Expiry:{' '}
+                <span className="font-mono font-bold text-stone-800">
+                  {new Date(selectedEntitlementForExtend.expiresAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-mono font-bold text-stone-700 uppercase mb-1">
+                  Additional Days to Grant
+                </label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[15, 30, 60, 90].map(days => (
+                    <button
+                      key={days}
+                      type="button"
+                      onClick={() => setAdditionalDays(days)}
+                      className={`py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition-all ${
+                        additionalDays === days
+                          ? 'bg-amber-100 border-amber-400 text-amber-950 font-bold'
+                          : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                      }`}
+                    >
+                      +{days}d
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={additionalDays}
+                  onChange={e => setAdditionalDays(Number(e.target.value))}
+                  min={1}
+                  max={730}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold focus:outline-none focus:border-amber-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono font-bold text-stone-700 uppercase mb-1">
+                  Reason / Notes for Extension
+                </label>
+                <input
+                  type="text"
+                  value={extendNotes}
+                  onChange={e => setExtendNotes(e.target.value)}
+                  placeholder="e.g. Exam date postponed / Merit extension"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 focus:outline-none focus:border-amber-600"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-stone-200 pt-3">
+              <button
+                type="button"
+                onClick={() => setExtendModalOpen(false)}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isExtending}
+                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
+              >
+                {isExtending ? 'Extending...' : 'Confirm Extension'}
               </button>
             </div>
           </form>

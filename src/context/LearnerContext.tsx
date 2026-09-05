@@ -27,6 +27,7 @@ export type NavigationSection =
   | 'goals'
   | 'profile'
   | 'settings'
+  | 'download'
   | 'admin-dashboard'
   | 'admin-commercial'
   | 'admin-coupons'
@@ -43,6 +44,7 @@ export type NavigationSection =
   | 'admin-content-import'
   | 'admin-current-affairs'
   | 'admin-import-logs'
+  | 'admin-resources'
   | 'admin-settings'
   | 'courses-catalog'
   | 'learner-purchases'
@@ -78,17 +80,20 @@ interface LearnerContextType {
   askTutorWithContext: (userText: string, ctx?: AiContextData, quickAction?: string) => void;
   refreshLearnerData: () => Promise<void>;
   navigateToConcept: (conceptId: string) => void;
+  navigateBack: () => boolean;
 }
 
 const LearnerContext = createContext<LearnerContextType | undefined>(undefined);
 
 export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [activeSection, setActiveSection] = useState<NavigationSection>(() => {
+  const initialSection: NavigationSection = (() => {
     if (user?.role === 'SUPER_ADMIN') return 'super-admin-dashboard';
     if (user?.role === 'ADMIN') return 'admin-dashboard';
     return 'dashboard';
-  });
+  })();
+  const [activeSection, setActiveSectionState] = useState<NavigationSection>(initialSection);
+  const navHistoryRef = React.useRef<NavigationSection[]>([]);
   const [appTheme, setAppTheme] = useState<AppTheme>('upsc-parchment');
   const [learnerModel, setLearnerModel] = useState<LearnerModel | null>(null);
   const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
@@ -173,6 +178,34 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const setActiveSection = (nextSection: NavigationSection) => {
+    setActiveSectionState(current => {
+      if (current !== nextSection) {
+        navHistoryRef.current.push(current);
+        if (navHistoryRef.current.length > 20) {
+          navHistoryRef.current.shift();
+        }
+      }
+      return nextSection;
+    });
+  };
+
+  const navigateBack = (): boolean => {
+    if (navHistoryRef.current.length > 0) {
+      const prev = navHistoryRef.current.pop();
+      if (prev && prev !== activeSection) {
+        setActiveSectionState(prev);
+        return true;
+      }
+    }
+    // If not at default root, go to dashboard
+    if (activeSection !== 'dashboard') {
+      setActiveSectionState('dashboard');
+      return true;
+    }
+    return false;
+  };
+
   const navigateToConcept = (conceptId: string) => {
     setSelectedConceptId(conceptId);
     setActiveSection('learn');
@@ -210,6 +243,7 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         askTutorWithContext,
         refreshLearnerData,
         navigateToConcept,
+        navigateBack,
       }}
     >
       {children}

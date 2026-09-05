@@ -111,8 +111,107 @@ export async function recordQuestionAttempt(
 export async function updateLearnerModel(userId: string, client?: PoolClient): Promise<LearnerModel> {
   const model = await learnerRepository.getLearnerModel(userId, client);
   const userMasteryList = await learnerRepository.getUserMasteries(userId, client);
+  const executor = client || pool;
+
+  // 1. Fetch practice and mock question metrics
+  const qAttemptsRes = await executor.query(`
+    SELECT 
+      COUNT(*) AS total_count,
+      COUNT(*) FILTER (WHERE is_correct = true) AS correct_count,
+      AVG(time_spent_seconds) AS avg_time,
+      AVG(confidence_rating) AS avg_conf
+    FROM public.question_attempts
+    WHERE user_id = $1;
+  `, [userId]);
+
+  const mockAttemptsRes = await executor.query(`
+    SELECT 
+      COUNT(*) AS mock_count,
+      AVG(score) AS avg_score,
+      AVG(accuracy) AS avg_accuracy,
+      SUM(time_taken_seconds) AS total_mock_time
+    FROM public.mock_attempts
+    WHERE user_id = $1 AND status = 'SUBMITTED';
+  `, [userId]);
+
+  const totalQA = parseInt(qAttemptsRes.rows[0]?.total_count || '0', 10);
+  const correctQA = parseInt(qAttemptsRes.rows[0]?.correct_count || '0', 10);
+  const totalMocks = parseInt(mockAttemptsRes.rows[0]?.mock_count || '0', 10);
+  const avgMockAcc = parseFloat(mockAttemptsRes.rows[0]?.avg_accuracy || '0');
+
+  (model as any).totalQuestionsAttempted = totalQA;
+  (model as any).totalAttempts = totalQA;
+  (model as any).accuracyRate = totalQA > 0
+    ? Math.round((correctQA / totalQA) * 100)
+    : (totalMocks > 0 ? Math.round(avgMockAcc) : 0);
+  (model as any).avgTimePerQuestionSeconds = Math.round(parseFloat(qAttemptsRes.rows[0]?.avg_time || '45'));
+  (model as any).mockTestsCompletedCount = totalMocks;
+
+  // 2. Fetch mistake breakdown
+  const mistakesRes = await executor.query(`
+    SELECT mistake_category, COUNT(*) as cnt
+    FROM public.question_attempts
+    WHERE user_id = $1 AND mistake_category IS NOT NULL
+    GROUP BY mistake_category;
+  `, [userId]);
+
+  const mistakeMap: Record<string, number> = {
+    CONCEPT_GAP: 0,
+    RECALL_FAILURE: 0,
+    CONCEPT_CONFUSION: 0,
+    MISINTERPRETATION: 0,
+    CARELESS_ERROR: 0,
+    TIME_PRESSURE: 0,
+  };
+  mistakesRes.rows.forEach(r => {
+    if (r.mistake_category && mistakeMap[r.mistake_category] !== undefined) {
+      mistakeMap[r.mistake_category] = parseInt(r.cnt, 10);
+    }
+  });
+  model.mistakeBreakdown = mistakeMap as any;
+
+  // 3. Compute Streak from activity dates
+  const datesRes = await executor.query(`
+    SELECT DISTINCT DATE(timestamp) as act_date
+    FROM public.question_attempts
+    WHERE user_id = $1
+    UNION
+    SELECT DISTINCT DATE(completed_at) as act_date
+    FROM public.mock_attempts
+    WHERE user_id = $1 AND completed_at IS NOT NULL
+    ORDER BY act_date DESC;
+  `, [userId]);
+
+  let currentStreak = 0;
+  if (datesRes.rows.length > 0) {
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const firstDateObj = datesRes.rows[0].act_date;
+    const mostRecent = firstDateObj instanceof Date ? firstDateObj.toISOString().split('T')[0] : String(firstDateObj);
+
+    if (mostRecent === today || mostRecent === yesterday) {
+      currentStreak = 1;
+      let prevDate = new Date(mostRecent);
+      for (let i = 1; i < datesRes.rows.length; i++) {
+        const dObj = datesRes.rows[i].act_date;
+        const dStr = dObj instanceof Date ? dObj.toISOString().split('T')[0] : String(dObj);
+        const curDate = new Date(dStr);
+        const diffDays = Math.round((prevDate.getTime() - curDate.getTime()) / (1000 * 3600 * 24));
+        if (diffDays === 1) {
+          currentStreak++;
+          prevDate = curDate;
+        } else {
+          break;
+        }
+      }
+    }
+  }
+  model.currentStreak = Math.max(model.currentStreak || 0, currentStreak);
+  model.highestStreak = Math.max(model.highestStreak || 0, model.currentStreak);
+  model.activeDaysCount = datesRes.rows.length;
 
   if (userMasteryList.length === 0) {
+    model.overallScore = (model as any).accuracyRate || 0;
     model.lastUpdated = new Date().toISOString();
     return await learnerRepository.saveLearnerModel(model, client);
   }
@@ -126,7 +225,6 @@ export async function updateLearnerModel(userId: string, client?: PoolClient): P
 
   const subjectSums: Record<string, { sum: number; count: number }> = {};
 
-  const executor = client || pool;
   const conceptIds = userMasteryList.map(m => m.conceptId);
   const conceptsRes = await executor.query(
     'SELECT id, subject_id FROM public.concepts WHERE id = ANY($1)',

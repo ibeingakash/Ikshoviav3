@@ -682,6 +682,8 @@ export class MockTestRepository {
     return {
       id: row.id,
       title: row.title,
+      displayName: row.display_name || undefined,
+      originalSourceName: row.original_source_name || undefined,
       type: row.type || 'QUICK',
       sourceType: row.source_type || 'IKSHOVIA_CREATED',
       subjectIds,
@@ -695,6 +697,21 @@ export class MockTestRepository {
       deletedBy: row.deleted_by || undefined,
       createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     };
+  }
+
+  async updateDisplayName(testId: string, displayName: string): Promise<MockTest> {
+    await this.ensureSchema();
+    const cleanName = displayName ? displayName.trim() : '';
+    const res = await pool.query(`
+      UPDATE public.mock_tests
+      SET display_name = $1, title = COALESCE(NULLIF($1, ''), title)
+      WHERE id = $2
+      RETURNING *;
+    `, [cleanName, testId]);
+    if (res.rows.length === 0) {
+      throw new Error(`Mock test with id ${testId} not found`);
+    }
+    return this.mapRowToMockTest(res.rows[0]);
   }
 
   private mapRowToMockAttempt(row: any): MockAttempt {
@@ -733,12 +750,32 @@ export class MockTestRepository {
       ? row.options
       : (typeof row.options === 'string' ? JSON.parse(row.options) : undefined);
 
+    const matchData = row.match_data && typeof row.match_data === 'object' && (row.match_data.leftColumn || row.match_data.listI)
+      ? row.match_data
+      : (typeof row.match_data === 'string' ? JSON.parse(row.match_data) : undefined);
+    const matchData_hi = row.match_data_hi && typeof row.match_data_hi === 'object'
+      ? row.match_data_hi
+      : (typeof row.match_data_hi === 'string' ? JSON.parse(row.match_data_hi) : undefined);
+    const statements = Array.isArray(row.statements)
+      ? row.statements
+      : (typeof row.statements === 'string' ? JSON.parse(row.statements) : undefined);
+    const statements_hi = Array.isArray(row.statements_hi)
+      ? row.statements_hi
+      : (typeof row.statements_hi === 'string' ? JSON.parse(row.statements_hi) : undefined);
+
+    const questionType = row.question_type || (matchData ? 'MATCH_FOLLOWING' : row.type);
+
     return {
       id: row.id,
       subjectId: row.subject_id,
       topicId: row.topic_id,
       conceptId: row.concept_id,
       type: row.type,
+      questionType,
+      statements,
+      statements_hi,
+      matchData,
+      matchData_hi,
       question: row.question,
       options,
       correctAnswer: row.correct_answer,
@@ -888,11 +925,12 @@ export class MockTestRepository {
         const userAns = answerMap.get(q.id);
         const optionsList = q.options || [];
         const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
-        const isOptENotAttempted = optE && (
-          optE.text.toLowerCase().includes('not attempted') ||
-          optE.text.toLowerCase().includes('अनुत्तरित') ||
-          optE.text.toLowerCase().includes('unattempted')
-        );
+        const optEText = typeof optE?.text === 'string' ? optE.text : (optE?.text ? JSON.stringify(optE.text) : '');
+        const isOptENotAttempted = Boolean(optE && (
+          optEText.toLowerCase().includes('not attempted') ||
+          optEText.toLowerCase().includes('अनुत्तरित') ||
+          optEText.toLowerCase().includes('unattempted')
+        ));
 
         if (userAns !== undefined && userAns !== null && userAns !== '') {
           const userAnsUpper = String(userAns).trim().toUpperCase();
@@ -933,12 +971,34 @@ export class MockTestRepository {
                 await recordQuestionAttempt(userId, q.conceptId, false, 45, 3, 'CONCEPT_GAP', client);
               }
             }
+
+            // Sync with question_attempts table for unified learner analytics
+            const mistakeCat = isCorrect ? undefined : (mistakeSummary.CONCEPT_CONFUSION >= mistakeSummary.RECALL_FAILURE ? 'CONCEPT_CONFUSION' : 'RECALL_FAILURE');
+            await client.query(`
+              INSERT INTO public.question_attempts (
+                id, user_id, question_id, concept_id, user_answer, is_correct, time_spent_seconds, confidence_rating, mistake_category, timestamp
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+              ON CONFLICT (id) DO UPDATE SET
+                user_answer = EXCLUDED.user_answer,
+                is_correct = EXCLUDED.is_correct,
+                time_spent_seconds = EXCLUDED.time_spent_seconds;
+            `, [
+              `qa_${attemptId}_${q.id}`,
+              userId,
+              q.id,
+              q.conceptId || 'c_art32',
+              userAnsUpper,
+              isCorrect,
+              45,
+              isCorrect ? 4 : 2,
+              mistakeCat || null
+            ]);
           }
         }
       }
 
       score = Math.max(0, Math.round(score * 10) / 10);
-      const accuracy = totalQCount > 0 ? Math.round((correctCount / totalQCount) * 100) : 0;
+      const accuracy = attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0;
 
       const startedAtMs = row.started_at ? new Date(row.started_at).getTime() : Date.now();
       const calculatedTimeTaken = Math.round((Date.now() - startedAtMs) / 1000);

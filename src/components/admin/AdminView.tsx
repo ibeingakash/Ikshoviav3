@@ -15,9 +15,11 @@ import {
   RefreshCw,
   TrendingUp,
   BarChart2,
+  FolderArchive,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
+import { AdminResourceStudioView } from './AdminResourceStudioView.js';
 
 export const AdminView: React.FC = () => {
   const { activeSection, setActiveSection } = useLearner();
@@ -144,6 +146,7 @@ export const AdminView: React.FC = () => {
 
   const adminTabs: { id: NavigationSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'admin-dashboard', label: 'Overview', icon: Shield },
+    { id: 'admin-resources', label: 'Resource Studio (Google Drive)', icon: FolderArchive },
     { id: 'admin-users', label: 'User Directory', icon: Users },
     { id: 'admin-content', label: 'Concepts & Syllabus', icon: FileSpreadsheet },
     { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle },
@@ -565,6 +568,10 @@ export const AdminView: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+      {/* SECTION: RESOURCE STUDIO (GOOGLE DRIVE) */}
+      {activeSection === 'admin-resources' && (
+        <AdminResourceStudioView />
       )}
     </div>
   );

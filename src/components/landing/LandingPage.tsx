@@ -23,7 +23,8 @@ import {
   Brain,
   BarChart3,
   CheckCircle2,
-  Mail
+  Mail,
+  Smartphone
 } from 'lucide-react';
 import { IKLogo } from '../common/IKLogo.js';
 import { IKBrandMark } from '../common/IKBrandMark.js';
@@ -64,6 +65,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             <a href="#features" className="hover:text-[#35156B] transition-colors">Features</a>
             <a href="#ai-system" className="hover:text-[#35156B] transition-colors">AI System</a>
             <a href="#pricing" className="hover:text-[#35156B] transition-colors">Pricing</a>
+            <a href="/download" onClick={(e) => { e.preventDefault(); window.history.pushState(null, '', '/download'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="text-[#35156B] hover:text-[#4B1F78] transition-colors flex items-center gap-1 font-bold">
+              <Smartphone className="w-3.5 h-3.5 text-amber-600" />
+              <span>Android App</span>
+            </a>
           </nav>
 
           {/* Auth Actions */}
@@ -786,6 +791,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               © 2026 IKSHOVIA. All rights reserved.
             </div>
             <div className="flex items-center gap-6">
+              <a href="/download" onClick={(e) => { e.preventDefault(); window.history.pushState(null, '', '/download'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="text-stone-300 hover:text-amber-400 flex items-center gap-1.5 transition-colors">
+                <Smartphone className="w-3.5 h-3.5 text-amber-500" />
+                <span>Android App</span>
+              </a>
               <a href="#" className="hover:text-stone-300">Privacy Policy</a>
               <a href="#" className="hover:text-stone-300">Terms of Service</a>
               <a href="#" className="hover:text-stone-300">Contact Support</a>

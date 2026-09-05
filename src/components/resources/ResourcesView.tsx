@@ -41,10 +41,11 @@ import { PyqPracticeSession } from './PyqPracticeSession.js';
 import { QuestionRenderer } from '../common/QuestionRenderer.js';
 import { PyqAuditModal } from './PyqAuditModal.js';
 import { NotesTab } from './NotesTab.js';
+import { LearnerDriveLibraryTab } from './LearnerDriveLibraryTab.js';
 
 export const ResourcesView: React.FC = () => {
   const { askTutorWithContext, setActiveSection } = useLearner();
-  const [activeTab, setActiveTab] = useState<'pyqs' | 'notes'>('pyqs');
+  const [activeTab, setActiveTab] = useState<'pyqs' | 'notes' | 'library'>('pyqs');
 
   // Archive & Hierarchy Data
   const [archive, setArchive] = useState<PyqArchiveData | null>(null);
@@ -274,6 +275,17 @@ export const ResourcesView: React.FC = () => {
         >
           <BookOpen className="w-4 h-4 text-amber-700" />
           Standard Revision Notes & Compendiums
+        </button>
+        <button
+          onClick={() => setActiveTab('library')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+            activeTab === 'library'
+              ? 'border-amber-600 text-stone-900'
+              : 'border-transparent text-stone-500 hover:text-stone-800'
+          }`}
+        >
+          <FolderArchive className="w-4 h-4 text-amber-700" />
+          Reference Library & Textbooks (Google Drive)
         </button>
       </div>
 
@@ -586,6 +598,9 @@ export const ResourcesView: React.FC = () => {
 
       {/* Tab 2: Revision Notes & Standard Compendiums */}
       {activeTab === 'notes' && <NotesTab />}
+
+      {/* Tab 3: Google Drive Reference Library */}
+      {activeTab === 'library' && <LearnerDriveLibraryTab />}
 
       {/* Data Accuracy Audit Modal */}
       <PyqAuditModal

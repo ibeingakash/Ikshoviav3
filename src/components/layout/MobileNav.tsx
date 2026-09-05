@@ -18,11 +18,21 @@ import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { PRIMARY_MOBILE_ITEMS, MORE_MENU_CATEGORIES, NavItemConfig } from '../../config/navigation.js';
 import { IKLogo } from '../common/IKLogo.js';
+import { registerBackButtonHandler } from '../../lib/capacitor.js';
 
 export const MobileNav: React.FC = () => {
   const { activeSection, setActiveSection, learnerModel } = useLearner();
   const { user } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  // Close More drawer on Android hardware back button
+  React.useEffect(() => {
+    if (!isMoreOpen) return;
+    return registerBackButtonHandler(() => {
+      setIsMoreOpen(false);
+      return true;
+    });
+  }, [isMoreOpen]);
 
   // Build role-aware dynamic menu categories
   const categories: { title: string; items: NavItemConfig[] }[] = [...MORE_MENU_CATEGORIES];
