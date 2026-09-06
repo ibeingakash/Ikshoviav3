@@ -404,20 +404,33 @@ export const api = {
   },
 
   // AI Tutor
-  askAITutor: async (userPrompt: string, conceptId?: string, quickAction?: string, userId?: string, context?: any) => {
+  askAITutor: async (
+    userPromptOrPayload: string | { prompt: string; context?: any; conceptId?: string; quickAction?: string; userId?: string },
+    conceptId?: string,
+    quickAction?: string,
+    userId?: string,
+    context?: any
+  ) => {
+    const promptText = typeof userPromptOrPayload === 'string' ? userPromptOrPayload : userPromptOrPayload.prompt;
+    const effConceptId = typeof userPromptOrPayload === 'string' ? conceptId : (userPromptOrPayload.conceptId || conceptId);
+    const effQuickAction = typeof userPromptOrPayload === 'string' ? quickAction : (userPromptOrPayload.quickAction || quickAction);
+    const effUserId = typeof userPromptOrPayload === 'string' ? userId : (userPromptOrPayload.userId || userId);
+    const effContext = typeof userPromptOrPayload === 'string' ? context : (userPromptOrPayload.context || context);
+
     try {
       const res = await apiFetch('/api/v1/data/ai/tutor', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          message: userPrompt,
-          userPrompt,
-          conceptId,
-          quickAction,
-          exam: context?.targetExam,
-          subject: context?.subjectName,
-          topic: context?.topicName || context?.conceptTitle,
-          mode: quickAction || 'tutor',
+          message: promptText,
+          userPrompt: promptText,
+          conceptId: effConceptId,
+          quickAction: effQuickAction,
+          exam: effContext?.targetExam,
+          subject: effContext?.subjectName,
+          topic: effContext?.topicName || effContext?.conceptTitle,
+          mode: effQuickAction || 'tutor',
+          context: effContext,
         }),
       });
       if (res.ok) {
@@ -430,7 +443,7 @@ export const api = {
     const fallbackRes = await apiFetch('/api/ai/tutor', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ userId, userPrompt, conceptId, quickAction, context }),
+      body: JSON.stringify({ userId: effUserId, userPrompt: promptText, conceptId: effConceptId, quickAction: effQuickAction, context: effContext }),
     });
     return fallbackRes.json();
   },
@@ -1279,22 +1292,26 @@ export const api = {
 
   getResources: async (filters?: {
     subject?: string;
+    topic?: string;
     exam?: string;
     type?: string;
     search?: string;
+    sort?: 'recent' | 'pages' | 'title' | 'progress';
     page?: number;
     limit?: number;
   }): Promise<{ resources: LearningResource[]; total: number; page: number; totalPages: number }> => {
     try {
       const params = new URLSearchParams();
       if (filters?.subject) params.append('subject', filters.subject);
+      if (filters?.topic) params.append('topic', filters.topic);
       if (filters?.exam) params.append('exam', filters.exam);
       if (filters?.type) params.append('type', filters.type);
       if (filters?.search) params.append('search', filters.search);
+      if (filters?.sort) params.append('sort', filters.sort);
       if (filters?.page) params.append('page', String(filters.page));
       if (filters?.limit) params.append('limit', String(filters.limit));
 
-      const res = await apiFetch(`/api/resources?${params.toString()}`);
+      const res = await apiFetch(`/api/resources?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) return { resources: [], total: 0, page: 1, totalPages: 1 };
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -1308,6 +1325,105 @@ export const api = {
       };
     } catch {
       return { resources: [], total: 0, page: 1, totalPages: 1 };
+    }
+  },
+
+  getResource: async (id: string): Promise<LearningResource | null> => {
+    try {
+      const res = await apiFetch(`/api/resources/${id}`, { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getResourceFiltersMeta: async (): Promise<{
+    subjects: string[];
+    topics: string[];
+    resourceTypes: string[];
+    exams: string[];
+    tags: string[];
+  }> => {
+    try {
+      const res = await apiFetch('/api/resources/filters/meta');
+      if (!res.ok) throw new Error('Failed');
+      return await res.json();
+    } catch {
+      return {
+        subjects: ['Indian Polity', 'Modern History', 'Economy', 'Environment & Ecology', 'Bihar Special', 'General Studies'],
+        topics: ['Fundamental Rights & Constitutional Governance', 'Indian National Movement (1857-1947)', 'Fiscal Policy, Monetary Framework & Economic Survey', 'Ecosystems, Protected Areas & Climate Treaties', 'History, Freedom Struggle & Geography of Bihar'],
+        resourceTypes: ['BOOK', 'NOTES', 'SYLLABUS', 'PREVIOUS_YEAR_QUESTION', 'ARTICLE'],
+        exams: ['UPSC CSE', 'BPSC', 'ALL'],
+        tags: ['Prelims Core', 'Mains GS-I', 'Mains GS-II', 'Mains GS-III', 'Constitution', 'BPSC 71st', 'Syllabus'],
+      };
+    }
+  },
+
+  getContinueReading: async (limit = 8): Promise<LearningResource[]> => {
+    try {
+      const res = await apiFetch(`/api/resources/continue-reading?limit=${limit}`, { headers: getAuthHeaders() });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data?.resources) ? data.resources : [];
+    } catch {
+      return [];
+    }
+  },
+
+  getResourceBookmarks: async (page = 1, limit = 20): Promise<{ bookmarks: LearningResource[]; total: number; page: number; totalPages: number }> => {
+    try {
+      const res = await apiFetch(`/api/resources/bookmarks?page=${page}&limit=${limit}`, { headers: getAuthHeaders() });
+      if (!res.ok) return { bookmarks: [], total: 0, page: 1, totalPages: 1 };
+      const data = await res.json();
+      return {
+        bookmarks: Array.isArray(data?.bookmarks) ? data.bookmarks : [],
+        total: Number(data?.total || 0),
+        page: Number(data?.page || 1),
+        totalPages: Number(data?.totalPages || 1),
+      };
+    } catch {
+      return { bookmarks: [], total: 0, page: 1, totalPages: 1 };
+    }
+  },
+
+  toggleResourceBookmark: async (id: string, notes?: string): Promise<{ isBookmarked: boolean }> => {
+    try {
+      const res = await apiFetch(`/api/resources/${id}/bookmark`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ notes }),
+      });
+      if (!res.ok) return { isBookmarked: false };
+      const data = await res.json();
+      return { isBookmarked: Boolean(data?.isBookmarked) };
+    } catch {
+      return { isBookmarked: false };
+    }
+  },
+
+  saveResourceProgress: async (id: string, lastPage: number, totalPages?: number, progressPercentage?: number): Promise<any> => {
+    try {
+      const res = await apiFetch(`/api/resources/${id}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ lastPage, totalPages, progressPercentage }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  getResourceProgress: async (id: string): Promise<any> => {
+    try {
+      const res = await apiFetch(`/api/resources/${id}/progress`, { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.progress || null;
+    } catch {
+      return null;
     }
   },
 

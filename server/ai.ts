@@ -93,66 +93,108 @@ Mistake Category: ${context.mistakeType || 'N/A'}
   let groundedResourceContext = '';
   try {
     const resourceIdFilter = context?.resourceId;
+    const pageNumberFilter = context?.pageNumber || (context as any)?.page;
     const cleanPrompt = userPrompt.trim();
     const keywords = cleanPrompt
       .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
-      .filter((w) => w.length >= 4 && !['what', 'when', 'where', 'which', 'explain', 'samjhao', 'according', 'book'].includes(w.toLowerCase()))
-      .slice(0, 4);
+      .filter((w) => w.length >= 3 && !['what', 'when', 'where', 'which', 'explain', 'samjhao', 'according', 'book', 'this', 'that', 'from', 'with', 'about'].includes(w.toLowerCase()))
+      .slice(0, 5);
 
-    let chunkQuery = '';
-    let queryParams: any[] = [];
+    let chunkRows: any[] = [];
 
     if (resourceIdFilter) {
-      chunkQuery = `
-        SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
-        FROM public.data_chunks c
-        JOIN public.data_documents d ON c.document_id = d.id
-        JOIN public.resources r ON d.resource_id = r.id
-        WHERE d.resource_id = $1
-        ORDER BY c.chunk_index ASC
-        LIMIT 5
-      `;
-      queryParams = [resourceIdFilter];
-    } else if (keywords.length > 0) {
-      const patterns = keywords.map((k) => `%${k}%`);
-      chunkQuery = `
-        SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
-        FROM public.data_chunks c
-        JOIN public.data_documents d ON c.document_id = d.id
-        JOIN public.resources r ON d.resource_id = r.id
-        WHERE (c.content ILIKE ANY($1) OR c.heading ILIKE ANY($1) OR r.title ILIKE ANY($1))
-          AND r.status IN ('READY', 'PUBLISHED')
-        ORDER BY c.created_at DESC
-        LIMIT 4
-      `;
-      queryParams = [patterns];
+      // Step 1: Search inside the specified resource matching prompt keywords
+      if (keywords.length > 0) {
+        const patterns = keywords.map((k) => `%${k}%`);
+        const resSpecificKw = await pool.query(
+          `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+           FROM public.data_chunks c
+           JOIN public.data_documents d ON c.document_id = d.id
+           JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+           WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+             AND (c.content ILIKE ANY($2) OR c.heading ILIKE ANY($2) OR c.section ILIKE ANY($2))
+           ORDER BY c.chunk_index ASC
+           LIMIT 4`,
+          [resourceIdFilter, patterns]
+        );
+        chunkRows = resSpecificKw.rows;
+      }
+
+      // Step 2: If no keyword match within resource, check for chunks near current page
+      if (chunkRows.length === 0 && pageNumberFilter) {
+        const pageNum = parseInt(String(pageNumberFilter), 10);
+        if (!isNaN(pageNum)) {
+          const resPageMatch = await pool.query(
+            `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+             FROM public.data_chunks c
+             JOIN public.data_documents d ON c.document_id = d.id
+             JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+             WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+             ORDER BY ABS(COALESCE((c.metadata_json->>'pageNumber')::int, 1) - $2) ASC, c.chunk_index ASC
+             LIMIT 3`,
+            [resourceIdFilter, pageNum]
+          );
+          chunkRows = resPageMatch.rows;
+        }
+      }
+
+      // Step 3: Fallback to top introductory chunks of this resource
+      if (chunkRows.length === 0) {
+        const resFallback = await pool.query(
+          `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+           FROM public.data_chunks c
+           JOIN public.data_documents d ON c.document_id = d.id
+           JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+           WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+           ORDER BY c.chunk_index ASC
+           LIMIT 3`,
+          [resourceIdFilter]
+        );
+        chunkRows = resFallback.rows;
+      }
     }
 
-    if (chunkQuery) {
-      const chunkRes = await pool.query(chunkQuery, queryParams);
-      if (chunkRes.rows.length > 0) {
-        const citations = chunkRes.rows.map((row: any) => {
-          let pageNumStr = 'Page 1';
-          if (row.metadata_json) {
-            const meta = typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : row.metadata_json;
-            if (meta.pageNumber) pageNumStr = `Page ${meta.pageNumber}`;
-          } else if (row.section) {
-            pageNumStr = row.section;
-          }
-          return `[Source: "${row.resource_title}", ${pageNumStr}]\n"${row.content.substring(0, 600)}..."`;
-        });
+    // Step 4: If no resource filter was provided, search broader library chunks
+    if (chunkRows.length === 0 && keywords.length > 0) {
+      const patterns = keywords.map((k) => `%${k}%`);
+      const broadRes = await pool.query(
+        `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
+         FROM public.data_chunks c
+         JOIN public.data_documents d ON c.document_id = d.id
+         JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+         WHERE (c.content ILIKE ANY($1) OR c.heading ILIKE ANY($1) OR r.title ILIKE ANY($1))
+           AND r.status IN ('READY', 'PUBLISHED')
+           AND r.visibility NOT IN ('ADMIN_ONLY')
+         ORDER BY c.created_at DESC
+         LIMIT 4`,
+        [patterns]
+      );
+      chunkRows = broadRes.rows;
+    }
 
-        groundedResourceContext = `
-GROUNDED KNOWLEDGE FROM DEDICATED RESOURCE LIBRARY:
+    if (chunkRows.length > 0) {
+      const citations = chunkRows.map((row: any) => {
+        let pageNum = 1;
+        if (row.metadata_json) {
+          const meta = typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : row.metadata_json;
+          if (meta.pageNumber) pageNum = Number(meta.pageNumber);
+        } else if (row.section) {
+          const m = row.section.match(/\d+/);
+          if (m) pageNum = parseInt(m[0], 10);
+        }
+        return `[Source: "${row.resource_title}", Page ${pageNum}]\n"${row.content.substring(0, 700)}..."`;
+      });
+
+      groundedResourceContext = `
+GROUNDED KNOWLEDGE FROM IKSHOVIA RESOURCE LIBRARY:
 ${citations.join('\n\n')}
 
 CITATION INSTRUCTION (STRICT):
-When answering or explaining concepts grounded in these resources, you MUST explicitly cite them in the required format:
-"[Resource Title, Page X]" (e.g. "[${chunkRes.rows[0].resource_title}, Page 1]").
-Do not invent or hallucinate page numbers not present in the excerpts above.
+When explaining or referencing concepts grounded in these excerpts, you MUST explicitly cite the exact book and page in this format:
+"[${chunkRows[0].resource_title}, Page X]" (e.g. "[${chunkRows[0].resource_title}, Page 14]").
+Prioritize the facts, definitions, constitutional articles, and principles contained in the excerpts above.
 `;
-      }
     }
   } catch (chunkErr) {
     console.warn('[AI Tutor] Grounding retrieval notice:', chunkErr);

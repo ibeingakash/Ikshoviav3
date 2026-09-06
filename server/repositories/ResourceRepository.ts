@@ -30,6 +30,8 @@ export interface DbResource {
   summary?: string;
   read_time_minutes?: number;
   is_bookmarked?: boolean;
+  last_page?: number;
+  progress_percentage?: number;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -50,9 +52,12 @@ export class ResourceRepository {
     status?: ResourceStatus | ResourceStatus[];
     visibility?: ResourceVisibility | ResourceVisibility[];
     subject?: string;
+    topic?: string;
     exam?: string;
     resourceType?: string;
     search?: string;
+    sort?: 'recent' | 'pages' | 'title' | 'progress';
+    userId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ resources: DbResource[]; total: number }> {
@@ -60,68 +65,117 @@ export class ResourceRepository {
     const values: any[] = [];
     let paramIndex = 1;
 
+    let userIdParam1: number | null = null;
+    let userIdParam2: number | null = null;
+    if (filters?.userId) {
+      userIdParam1 = paramIndex++;
+      values.push(filters.userId);
+      userIdParam2 = paramIndex++;
+      values.push(filters.userId);
+    }
+
     if (filters?.status) {
       if (Array.isArray(filters.status)) {
-        conditions.push(`status = ANY($${paramIndex++})`);
+        conditions.push(`r.status = ANY($${paramIndex++})`);
         values.push(filters.status);
       } else {
-        conditions.push(`status = $${paramIndex++}`);
+        conditions.push(`r.status = $${paramIndex++}`);
         values.push(filters.status);
       }
     }
 
     if (filters?.visibility) {
       if (Array.isArray(filters.visibility)) {
-        conditions.push(`visibility = ANY($${paramIndex++})`);
+        conditions.push(`r.visibility = ANY($${paramIndex++})`);
         values.push(filters.visibility);
       } else {
-        conditions.push(`visibility = $${paramIndex++}`);
+        conditions.push(`r.visibility = $${paramIndex++}`);
         values.push(filters.visibility);
       }
     }
 
     if (filters?.subject && filters.subject !== 'ALL') {
-      conditions.push(`(subject ILIKE $${paramIndex} OR subject_id ILIKE $${paramIndex})`);
+      conditions.push(`(r.subject ILIKE $${paramIndex} OR r.subject_id ILIKE $${paramIndex})`);
       values.push(`%${filters.subject}%`);
       paramIndex++;
     }
 
+    if (filters?.topic && filters.topic !== 'ALL') {
+      conditions.push(`r.topic ILIKE $${paramIndex}`);
+      values.push(`%${filters.topic}%`);
+      paramIndex++;
+    }
+
     if (filters?.exam && filters.exam !== 'ALL') {
-      conditions.push(`(exam ILIKE $${paramIndex} OR exam_tag ILIKE $${paramIndex} OR exam = 'ALL')`);
+      conditions.push(`(r.exam ILIKE $${paramIndex} OR r.exam_tag ILIKE $${paramIndex} OR r.exam = 'ALL')`);
       values.push(`%${filters.exam}%`);
       paramIndex++;
     }
 
     if (filters?.resourceType && filters.resourceType !== 'ALL') {
-      conditions.push(`(resource_type = $${paramIndex} OR type = $${paramIndex})`);
+      conditions.push(`(r.resource_type = $${paramIndex} OR r.type = $${paramIndex})`);
       values.push(filters.resourceType);
       paramIndex++;
     }
 
     if (filters?.search && filters.search.trim()) {
       const q = `%${filters.search.trim()}%`;
-      conditions.push(`(title ILIKE $${paramIndex} OR author ILIKE $${paramIndex} OR description ILIKE $${paramIndex} OR topic ILIKE $${paramIndex})`);
+      conditions.push(`(
+        r.title ILIKE $${paramIndex} OR
+        r.author ILIKE $${paramIndex} OR
+        r.description ILIKE $${paramIndex} OR
+        r.topic ILIKE $${paramIndex} OR
+        r.subject ILIKE $${paramIndex} OR
+        r.summary ILIKE $${paramIndex} OR
+        r.exam ILIKE $${paramIndex} OR
+        r.resource_type ILIKE $${paramIndex}
+      )`);
       values.push(q);
       paramIndex++;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const countRes = await pool.query(`SELECT COUNT(*) FROM public.resources ${whereClause}`, values);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM public.resources r ${whereClause}`, values);
     const total = parseInt(countRes.rows[0].count, 10) || 0;
 
     const limit = Math.max(1, filters?.limit || 50);
     const offset = Math.max(0, filters?.offset || 0);
 
-    const query = `
-      SELECT *
-      FROM public.resources
-      ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
-    `;
-    values.push(limit, offset);
+    let orderBy = 'r.created_at DESC';
+    if (filters?.sort === 'pages') {
+      orderBy = 'r.page_count DESC NULLS LAST, r.created_at DESC';
+    } else if (filters?.sort === 'title') {
+      orderBy = 'r.title ASC';
+    } else if (filters?.sort === 'progress' && filters.userId) {
+      orderBy = 'COALESCE(p.progress_percentage, 0) DESC, r.created_at DESC';
+    }
 
+    let query: string;
+    if (filters?.userId) {
+      query = `
+        SELECT r.*,
+          COALESCE(p.last_page, 1) AS last_page,
+          COALESCE(p.progress_percentage, 0) AS progress_percentage,
+          (b.id IS NOT NULL) AS is_bookmarked
+        FROM public.resources r
+        LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $${userIdParam1}
+        LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $${userIdParam2}
+        ${whereClause}
+        ORDER BY ${orderBy}
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `;
+    } else {
+      query = `
+        SELECT r.*
+        FROM public.resources r
+        ${whereClause}
+        ORDER BY ${orderBy}
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      `;
+    }
+
+    values.push(limit, offset);
     const res = await pool.query(query, values);
     return {
       resources: res.rows.map(this.mapRowToResource),
@@ -129,7 +183,23 @@ export class ResourceRepository {
     };
   }
 
-  async findById(id: string): Promise<DbResource | null> {
+  async findById(id: string, userId?: string): Promise<DbResource | null> {
+    if (userId) {
+      const res = await pool.query(
+        `SELECT r.*,
+          COALESCE(p.last_page, 1) AS last_page,
+          COALESCE(p.progress_percentage, 0) AS progress_percentage,
+          (b.id IS NOT NULL) AS is_bookmarked
+        FROM public.resources r
+        LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $2
+        LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $2
+        WHERE r.id = $1`,
+        [id, userId]
+      );
+      if (res.rows.length === 0) return null;
+      return this.mapRowToResource(res.rows[0]);
+    }
+
     const res = await pool.query('SELECT * FROM public.resources WHERE id = $1', [id]);
     if (res.rows.length === 0) return null;
     return this.mapRowToResource(res.rows[0]);
@@ -262,6 +332,8 @@ export class ResourceRepository {
       summary: row.summary || row.description,
       read_time_minutes: Number(row.read_time_minutes || 10),
       is_bookmarked: Boolean(row.is_bookmarked),
+      last_page: row.last_page ? Number(row.last_page) : 1,
+      progress_percentage: row.progress_percentage !== undefined && row.progress_percentage !== null ? Number(row.progress_percentage) : 0,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };

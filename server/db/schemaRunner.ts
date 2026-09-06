@@ -7,6 +7,7 @@ import { currentAffairsRepository } from '../repositories/CurrentAffairsReposito
 import { pyqRepository } from '../repositories/PyqRepository.js';
 import { ocrRepository } from '../repositories/OcrRepository.js';
 import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
+import { seedCanonicalResources } from './seedResources.js';
 
 export async function ensureSyllabusSeed(): Promise<void> {
   try {
@@ -365,6 +366,43 @@ export async function ensureDatabaseSchema(): Promise<void> {
       ALTER TABLE public.app_early_access_subscribers ENABLE ROW LEVEL SECURITY;
       REVOKE ALL ON TABLE public.app_early_access_subscribers FROM anon, authenticated;
       GRANT ALL ON TABLE public.app_early_access_subscribers TO postgres, service_role;
+
+      -- Learner Resource Reading Progress
+      CREATE TABLE IF NOT EXISTS public.learner_resource_progress (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        resource_id VARCHAR(64) NOT NULL,
+        last_page INT NOT NULL DEFAULT 1,
+        total_pages INT NOT NULL DEFAULT 1,
+        progress_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_learner_resource_progress UNIQUE (user_id, resource_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_learner_progress_user ON public.learner_resource_progress(user_id);
+      CREATE INDEX IF NOT EXISTS idx_learner_progress_res ON public.learner_resource_progress(resource_id);
+      CREATE INDEX IF NOT EXISTS idx_learner_progress_updated ON public.learner_resource_progress(user_id, updated_at DESC);
+
+      ALTER TABLE public.learner_resource_progress ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE public.learner_resource_progress FROM anon, authenticated;
+      GRANT ALL ON TABLE public.learner_resource_progress TO postgres, service_role;
+
+      -- Learner Resource Bookmarks
+      CREATE TABLE IF NOT EXISTS public.learner_resource_bookmarks (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL,
+        resource_id VARCHAR(64) NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_learner_resource_bookmarks UNIQUE (user_id, resource_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_learner_bookmarks_user ON public.learner_resource_bookmarks(user_id);
+      CREATE INDEX IF NOT EXISTS idx_learner_bookmarks_res ON public.learner_resource_bookmarks(resource_id);
+      CREATE INDEX IF NOT EXISTS idx_learner_bookmarks_created ON public.learner_resource_bookmarks(user_id, created_at DESC);
+
+      ALTER TABLE public.learner_resource_bookmarks ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON TABLE public.learner_resource_bookmarks FROM anon, authenticated;
+      GRANT ALL ON TABLE public.learner_resource_bookmarks TO postgres, service_role;
     `);
 
     // 2b. Apply full Supabase Security Advisor Hardening (Migration 005)
@@ -392,6 +430,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
     await pyqRepository.seedOfficialPapers();
     await ocrRepository.initSchema();
     await ensureContentOriginSeparation();
+    await seedCanonicalResources();
 
     // 4. Verify total tables
     const tableRes = await pool.query(`

@@ -15,15 +15,7 @@ data/bpsc_official_pdfs/
 *.traineddata
 *.traineddata.gz
 
-# Android generated artifacts
-android/app/build/
-android/.gradle/
-
 # Android local/generated files
 android/.idea/
 android/local.properties
-android/**/build/
-android/app/src/main/assets/public/
-
-# Android project export - keep out of web repository for now
-android/
+android/.gradle/

@@ -654,6 +654,11 @@ export interface LearningResource {
   summary: string;
   readTimeMinutes: number;
   isBookmarked?: boolean;
+  is_bookmarked?: boolean;
+  last_page?: number;
+  lastPage?: number;
+  progress_percentage?: number;
+  progressPercentage?: number;
   created_at?: string;
   updated_at?: string;
 }

@@ -44,8 +44,17 @@ import { NotesTab } from './NotesTab.js';
 import { LearnerDriveLibraryTab } from './LearnerDriveLibraryTab.js';
 
 export const ResourcesView: React.FC = () => {
-  const { askTutorWithContext, setActiveSection } = useLearner();
-  const [activeTab, setActiveTab] = useState<'pyqs' | 'notes' | 'library'>('pyqs');
+  const { askTutorWithContext, setActiveSection, activeSection } = useLearner();
+  const [activeTab, setActiveTab] = useState<'pyqs' | 'notes' | 'library'>(
+    activeSection === 'resources' ? 'library' : 'pyqs'
+  );
+
+  // Sync active tab if activeSection changes
+  useEffect(() => {
+    if (activeSection === 'resources') {
+      setActiveTab('library');
+    }
+  }, [activeSection]);
 
   // Archive & Hierarchy Data
   const [archive, setArchive] = useState<PyqArchiveData | null>(null);
@@ -252,40 +261,43 @@ export const ResourcesView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Mode Tabs: Official PYQs vs Revision Notes */}
-      <div className="flex items-center gap-2 border-b border-[#EAE6DF]">
-        <button
-          onClick={() => { setActiveTab('pyqs'); setPracticeMode(false); }}
-          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
-            activeTab === 'pyqs'
-              ? 'border-amber-600 text-stone-900'
-              : 'border-transparent text-stone-500 hover:text-stone-800'
-          }`}
-        >
-          <Building className="w-4 h-4 text-amber-700" />
-          Official Commission Question Papers ({archive?.totalPapers || 16} Papers)
-        </button>
-        <button
-          onClick={() => setActiveTab('notes')}
-          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
-            activeTab === 'notes'
-              ? 'border-amber-600 text-stone-900'
-              : 'border-transparent text-stone-500 hover:text-stone-800'
-          }`}
-        >
-          <BookOpen className="w-4 h-4 text-amber-700" />
-          Standard Revision Notes & Compendiums
-        </button>
+      {/* Main Mode Tabs: Reference Library vs Official PYQs vs Revision Notes */}
+      <div className="flex items-center gap-2 border-b border-[#EAE6DF] overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('library')}
-          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer ${
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'library'
               ? 'border-amber-600 text-stone-900'
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
           <FolderArchive className="w-4 h-4 text-amber-700" />
-          Reference Library & Textbooks (Google Drive)
+          <span>Learner Resource Library</span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">
+            2.0
+          </span>
+        </button>
+        <button
+          onClick={() => { setActiveTab('pyqs'); setPracticeMode(false); }}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'pyqs'
+              ? 'border-amber-600 text-stone-900'
+              : 'border-transparent text-stone-500 hover:text-stone-800'
+          }`}
+        >
+          <Building className="w-4 h-4 text-amber-700" />
+          <span>Official Question Papers ({archive?.totalPapers || 16})</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('notes')}
+          className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            activeTab === 'notes'
+              ? 'border-amber-600 text-stone-900'
+              : 'border-transparent text-stone-500 hover:text-stone-800'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 text-amber-700" />
+          <span>Revision Notes & Compendiums</span>
         </button>
       </div>
 
