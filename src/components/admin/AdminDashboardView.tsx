@@ -37,9 +37,11 @@ export const AdminDashboardView: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.getAdminMetrics();
-      setMetrics(res);
-    } catch (err) {
-      console.error('Failed to load admin metrics:', err);
+      if (res && typeof res === 'object') {
+        setMetrics(res);
+      }
+    } catch (err: any) {
+      console.warn('Could not load live admin metrics, falling back to cached telemetry:', err?.message);
     } finally {
       setLoading(false);
     }

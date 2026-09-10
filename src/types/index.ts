@@ -281,12 +281,12 @@ export interface PyqCompletenessValidation {
   status: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
 }
 
-export type QuestionFormatType = 
-  | 'SINGLE_CHOICE' 
-  | 'MULTIPLE_CHOICE' 
-  | 'STATEMENT_BASED' 
-  | 'MATCH_FOLLOWING' 
-  | 'ASSERTION_REASON' 
+export type QuestionFormatType =
+  | 'SINGLE_CHOICE'
+  | 'MULTIPLE_CHOICE'
+  | 'STATEMENT_BASED'
+  | 'MATCH_FOLLOWING'
+  | 'ASSERTION_REASON'
   | 'COMPREHENSION'
   | 'PASSAGE_BASED'
   | 'NUMERICAL_CSAT'
@@ -370,6 +370,11 @@ export interface Question {
   };
 
   // OCR V3 Accuracy & Sequence
+  subject?: string;
+  topic?: string;
+  tags?: string[];
+  gsPaper?: string;
+  prelimsArea?: string;
   questionNum?: number;
   pageNumber?: number;
   hasVisualContent?: boolean;
@@ -389,6 +394,18 @@ export interface Question {
   explanation_hi?: string;
   availableLanguages?: ('en' | 'hi')[];
   isAITranslated?: boolean;
+
+  // Visual content, figures & corrections
+  imageUrl?: string;
+  imageCaption?: string;
+  figureStatus?: 'FIGURE_VERIFIED' | 'FIGURE_REVIEW_REQUIRED' | 'FIGURE_MISSING' | 'FIGURE_NOT_REQUIRED';
+  originalOcrText?: string;
+  originalOptions?: QuestionOption[];
+  correctionsCount?: number;
+  lastCorrectedAt?: string;
+  lastCorrectedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface QuestionAttempt {
@@ -636,6 +653,15 @@ export interface LearningResource {
   subject?: string;
   subjectId: string;
   topic?: string;
+  edition?: string;
+  publication_year?: number;
+  publisher?: string;
+  language?: string;
+  isbn?: string;
+  license_status?: string;
+  cover_image_url?: string;
+  source_attribution?: string;
+  storage_provider?: string;
   tags?: string[];
   tags_str?: string;
   conceptId?: string;
@@ -961,4 +987,118 @@ export const ADMIN_PERMISSIONS = {
 } as const;
 
 export type AdminPermissionCode = keyof typeof ADMIN_PERMISSIONS;
+
+// ==========================================
+// SHORT NOTES ARCHITECTURE & STRUCTURED TYPES
+// ==========================================
+
+export type ShortNoteBlockType =
+  | 'heading'
+  | 'subheading'
+  | 'paragraph'
+  | 'bullet_list'
+  | 'numbered_list'
+  | 'table'
+  | 'fact_box'
+  | 'comparison_block'
+  | 'timeline'
+  | 'important_points';
+
+export interface ShortNoteTableData {
+  headers: string[];
+  rows: string[][];
+  caption?: string;
+}
+
+export interface ShortNoteFactBoxData {
+  title: string;
+  facts: string[];
+  category?: string;
+}
+
+export interface ShortNoteComparisonData {
+  headers: string[];
+  rows: { aspect: string; left: string; right: string }[];
+}
+
+export interface ShortNoteTimelineEvent {
+  timeOrYear: string;
+  title: string;
+  description: string;
+}
+
+export interface ShortNoteTimelineData {
+  events: ShortNoteTimelineEvent[];
+}
+
+export interface ShortNoteImportantPointsData {
+  points: string[];
+  calloutType?: 'key' | 'warning' | 'tip';
+}
+
+export interface ShortNoteBlock {
+  id: string;
+  type: ShortNoteBlockType;
+  resource_id: string;
+  document_id?: string;
+  page_number: number;
+  order_index: number;
+  text?: string;
+  level?: 1 | 2 | 3;
+  items?: string[];
+  table?: ShortNoteTableData;
+  factBox?: ShortNoteFactBoxData;
+  comparison?: ShortNoteComparisonData;
+  timeline?: ShortNoteTimelineData;
+  importantPoints?: ShortNoteImportantPointsData;
+}
+
+export interface ShortNote {
+  id: string;
+  resourceId: string;
+  documentId?: string;
+  title: string;
+  exam: string;
+  subject: string;
+  topic: string;
+  tags: string[];
+  description?: string;
+  year?: number | null;
+  language: 'en' | 'hi' | 'bilingual';
+  visibility: ResourceVisibility;
+  status: 'DRAFT' | 'PROCESSING' | 'REVIEW_REQUIRED' | 'PUBLISHED' | 'ARCHIVED';
+  pageCount: number;
+  blocks: ShortNoteBlock[];
+  rawOcrText?: string;
+  sourceFileUrl?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  isReviewed?: boolean;
+  isBookmarked?: boolean;
+  progressPercentage?: number;
+  lastPage?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ShortNotesTopicNode {
+  topic: string;
+  notesCount: number;
+  reviewedCount: number;
+  notes: ShortNote[];
+}
+
+export interface ShortNotesSubjectNode {
+  subject: string;
+  topicsCount: number;
+  notesCount: number;
+  reviewedCount: number;
+  topics: ShortNotesTopicNode[];
+}
+
+export interface ShortNotesHierarchyResponse {
+  subjects: ShortNotesSubjectNode[];
+  totalNotes: number;
+  totalReviewed: number;
+}
 

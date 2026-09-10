@@ -7,7 +7,7 @@ export interface StorageUploadParams {
   fileName: string;
   buffer: Buffer;
   mimeType: string;
-  folderCategory?: 'RESOURCES' | 'OFFICIAL_DOCUMENTS' | 'NOTES';
+  folderCategory?: 'BOOKS' | 'RESOURCES' | 'OFFICIAL_DOCUMENTS' | 'NOTES';
   metadata?: Record<string, any>;
 }
 

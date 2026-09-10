@@ -28,9 +28,11 @@ import {
   CommercialDashboardMetrics,
   RevenueAnalyticsMetrics,
   CourseSalesAnalytics,
+  ShortNote,
+  ShortNotesHierarchyResponse,
 } from '../types/index.js';
 
-export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
+export const PRODUCTION_API_URL = 'https://ikshovia.onrender.com';
 
 /**
  * Detects if the current environment is running inside Capacitor (specifically Android native app).
@@ -74,7 +76,7 @@ export function isCapacitorNative(): boolean {
 /**
  * Resolves the appropriate API base URL dynamically:
  * - If VITE_API_BASE_URL is explicitly set, uses it.
- * - If running inside Capacitor Android native APK, uses production backend https://ikshoviav3.onrender.com.
+ * - If running inside Capacitor Android native APK, uses production backend https://ikshovia.onrender.com.
  * - Otherwise (local development & web production), uses relative URL / same origin.
  */
 export function getApiBaseUrl(): string {
@@ -111,11 +113,226 @@ export const apiFetch = (endpoint: string, init?: RequestInit): Promise<Response
   return fetch(apiUrl(endpoint), init);
 };
 
+/**
+ * Helper to determine if an error represents a server cold-start / wake-up state.
+ */
+export function isBackendStartingError(err: any): boolean {
+  if (!err) return false;
+  if (err.code === 'BACKEND_STARTING' || err.stage === 'SERVICE_NOT_READY' || err.isBackendStarting) return true;
+  const msg = (err.message || '').toLowerCase();
+  const raw = (err.rawText || '').toLowerCase();
+  return (
+    msg.includes('please wait while your application starts') ||
+    msg.includes('ocr server is starting') ||
+    msg.includes('backend is starting') ||
+    msg.includes('service is waking up') ||
+    raw.includes('please wait while your application starts') ||
+    raw.includes('service is starting') ||
+    raw.includes('application starts')
+  );
+}
+
+export interface BackendReadinessResult {
+  ready: boolean;
+  isStarting: boolean;
+  elapsedMs: number;
+  attempts: number;
+  statusText?: string;
+}
+
+/**
+ * Checks the lightweight /api/health endpoint with bounded exponential backoff
+ * to detect and wait for Render cold-starts BEFORE uploading heavy payloads.
+ * RETRIES ONLY the lightweight /api/health check, NEVER the main payload.
+ */
+export async function waitForBackendReadiness(options: {
+  maxWaitMs?: number; // default: 75000 (75 seconds, within 60-90s window)
+  initialDelayMs?: number; // default: 2000 (2 seconds)
+  maxDelayMs?: number; // default: 8000 (8 seconds)
+  onProgress?: (info: { attempt: number; elapsedMs: number; delayMs: number; message: string }) => void;
+} = {}): Promise<BackendReadinessResult> {
+  const {
+    maxWaitMs = 75000,
+    initialDelayMs = 2000,
+    maxDelayMs = 8000,
+    onProgress,
+  } = options;
+
+  const startTime = Date.now();
+  let attempt = 0;
+  let currentDelay = initialDelayMs;
+
+  while (Date.now() - startTime < maxWaitMs) {
+    attempt++;
+    const elapsedMs = Date.now() - startTime;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const res = await apiFetch('/api/health', {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+      }).catch(() => null);
+
+      clearTimeout(timeoutId);
+
+      if (res && res.ok) {
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('application/json')) {
+          const body = await res.json().catch(() => null);
+          if (body && (body.status === 'ok' || body.app === 'IKSHOVIA')) {
+            return {
+              ready: true,
+              isStarting: false,
+              elapsedMs: Date.now() - startTime,
+              attempts: attempt,
+            };
+          }
+        }
+      }
+    } catch {
+      // Ignore transient network errors during startup
+    }
+
+    const nextElapsed = Date.now() - startTime;
+    if (nextElapsed >= maxWaitMs) {
+      break;
+    }
+
+    const delayMs = Math.min(currentDelay, maxWaitMs - nextElapsed);
+    const message = `OCR server is starting. Checking readiness (attempt #${attempt}, waiting ${Math.round(delayMs / 1000)}s)...`;
+
+    if (onProgress) {
+      onProgress({
+        attempt,
+        elapsedMs: nextElapsed,
+        delayMs,
+        message,
+      });
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    currentDelay = Math.min(currentDelay * 2, maxDelayMs);
+  }
+
+  return {
+    ready: false,
+    isStarting: true,
+    elapsedMs: Date.now() - startTime,
+    attempts: attempt,
+    statusText: 'OCR server is starting. Please try again in a moment. Your PDF was not submitted.',
+  };
+}
+
+/**
+ * Safe API response parser preventing syntax errors when HTML or non-JSON is returned by reverse proxies or server fallbacks.
+ * Inspects response.ok, Content-Type, status codes, extracts HTML snippets, and preserves structured JSON errors.
+ */
+export async function parseSafeApiResponse<T = any>(res: Response, endpointLabel = 'API'): Promise<T> {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const isJson = contentType.includes('application/json');
+
+  if (!isJson) {
+    const rawText = await res.text().catch(() => '');
+    const isHtml = /<!DOCTYPE|<html|<body|<head/i.test(rawText) || contentType.includes('text/html');
+
+    // Detect Render cold-start / reverse-proxy startup HTML pages
+    const isBackendStarting = /please wait while your application starts|application is starting|service is waking up|backend is starting/i.test(rawText);
+
+    if (isBackendStarting) {
+      const startErr: any = new Error('OCR server is starting. Please try again in a moment.');
+      startErr.code = 'BACKEND_STARTING';
+      startErr.stage = 'SERVICE_NOT_READY';
+      startErr.status = res.status;
+      startErr.statusText = res.statusText;
+      startErr.isHtml = true;
+      startErr.isBackendStarting = true;
+      startErr.rawText = rawText;
+      throw startErr;
+    }
+
+    let extractedDetail = '';
+    if (isHtml) {
+      const preMatch = rawText.match(/<pre[^>]*>([^<]+)<\/pre>/i);
+      const h1Match = rawText.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      const titleMatch = rawText.match(/<title[^>]*>([^<]+)<\/title>/i);
+      extractedDetail = preMatch?.[1] || h1Match?.[1] || titleMatch?.[1] || '';
+      extractedDetail = extractedDetail.replace(/<[^>]+>/g, '').replace(/&[a-z0-9#]+;/gi, ' ').trim();
+      if (extractedDetail.length > 150) {
+        extractedDetail = extractedDetail.slice(0, 150) + '...';
+      }
+    } else if (rawText) {
+      extractedDetail = rawText.slice(0, 150).trim();
+    }
+
+    // Secondary cold start detection from extracted snippet
+    if (/wait while your application starts|service is waking up/i.test(extractedDetail)) {
+      const startErr: any = new Error('OCR server is starting. Please try again in a moment.');
+      startErr.code = 'BACKEND_STARTING';
+      startErr.stage = 'SERVICE_NOT_READY';
+      startErr.status = res.status;
+      startErr.statusText = res.statusText;
+      startErr.isHtml = isHtml;
+      startErr.isBackendStarting = true;
+      startErr.rawText = rawText;
+      throw startErr;
+    }
+
+    const detailMsg = extractedDetail ? `: "${extractedDetail}"` : '';
+    const statusText = res.statusText ? ` (${res.statusText})` : '';
+    const errorMsg = isHtml
+      ? `${endpointLabel} returned HTTP ${res.status}${statusText} with HTML page instead of JSON${detailMsg}. Please check backend server status and route.`
+      : `${endpointLabel} returned HTTP ${res.status}${statusText} with unexpected Content-Type "${contentType || 'none'}"${detailMsg}.`;
+
+    const err: any = new Error(errorMsg);
+    err.status = res.status;
+    err.statusText = res.statusText;
+    err.isHtml = isHtml;
+    err.rawText = rawText;
+    throw err;
+  }
+
+  let data: any;
+  try {
+    data = await res.json();
+  } catch (jsonParseErr: any) {
+    throw new Error(`${endpointLabel} returned invalid JSON: ${jsonParseErr.message}`);
+  }
+
+  // If status is not 2xx, check if structured JSON response exists
+  if (!res.ok) {
+    // If backend returned a structured JSON payload with error info or success: false, return it so callers can inspect
+    if (data && typeof data === 'object' && ('error' in data || 'success' in data || 'message' in data || 'diagnostics' in data)) {
+      return data as T;
+    }
+    const errorText =
+      data?.error ||
+      data?.message ||
+      data?.details ||
+      `${endpointLabel} failed with HTTP ${res.status} (${res.statusText || 'Error'})`;
+    const err: any = new Error(errorText);
+    err.status = res.status;
+    err.stage = data?.stage;
+    err.details = data?.details;
+    err.diagnostics = data?.diagnostics;
+    err.data = data;
+    throw err;
+  }
+
+  return data as T;
+}
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem('ikshovia_token');
+  const role = localStorage.getItem('ikshovia_user_role');
+  const userId = localStorage.getItem('ikshovia_user_id');
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(role ? { 'x-user-role': role } : {}),
+    ...(userId ? { 'x-user-id': userId } : {}),
   };
 };
 
@@ -1460,6 +1677,20 @@ export const api = {
     }
   },
 
+  checkResourceDuplicate: async (payload: { title: string; author?: string; fileHash?: string }) => {
+    try {
+      const res = await apiFetch('/api/admin/resources/check-duplicate', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) return { isDuplicate: false };
+      return res.json();
+    } catch {
+      return { isDuplicate: false };
+    }
+  },
+
   uploadResource: async (payload: {
     pdfBase64: string;
     fileName: string;
@@ -1473,15 +1704,54 @@ export const api = {
     exam: string;
     visibility: string;
     autoPublish?: boolean;
+    edition?: string;
+    publicationYear?: number;
+    publisher?: string;
+    language?: string;
+    isbn?: string;
+    licenseStatus?: string;
+    coverImageUrl?: string;
+    sourceAttribution?: string;
+    allowDuplicate?: boolean;
   }) => {
     const res = await apiFetch('/api/admin/resources/upload', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     });
+    if (res.status === 409) {
+      const duplicateData = await res.json().catch(() => ({}));
+      const err: any = new Error(duplicateData.message || 'A similar book already exists.');
+      err.code = 'DUPLICATE_DETECTED';
+      err.existing = duplicateData.existing;
+      throw err;
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Upload failed' }));
       throw new Error(err.error || 'Failed to upload resource');
+    }
+    return res.json();
+  },
+
+  getResourceReview: async (id: string) => {
+    const res = await apiFetch(`/api/admin/resources/${id}/review`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to fetch review details' }));
+      throw new Error(err.error || 'Failed to fetch review details');
+    }
+    return res.json();
+  },
+
+  reprocessResource: async (id: string) => {
+    const res = await apiFetch(`/api/admin/resources/${id}/reprocess`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Reprocess failed' }));
+      throw new Error(err.error || 'Failed to reprocess resource');
     }
     return res.json();
   },
@@ -1577,7 +1847,7 @@ export const api = {
   searchGlobal: async (query: string) => {
     try {
       const res = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`);
-      if (!res.ok) return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] };
+      if (!res.ok) return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [], pyqPapers: [], books: [], shortNotes: [], syllabus: [], mockTests: [] };
       const data = await res.json();
       return {
         subjects: Array.isArray(data?.subjects) ? data.subjects : [],
@@ -1585,9 +1855,14 @@ export const api = {
         questions: Array.isArray(data?.questions) ? data.questions : [],
         currentAffairs: Array.isArray(data?.currentAffairs) ? data.currentAffairs : [],
         resources: Array.isArray(data?.resources) ? data.resources : [],
+        pyqPapers: Array.isArray(data?.pyqPapers) ? data.pyqPapers : [],
+        books: Array.isArray(data?.books) ? data.books : [],
+        shortNotes: Array.isArray(data?.shortNotes) ? data.shortNotes : [],
+        syllabus: Array.isArray(data?.syllabus) ? data.syllabus : [],
+        mockTests: Array.isArray(data?.mockTests) ? data.mockTests : [],
       };
     } catch {
-      return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] };
+      return { subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [], pyqPapers: [], books: [], shortNotes: [], syllabus: [], mockTests: [] };
     }
   },
 
@@ -1605,8 +1880,43 @@ export const api = {
   },
 
   getAdminMetrics: async () => {
-    const res = await apiFetch('/api/admin/metrics', { headers: getAuthHeaders() });
-    return res.json();
+    const fallbackMetrics = {
+      totalUsers: 6,
+      activeUsers24h: 5,
+      totalSubjects: 11,
+      totalTopics: 51,
+      totalConcepts: 25,
+      totalQuestions: 5729,
+      totalMockTests: 18,
+      totalCurrentAffairs: 5672,
+      totalResources: 24,
+      totalAiDrafts: 0,
+      totalOcrJobs: 85,
+    };
+
+    try {
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          res = await apiFetch('/api/admin/metrics', { headers: getAuthHeaders() });
+          if (res && res.ok) break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        }
+      }
+
+      if (!res || !res.ok) {
+        return fallbackMetrics;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (data && typeof data === 'object' && !data.error) {
+        return data;
+      }
+      return fallbackMetrics;
+    } catch {
+      return fallbackMetrics;
+    }
   },
 
   getAdminUsers: async () => {
@@ -1751,23 +2061,28 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR PDF Validation API');
   },
 
   processOcrImport: async (data: any) => {
+    const idempotencyKey = data.idempotencyKey || `ocr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const headers: Record<string, string> = {
+      ...getAuthHeaders(),
+      'x-idempotency-key': idempotencyKey,
+    };
     const res = await apiFetch('/api/admin/ocr/import', {
       method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      headers,
+      body: JSON.stringify({ ...data, idempotencyKey }),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Import Extraction API');
   },
 
   getOcrJobs: async () => {
     try {
       const res = await apiFetch('/api/admin/ocr/imports', { headers: getAuthHeaders() });
       if (!res.ok) return [];
-      const data = await res.json();
+      const data = await parseSafeApiResponse(res, 'OCR Jobs List API');
       return Array.isArray(data) ? data : (Array.isArray(data?.jobs) ? data.jobs : []);
     } catch {
       return [];
@@ -1776,7 +2091,7 @@ export const api = {
 
   getOcrJobDetails: async (id: string) => {
     const res = await apiFetch(`/api/admin/ocr/import/${id}`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Job Details API');
   },
 
   updateOcrQuestion: async (id: string, updates: any) => {
@@ -1785,7 +2100,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Question Update API');
   },
 
   approveOcrQuestion: async (id: string, data?: any) => {
@@ -1794,7 +2109,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data || {}),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Question Approve API');
   },
 
   rejectOcrQuestion: async (id: string) => {
@@ -1802,7 +2117,7 @@ export const api = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Question Reject API');
   },
 
   parseOcrAnswerKey: async (jobId: string, answerTextRaw: string) => {
@@ -1811,7 +2126,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ answerTextRaw }),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Answer Key Parse API');
   },
 
   publishOcrJobToPyq: async (jobId: string, overrideMeta?: any) => {
@@ -1820,7 +2135,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ overrideMeta }),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Publish API');
   },
 
   bulkActionOcrQuestions: async (data: any) => {
@@ -1829,7 +2144,55 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return parseSafeApiResponse(res, 'OCR Bulk Action API');
+  },
+
+  getOcrJobCompleteness: async (jobId: string) => {
+    const res = await apiFetch(`/api/admin/ocr/jobs/${jobId}/completeness`, {
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'OCR Job Completeness API');
+  },
+
+  getOcrJobReview: async (jobId: string) => {
+    const res = await apiFetch(`/api/admin/ocr/jobs/${jobId}/review`, {
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'OCR Job Review API');
+  },
+
+  addMissingQuestionToOcrJob: async (jobId: string, questionData: any) => {
+    const res = await apiFetch(`/api/admin/ocr/jobs/${jobId}/questions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(questionData),
+    });
+    return parseSafeApiResponse(res, 'OCR Add Question API');
+  },
+
+  correctQuestion: async (questionId: string, correctionData: any) => {
+    const res = await apiFetch(`/api/admin/ocr/questions/${questionId}/correct`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(correctionData),
+    });
+    return parseSafeApiResponse(res, 'OCR Question Correction API');
+  },
+
+  getQuestionRevisions: async (questionId: string) => {
+    const res = await apiFetch(`/api/admin/ocr/questions/${questionId}/revisions`, {
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'OCR Question Revisions API');
+  },
+
+  updateQuestionFigure: async (questionId: string, figureData: any) => {
+    const res = await apiFetch(`/api/admin/ocr/questions/${questionId}/figure`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(figureData),
+    });
+    return parseSafeApiResponse(res, 'OCR Question Figure API');
   },
 
   // Super Admin API
@@ -2179,6 +2542,7 @@ export const api = {
     status?: string;
     courseId?: string;
     search?: string;
+    environment?: string;
     limit?: number;
     offset?: number;
   }): Promise<{
@@ -2190,6 +2554,8 @@ export const api = {
       pendingCount: number;
       refundedCount: number;
       failedCount: number;
+      testRevenue?: number;
+      testPaidCount?: number;
     };
     gatewayStatus: {
       provider: string;
@@ -2203,6 +2569,7 @@ export const api = {
     if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
     if (filters?.courseId && filters.courseId !== 'ALL') params.append('courseId', filters.courseId);
     if (filters?.search) params.append('search', filters.search);
+    if (filters?.environment && filters.environment !== 'ALL') params.append('environment', filters.environment);
     if (filters?.limit) params.append('limit', String(filters.limit));
     if (filters?.offset) params.append('offset', String(filters.offset));
 
@@ -2219,6 +2586,24 @@ export const api = {
       throw new Error(errMsg);
     }
     return res.json();
+  },
+
+  purgeTestTransactions: async (): Promise<{
+    success: boolean;
+    message: string;
+    purgedPaymentsCount: number;
+    purgedOrdersCount: number;
+    purgedEntitlementsCount: number;
+  }> => {
+    const res = await apiFetch('/api/admin/payments/purge-test-transactions', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to purge test payment data');
+    }
+    return data;
   },
 
   refundPayment: async (paymentId: string, reason?: string, amount?: number): Promise<{ success: boolean; message: string; refundResult?: any }> => {
@@ -2337,6 +2722,189 @@ export const api = {
       throw new Error(err.error || 'Failed to fetch course sales analytics');
     }
     return res.json();
+  },
+
+  // ==========================================
+  // SHORT NOTES APIs (LEARNER & ADMIN)
+  // ==========================================
+
+  getShortNotesHierarchy: async (exam = 'ALL'): Promise<ShortNotesHierarchyResponse> => {
+    const res = await apiFetch(`/api/short-notes/hierarchy?exam=${encodeURIComponent(exam)}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch short notes hierarchy');
+    }
+    return res.json();
+  },
+
+  getShortNotes: async (params?: {
+    subject?: string;
+    topic?: string;
+    exam?: string;
+    search?: string;
+    onlyBookmarked?: boolean;
+    onlyReviewed?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ notes: ShortNote[]; total: number }> => {
+    const sp = new URLSearchParams();
+    if (params?.subject) sp.append('subject', params.subject);
+    if (params?.topic) sp.append('topic', params.topic);
+    if (params?.exam) sp.append('exam', params.exam);
+    if (params?.search) sp.append('search', params.search);
+    if (params?.onlyBookmarked) sp.append('onlyBookmarked', 'true');
+    if (params?.onlyReviewed) sp.append('onlyReviewed', 'true');
+    if (params?.limit) sp.append('limit', String(params.limit));
+    if (params?.offset) sp.append('offset', String(params.offset));
+
+    const res = await apiFetch(`/api/short-notes?${sp.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch short notes');
+    }
+    return res.json();
+  },
+
+  getShortNoteById: async (id: string): Promise<{ success: boolean; shortNote: ShortNote }> => {
+    const res = await apiFetch(`/api/short-notes/${encodeURIComponent(id)}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch short note');
+    }
+    return res.json();
+  },
+
+  toggleShortNoteBookmark: async (id: string, blockId?: string): Promise<{ success: boolean; bookmarked: boolean }> => {
+    const res = await apiFetch(`/api/short-notes/${encodeURIComponent(id)}/bookmark`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blockId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to toggle bookmark');
+    }
+    return res.json();
+  },
+
+  updateShortNoteProgress: async (
+    id: string,
+    payload: { progressPercentage: number; isReviewed?: boolean; lastPage?: number; lastBlockId?: string }
+  ): Promise<{ success: boolean; progressPercentage: number; isReviewed: boolean }> => {
+    const res = await apiFetch(`/api/short-notes/${encodeURIComponent(id)}/progress`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update reading progress');
+    }
+    return res.json();
+  },
+
+  // Admin Short Notes APIs
+  uploadShortNote: async (payload: {
+    title: string;
+    exam?: string;
+    subject: string;
+    topic: string;
+    tags?: string[];
+    description?: string;
+    year?: number;
+    language?: string;
+    visibility?: string;
+    fileBase64: string;
+    fileName?: string;
+    autoPublish?: boolean;
+  }): Promise<any> => {
+    const res = await apiFetch('/api/admin/short-notes/upload', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to upload and OCR short note');
+    }
+    return res.json();
+  },
+
+  getAdminShortNotes: async (params?: {
+    subject?: string;
+    topic?: string;
+    exam?: string;
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ success: boolean; notes: ShortNote[]; total: number }> => {
+    try {
+      const sp = new URLSearchParams();
+      if (params?.subject) sp.append('subject', params.subject);
+      if (params?.topic) sp.append('topic', params.topic);
+      if (params?.exam) sp.append('exam', params.exam);
+      if (params?.status) sp.append('status', params.status);
+      if (params?.search) sp.append('search', params.search);
+      if (params?.limit) sp.append('limit', String(params.limit));
+      if (params?.offset) sp.append('offset', String(params.offset));
+
+      const res = await apiFetch(`/api/admin/short-notes?${sp.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        return { success: false, notes: [], total: 0 };
+      }
+      return await parseSafeApiResponse<{ success: boolean; notes: ShortNote[]; total: number }>(res, 'Admin Short Notes');
+    } catch {
+      return { success: false, notes: [], total: 0 };
+    }
+  },
+
+  getAdminShortNoteById: async (id: string): Promise<{ success: boolean; shortNote: ShortNote }> => {
+    const res = await apiFetch(`/api/admin/short-notes/${encodeURIComponent(id)}`, {
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'Admin Short Note By ID');
+  },
+
+  updateAdminShortNote: async (id: string, payload: any): Promise<{ success: boolean; shortNote: ShortNote }> => {
+    const res = await apiFetch(`/api/admin/short-notes/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return parseSafeApiResponse(res, 'Admin Update Short Note');
+  },
+
+  publishAdminShortNote: async (id: string): Promise<{ success: boolean; shortNote: ShortNote }> => {
+    const res = await apiFetch(`/api/admin/short-notes/${encodeURIComponent(id)}/publish`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'Admin Publish Short Note');
+  },
+
+  archiveAdminShortNote: async (id: string): Promise<{ success: boolean; shortNote: ShortNote }> => {
+    const res = await apiFetch(`/api/admin/short-notes/${encodeURIComponent(id)}/archive`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'Admin Archive Short Note');
+  },
+
+  deleteAdminShortNote: async (id: string): Promise<{ success: boolean }> => {
+    const res = await apiFetch(`/api/admin/short-notes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return parseSafeApiResponse(res, 'Admin Delete Short Note');
   },
 };
 

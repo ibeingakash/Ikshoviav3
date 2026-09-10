@@ -24,7 +24,9 @@ export class GoogleDriveStorage implements StorageProvider {
 
     // 2. Determine target folder ID based on category
     let targetFolderId = folders.resourcesId;
-    if (params.folderCategory === 'OFFICIAL_DOCUMENTS' && folders.officialDocsId) {
+    if (params.folderCategory === 'BOOKS' && folders.booksId) {
+      targetFolderId = folders.booksId;
+    } else if (params.folderCategory === 'OFFICIAL_DOCUMENTS' && folders.officialDocsId) {
       targetFolderId = folders.officialDocsId;
     } else if (params.folderCategory === 'NOTES' && folders.notesId) {
       targetFolderId = folders.notesId;

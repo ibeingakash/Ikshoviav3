@@ -28,6 +28,7 @@ import { useLearner } from '../../context/LearnerContext.js';
 import { ResourceReaderModal } from './ResourceReaderModal.js';
 import { ResourceDetailModal } from './ResourceDetailModal.js';
 import { ResourceAskAIDialog } from './ResourceAskAIDialog.js';
+import { BookResourceCard } from './BookResourceCard.js';
 
 export const LearnerDriveLibraryTab: React.FC = () => {
   const { askTutorWithContext } = useLearner();
@@ -77,7 +78,8 @@ export const LearnerDriveLibraryTab: React.FC = () => {
     setContinueLoading(true);
     try {
       const items = await api.getContinueReading(6);
-      setContinueReading(items);
+      const cleanItems = (items || []).filter((r: any) => (r.resource_type || r.type) !== 'SYLLABUS');
+      setContinueReading(cleanItems);
     } catch (err) {
       console.error('Failed to load continue reading items:', err);
     } finally {
@@ -87,6 +89,21 @@ export const LearnerDriveLibraryTab: React.FC = () => {
 
   useEffect(() => {
     fetchContinueReading();
+
+    // Auto-open book if navigated from Global Search
+    const params = new URLSearchParams(window.location.search);
+    const bookId = params.get('book_id') || (window as any).__ikshovia_auto_open_book_id;
+    if (bookId) {
+      delete (window as any).__ikshovia_auto_open_book_id;
+      api.getResource(bookId).then((res) => {
+        if (res) {
+          setActiveReaderResource(res);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('book_id');
+          window.history.replaceState({}, '', url.toString());
+        }
+      }).catch((err) => console.warn('Failed to auto-open searched book:', err));
+    }
   }, []);
 
   // Fetch main resource listing
@@ -95,7 +112,7 @@ export const LearnerDriveLibraryTab: React.FC = () => {
     try {
       if (onlyBookmarked) {
         const data = await api.getResourceBookmarks(1, 60);
-        let list = data.bookmarks;
+        let list = (data.bookmarks || []).filter((r: any) => (r.resource_type || r.type) !== 'SYLLABUS');
         if (selectedSubject !== 'ALL') {
           list = list.filter((r) => r.subject === selectedSubject);
         }
@@ -124,7 +141,8 @@ export const LearnerDriveLibraryTab: React.FC = () => {
           sort: sortOption,
           limit: 60,
         });
-        setResources(data.resources);
+        const cleanList = (data.resources || []).filter((r: any) => (r.resource_type || r.type) !== 'SYLLABUS');
+        setResources(cleanList);
       }
     } catch (err) {
       console.error('Failed to load resources:', err);
@@ -174,16 +192,21 @@ export const LearnerDriveLibraryTab: React.FC = () => {
       <div className="bg-white p-5 rounded-2xl border border-[#EAE6DF] shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800">
-                <BookOpen className="w-4 h-4" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-100/90 border border-amber-200/80 flex items-center justify-center text-amber-900 shadow-2xs">
+                <BookOpen className="w-5 h-5 text-amber-800" />
               </div>
-              <h2 className="text-base font-bold text-stone-900">
-                Civil Services Learner Resource Library
-              </h2>
+              <div>
+                <h1 className="text-lg sm:text-xl font-bold font-serif-editorial text-stone-900">
+                  Learner Resource Library
+                </h1>
+                <span className="text-[11px] font-mono font-bold text-amber-900 uppercase tracking-wider">
+                  Books & Reference Material
+                </span>
+              </div>
             </div>
-            <p className="text-xs text-stone-500 mt-1">
-              Standard civil services textbooks, official state compendiums, and NCERT references with in-app reader & grounded AI Tutor.
+            <p className="text-xs text-stone-600 mt-2 max-w-2xl leading-relaxed">
+              Standard civil-services textbooks, NCERTs, official references, and verified learning documents with in-app reader & grounded AI Tutor.
             </p>
           </div>
 
@@ -424,214 +447,32 @@ export const LearnerDriveLibraryTab: React.FC = () => {
         ) : viewMode === 'grid' ? (
           /* GRID VIEW */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {resources.map((res) => {
-              const isBmk = Boolean(res.is_bookmarked || res.isBookmarked);
-              const totalP = Math.max(1, res.page_count || 1);
-              const lastP = res.last_page || res.lastPage || 1;
-
-              return (
-                <div
-                  key={res.id}
-                  onClick={() => setActiveDetailResource(res)}
-                  className="bg-white rounded-2xl border border-[#EAE6DF] hover:border-amber-400/80 p-4 sm:p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group cursor-pointer"
-                >
-                  <div>
-                    {/* Top Row: Type & Bookmark */}
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
-                        {res.resource_type || res.type || 'BOOK'}
-                      </span>
-
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-medium text-stone-500">
-                          {totalP} {totalP === 1 ? 'page' : 'pages'}
-                        </span>
-                        <button
-                          onClick={(e) => handleBookmarkToggle(res.id, e)}
-                          className={`p-1 rounded-lg transition ${
-                            isBmk ? 'text-amber-600' : 'text-stone-300 hover:text-stone-500'
-                          }`}
-                          title={isBmk ? 'Remove Bookmark' : 'Bookmark this resource'}
-                          aria-label="Toggle Bookmark"
-                        >
-                          {isBmk ? <BookmarkCheck className="w-4 h-4 fill-amber-500 text-amber-600" /> : <Bookmark className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Title */}
-                    <h3 className="text-sm font-bold text-stone-900 mt-2.5 group-hover:text-amber-800 transition-colors line-clamp-2 leading-snug">
-                      {res.title}
-                    </h3>
-
-                    {/* Author */}
-                    <p className="text-xs text-stone-500 mt-1">
-                      By <strong className="text-stone-700 font-medium">{res.author || 'IKSHOVIA Faculty'}</strong>
-                    </p>
-
-                    {/* Description preview */}
-                    {res.description && (
-                      <p className="text-xs text-stone-600 mt-2 line-clamp-2 bg-stone-50 p-2 rounded-xl border border-stone-100">
-                        {res.description}
-                      </p>
-                    )}
-
-                    {/* Subject & Exam Tags */}
-                    <div className="flex flex-wrap items-center gap-1.5 mt-3 text-[11px] text-stone-500">
-                      <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
-                        {res.subject || 'General Studies'}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700">
-                        {res.exam || res.examTag || 'ALL'}
-                      </span>
-                    </div>
-
-                    {/* Active Reading Progress Bar (if started) */}
-                    {lastP > 1 && (
-                      <div className="mt-3 pt-2 border-t border-stone-100">
-                        <div className="flex items-center justify-between text-[10px] text-amber-800 font-medium">
-                          <span>Reading: Page {lastP} of {totalP}</span>
-                          <span>{Math.round((lastP / totalP) * 100)}%</span>
-                        </div>
-                        <div className="w-full bg-stone-100 rounded-full h-1 mt-1 overflow-hidden">
-                          <div
-                            className="bg-amber-600 h-1 rounded-full"
-                            style={{ width: `${Math.round((lastP / totalP) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions Footer */}
-                  <div className="pt-3.5 mt-3.5 border-t border-stone-100 flex items-center justify-between gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveReaderResource(res);
-                      }}
-                      className="px-3.5 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{lastP > 1 ? `Resume (P. ${lastP})` : 'Read Now'}</span>
-                    </button>
-
-                    <div className="flex items-center gap-1.5">
-                      <a
-                        href={`/api/resources/${res.id}/download`}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition"
-                        title="Download PDF"
-                        aria-label="Download PDF"
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveAskAIResource(res);
-                        }}
-                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                        title="Ask AI grounded in this book"
-                      >
-                        <Bot className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {resources.map((res) => (
+              <BookResourceCard
+                key={res.id}
+                resource={res}
+                viewMode="grid"
+                onOpenReader={(r) => setActiveReaderResource(r)}
+                onOpenDetail={(r) => setActiveDetailResource(r)}
+                onOpenAskAI={(r) => setActiveAskAIResource(r)}
+                onToggleBookmark={handleBookmarkToggle}
+              />
+            ))}
           </div>
         ) : (
           /* LIST VIEW */
-          <div className="bg-white rounded-2xl border border-[#EAE6DF] shadow-2xs divide-y divide-stone-100 overflow-hidden">
-            {resources.map((res) => {
-              const isBmk = Boolean(res.is_bookmarked || res.isBookmarked);
-              const totalP = Math.max(1, res.page_count || 1);
-              const lastP = res.last_page || res.lastPage || 1;
-
-              return (
-                <div
-                  key={res.id}
-                  onClick={() => setActiveDetailResource(res)}
-                  className="p-4 hover:bg-stone-50/70 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
-                        {res.resource_type || res.type || 'BOOK'}
-                      </span>
-                      <span className="text-[11px] font-medium text-stone-500">
-                        {res.subject || 'General Studies'}
-                      </span>
-                      <span className="text-stone-300">•</span>
-                      <span className="text-[11px] text-stone-400">{res.exam || 'ALL'}</span>
-                    </div>
-
-                    <h3 className="text-sm font-bold text-stone-900 mt-1 truncate">
-                      {res.title}
-                    </h3>
-
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      By <strong className="text-stone-700 font-medium">{res.author || 'IKSHOVIA Faculty'}</strong> • {totalP} Pages
-                      {lastP > 1 && ` • Currently at Page ${lastP}`}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={(e) => handleBookmarkToggle(res.id, e)}
-                      className={`p-2 rounded-xl transition border cursor-pointer ${
-                        isBmk
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-white text-stone-400 border-stone-200 hover:bg-stone-100'
-                      }`}
-                      title={isBmk ? 'Remove Bookmark' : 'Add Bookmark'}
-                      aria-label="Toggle Bookmark"
-                    >
-                      {isBmk ? <BookmarkCheck className="w-4 h-4 fill-amber-500 text-amber-600" /> : <Bookmark className="w-4 h-4" />}
-                    </button>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveAskAIResource(res);
-                      }}
-                      className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl border border-stone-200 bg-white transition cursor-pointer"
-                      title="Ask AI"
-                    >
-                      <Bot className="w-4 h-4" />
-                    </button>
-
-                    <a
-                      href={`/api/resources/${res.id}/download`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-xl border border-stone-200 bg-white transition"
-                      title="Download PDF"
-                      aria-label="Download PDF"
-                    >
-                      <Download className="w-4 h-4" />
-                    </a>
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveReaderResource(res);
-                      }}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{lastP > 1 ? `Resume (P. ${lastP})` : 'Read'}</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="space-y-3">
+            {resources.map((res) => (
+              <BookResourceCard
+                key={res.id}
+                resource={res}
+                viewMode="list"
+                onOpenReader={(r) => setActiveReaderResource(r)}
+                onOpenDetail={(r) => setActiveDetailResource(r)}
+                onOpenAskAI={(r) => setActiveAskAIResource(r)}
+                onToggleBookmark={handleBookmarkToggle}
+              />
+            ))}
           </div>
         )}
       </div>

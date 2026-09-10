@@ -23,6 +23,11 @@ import {
   Send,
   HelpCircle,
   FileCheck,
+  History,
+  Image as ImageIcon,
+  Plus,
+  ChevronDown,
+  Clock,
 } from 'lucide-react';
 import {
   OCRImportMode,
@@ -32,7 +37,20 @@ import {
   Concept,
   PublishDestination,
 } from '../../types/index.js';
-import { api } from '../../lib/api.js';
+import { api, waitForBackendReadiness, isBackendStartingError } from '../../lib/api.js';
+import { AddMissingQuestionModal } from './ocr/AddMissingQuestionModal.js';
+import { QuestionRevisionModal } from './ocr/QuestionRevisionModal.js';
+import { FigureEditorModal } from './ocr/FigureEditorModal.js';
+import { PaperCompletenessBanner } from './ocr/PaperCompletenessBanner.js';
+import {
+  PaperCompletenessCheck,
+  calculateCanonicalMissingQuestions,
+  getCanonicalExpectedQuestions,
+  validatePaperCompleteness,
+  normalizeOptionsForExam,
+  isBpscExam,
+  isUpscExam,
+} from '../../lib/examOptionPolicy.js';
 
 interface UploadFileState {
   file: File | null;
@@ -109,9 +127,23 @@ export const OCRStudioView: React.FC = () => {
     }
   };
 
-  // Step 4: OCR Processing state
+  // Step 4: OCR V2 Processing & Real-time Polling State
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStage, setProcessingStage] = useState<number>(0);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<{
+    stage?: string;
+    currentPage?: number;
+    totalPages?: number;
+    pagesCompleted?: number;
+    percentage?: number;
+    detectedQuestions?: number;
+    answerMatches?: number;
+    reviewCount?: number;
+    errorMessage?: string;
+    diagnostics?: any;
+  } | null>(null);
+  const pollingTimerRef = useRef<any>(null);
 
   // Step 5: Review & Questions
   const [extractedQuestions, setExtractedQuestions] = useState<Question[]>([]);
@@ -120,15 +152,208 @@ export const OCRStudioView: React.FC = () => {
   const [editingQId, setEditingQId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Question>>({});
 
+  // Missing questions modal & audit & figure modals
+  const [showAddMissingModal, setShowAddMissingModal] = useState(false);
+  const [suggestedMissingQNum, setSuggestedMissingQNum] = useState<number | undefined>(undefined);
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const [revisionTargetQuestion, setRevisionTargetQuestion] = useState<Question | null>(null);
+  const [showFigureModal, setShowFigureModal] = useState(false);
+  const [figureTargetQuestion, setFigureTargetQuestion] = useState<Question | null>(null);
+
+  // Completeness check state
+  const [completenessCheck, setCompletenessCheck] = useState<PaperCompletenessCheck | null>(null);
+  const [isCheckingCompleteness, setIsCheckingCompleteness] = useState(false);
+
+  // Recent jobs & active job selector
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
+  const [showJobSelector, setShowJobSelector] = useState(false);
+  const [isLoadingJob, setIsLoadingJob] = useState(false);
+
   // Status notification banner
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Step 6: Publish Safety & Summary
   const [isPublishing, setIsPublishing] = useState(false);
 
+  // Slot-level Option Editing (e.g. adding missing Option B, C, D, E)
+  const [addingSlotForQ, setAddingSlotForQ] = useState<{ qId: string; slotId: string } | null>(null);
+  const [slotInputText, setSlotInputText] = useState('');
+  const [isSavingSlot, setIsSavingSlot] = useState(false);
+
+  const getActiveJobId = () => {
+    return (
+      ocrResultMeta?.id ||
+      ocrResultMeta?.jobId ||
+      ocrResultMeta?.job?.id ||
+      activeJobId ||
+      (extractedQuestions && extractedQuestions.length > 0 ? (extractedQuestions.find(q => (q as any).jobId) as any)?.jobId : '') ||
+      localStorage.getItem('ocr_active_job_id') ||
+      (recentJobs && recentJobs.length > 0 ? recentJobs[0]?.id : '') ||
+      ''
+    );
+  };
+
+  const stopPolling = () => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+  };
+
+  const fetchRecentJobs = async () => {
+    try {
+      const jobs = await api.getOcrJobs();
+      if (Array.isArray(jobs)) {
+        setRecentJobs(jobs);
+      }
+    } catch (e) {
+      console.warn('[OCR Studio] Could not fetch recent jobs:', e);
+    }
+  };
+
+  const loadJobForReview = async (jobId: string) => {
+    if (!jobId) return false;
+    setIsLoadingJob(true);
+    setIsCheckingCompleteness(true);
+    try {
+      const res = await api.getOcrJobReview(jobId);
+      if (res && res.job) {
+        const job = res.job;
+        const questionsList = Array.isArray(res.questions) ? res.questions : [];
+        setActiveJobId(job.id);
+        localStorage.setItem('ocr_active_job_id', job.id);
+        setExtractedQuestions(questionsList);
+        setSelectedExam(job.exam || 'BPSC');
+        setExamTag(job.exam || 'BPSC');
+        setPyqYear(job.year || 2026);
+        setTotalExpectedQuestions(res.expectedCount || job.expectedQuestionCount || (job.exam === 'BPSC' ? 150 : 100));
+        setOcrResultMeta({
+          ...job,
+          id: job.id,
+          jobId: job.id,
+          questions: questionsList,
+          strategyUsed: job.strategy || 'OCR_V2_DETERMINISTIC_CLI',
+          detectedLanguage: job.detectedLanguage || 'EN',
+          totalExpected: res.expectedCount || job.expectedQuestionCount,
+          totalDetected: res.totalAccountedCount || res.detectedCount || questionsList.length,
+          missingQuestionNums: res.missingNumbers || [],
+          validationPassed: (res.missingNumbers || []).length === 0,
+        });
+        if (res.completeness) {
+          setCompletenessCheck(res.completeness);
+        } else {
+          setCompletenessCheck(res);
+        }
+        setCurrentStep(5);
+        fetchRecentJobs();
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.error('[OCR Studio] Failed to load job for review:', err);
+      return false;
+    } finally {
+      setIsLoadingJob(false);
+      setIsCheckingCompleteness(false);
+    }
+  };
+
   useEffect(() => {
     loadMetaData();
+    fetchRecentJobs();
+
+    // Check if there is an active OCR background job stored in session or query param
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlJobId = urlParams.get('jobId');
+    const storedJobId = urlJobId || localStorage.getItem('ocr_active_job_id');
+
+    if (storedJobId) {
+      api.getOcrJobDetails(storedJobId).then(async (res) => {
+        if (res?.job) {
+          if (res.job.status === 'QUEUED' || res.job.status === 'PROCESSING') {
+            setActiveJobId(storedJobId);
+            localStorage.setItem('ocr_active_job_id', storedJobId);
+            setIsProcessing(true);
+            setCurrentStep(4);
+            startPolling(storedJobId);
+          } else if (res.job.status === 'COMPLETED' || res.job.status === 'REVIEW_REQUIRED' || res.job.status === 'PARSED') {
+            await loadJobForReview(storedJobId);
+          }
+        }
+      }).catch(() => {
+        // Stale job id in localStorage
+      });
+    }
+
+    return () => {
+      stopPolling();
+    };
   }, []);
+
+  const pollJobStatus = async (jobId: string) => {
+    try {
+      const res = await api.getOcrJobDetails(jobId);
+      if (!res || !res.job) return;
+
+      const job = res.job;
+      const reviewState = job.reviewState || {};
+      const stage = reviewState.stage || job.status;
+
+      setJobProgress({
+        stage,
+        currentPage: reviewState.currentPage || job.processedPages || 0,
+        totalPages: reviewState.totalPages || job.pageCount || 0,
+        pagesCompleted: reviewState.pagesCompleted || job.processedPages || 0,
+        percentage: reviewState.percentage || (job.status === 'COMPLETED' ? 100 : 0),
+        detectedQuestions: reviewState.detectedQuestions || job.detectedQuestionsCount || 0,
+        answerMatches: reviewState.answerMatches || 0,
+        reviewCount: reviewState.reviewCount || 0,
+        errorMessage: reviewState.errorMessage || job.errorMessage,
+        diagnostics: reviewState.diagnostics,
+      });
+
+      // Update numerical stage indicator for progress checklist
+      if (stage === 'VALIDATING' || job.status === 'QUEUED') {
+        setProcessingStage(1);
+      } else if (stage === 'OCR_PROCESSING' || stage === 'TEXT_EXTRACTION') {
+        setProcessingStage(2);
+      } else if (stage === 'SEGMENTING_QUESTIONS') {
+        setProcessingStage(3);
+      } else if (stage === 'BINDING_ANSWERS' || stage === 'FINALIZING_STAGING') {
+        setProcessingStage(4);
+      }
+
+      if (job.status === 'COMPLETED' || job.status === 'REVIEW_REQUIRED' || job.status === 'PARSED') {
+        stopPolling();
+        setIsProcessing(false);
+        setProcessingStage(5);
+        await loadJobForReview(job.id);
+        setStatusMessage({
+          type: 'success',
+          text: `OCR Extraction complete! Processed job #${job.id.slice(0, 16)}...`,
+        });
+      } else if (job.status === 'FAILED') {
+        stopPolling();
+        localStorage.removeItem('ocr_active_job_id');
+        setIsProcessing(false);
+        const errMsg = reviewState.errorMessage || job.errorMessage || 'OCR extraction failed.';
+        setStatusMessage({
+          type: 'error',
+          text: `OCR Extraction Failure: ${errMsg}`,
+        });
+      }
+    } catch (err: any) {
+      console.warn('[OCR Polling Warning]', err?.message || err);
+    }
+  };
+
+  const startPolling = (jobId: string) => {
+    stopPolling();
+    pollJobStatus(jobId);
+    pollingTimerRef.current = setInterval(() => {
+      pollJobStatus(jobId);
+    }, 2000);
+  };
 
   // Update dependent topics and concepts when Subject/Topic selection changes
   useEffect(() => {
@@ -293,12 +518,39 @@ export const OCRStudioView: React.FC = () => {
   const handleExecuteOCR = async () => {
     setIsProcessing(true);
     setProcessingStage(1);
+    setStatusMessage({ type: 'info', text: 'Verifying OCR server readiness...' });
 
     try {
-      setTimeout(() => setProcessingStage(2), 600);
-      setTimeout(() => setProcessingStage(3), 1200);
+      // 1. Check backend readiness before uploading heavy PDF payloads
+      // Retry lightweight /api/health with bounded exponential backoff; NEVER repeat the heavy OCR upload
+      const readiness = await waitForBackendReadiness({
+        maxWaitMs: 75000,
+        initialDelayMs: 2000,
+        maxDelayMs: 8000,
+        onProgress: (info) => {
+          setStatusMessage({
+            type: 'info',
+            text: info.message,
+          });
+        },
+      });
 
+      if (!readiness.ready) {
+        setIsProcessing(false);
+        setStatusMessage({
+          type: 'error',
+          text: 'OCR server is starting. Please try again in a moment. Your PDF was not submitted.',
+        });
+        return;
+      }
+
+      setStatusMessage({ type: 'info', text: 'Submitting document to deterministic background OCR pipeline...' });
+
+      const idempotencyKey = `ocr_ui_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // Execute OCR upload & queue
       const res = await api.processOcrImport({
+        idempotencyKey,
         mode,
         exam: selectedExam,
         documentLanguage,
@@ -317,19 +569,32 @@ export const OCRStudioView: React.FC = () => {
         keepOriginalPdf,
       });
 
-      setProcessingStage(4);
-
       if (res.success && Array.isArray(res.questions) && res.questions.length > 0) {
+        const activeId = res.jobId || res.job?.id;
+        if (activeId) {
+          setActiveJobId(activeId);
+          localStorage.setItem('ocr_active_job_id', activeId);
+        }
         setExtractedQuestions(res.questions);
         setOcrResultMeta(res);
         setStatusMessage({
           type: 'success',
-          text: `OCR Extraction complete! Extracted ${res.questions.length} question(s) (Expected: ${totalExpectedQuestions}). Strategy: ${res.strategyUsed || 'VISION_API'}.`,
+          text: `OCR Extraction complete! Extracted ${res.questions.length} question(s) (Expected: ${totalExpectedQuestions}).`,
         });
-        setTimeout(() => {
-          setIsProcessing(false);
-          setCurrentStep(5); // Proceed to Review Step
-        }, 800);
+        setIsProcessing(false);
+        setCurrentStep(5); // Proceed to Review Step
+        if (activeId) {
+          await loadJobForReview(activeId);
+        }
+      } else if (res.jobId || res.job?.id) {
+        const queuedJobId = res.jobId || res.job?.id;
+        setActiveJobId(queuedJobId);
+        localStorage.setItem('ocr_active_job_id', queuedJobId);
+        setStatusMessage({
+          type: 'info',
+          text: `Document accepted. Native OCR processing initiated (Job: ${queuedJobId.slice(0, 16)}...).`,
+        });
+        startPolling(queuedJobId);
       } else {
         setIsProcessing(false);
         const stageInfo = res.stage ? `[Stage: ${res.stage}] ` : '';
@@ -341,8 +606,15 @@ export const OCRStudioView: React.FC = () => {
       }
     } catch (err: any) {
       setIsProcessing(false);
-      const errDetail = err?.message || 'Server error during OCR extraction.';
-      setStatusMessage({ type: 'error', text: `OCR Processing Error: ${errDetail}` });
+      if (isBackendStartingError(err)) {
+        setStatusMessage({
+          type: 'error',
+          text: 'OCR server is starting. Please try again in a moment. Your PDF was not submitted.',
+        });
+      } else {
+        const errDetail = err?.message || 'Server error during OCR extraction.';
+        setStatusMessage({ type: 'error', text: `OCR Processing Error: ${errDetail}` });
+      }
     }
   };
 
@@ -370,7 +642,7 @@ export const OCRStudioView: React.FC = () => {
       return;
     }
 
-    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    const jobId = getActiveJobId();
     try {
       const res = await api.bulkActionOcrQuestions({
         jobId,
@@ -419,31 +691,145 @@ export const OCRStudioView: React.FC = () => {
 
   const handleStartEdit = (q: Question) => {
     setEditingQId(q.id);
-    setEditForm({ ...q });
+    const isBpsc = isBpscExam(selectedExam);
+    const canonicalLabels = isBpsc ? ['A', 'B', 'C', 'D', 'E'] : ['A', 'B', 'C', 'D'];
+    const existingMap = new Map<string, string>();
+    (q.options || []).forEach((opt: any, idx: number) => {
+      const letter = typeof opt === 'object' && opt?.id ? String(opt.id).toUpperCase() : String.fromCharCode(65 + idx);
+      const text = typeof opt === 'string' ? opt : (opt?.text || '');
+      existingMap.set(letter, text);
+    });
+
+    const normalizedOpts = canonicalLabels.map(label => ({
+      id: label,
+      text: existingMap.get(label) || '',
+    }));
+
+    if (!isBpsc && existingMap.has('E')) {
+      normalizedOpts.push({ id: 'E', text: existingMap.get('E') || '' });
+    }
+
+    setEditForm({
+      ...q,
+      options: normalizedOpts,
+    });
   };
 
   const handleSaveInlineEdit = async () => {
     if (!editingQId) return;
     try {
-      const res = await api.updateOcrQuestion(editingQId, editForm);
+      // Clean and normalize options before saving
+      const canonicalOrder = ['A', 'B', 'C', 'D', 'E'];
+      const cleanedOptions = (editForm.options || [])
+        .map((opt: any, idx: number) => {
+          const letter = typeof opt === 'object' && opt?.id ? String(opt.id).toUpperCase() : String.fromCharCode(65 + idx);
+          const text = typeof opt === 'string' ? opt : (opt?.text || '');
+          return { id: letter, text: text.trim() };
+        })
+        .sort((a: any, b: any) => {
+          const idxA = canonicalOrder.indexOf(a.id);
+          const idxB = canonicalOrder.indexOf(b.id);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          return a.id.localeCompare(b.id);
+        });
+
+      const payload = {
+        ...editForm,
+        options: cleanedOptions,
+      };
+
+      const res = await api.updateOcrQuestion(editingQId, payload);
       if (res.success && res.question) {
-        setExtractedQuestions(prev =>
-          prev.map(q => (q.id === editingQId ? (res.question as Question) : q))
-        );
+        const updatedList = extractedQuestions.map(q => (q.id === editingQId ? (res.question as Question) : q));
+        setExtractedQuestions(updatedList);
         setEditingQId(null);
         setStatusMessage({ type: 'success', text: 'Extracted question saved directly to PostgreSQL!' });
+        runCompletenessAudit(updatedList);
       } else {
-        const fallback = await api.updateQuestion(editingQId, editForm);
+        const fallback = await api.updateQuestion(editingQId, payload);
         if (fallback.success) {
-          setExtractedQuestions(prev =>
-            prev.map(q => (q.id === editingQId ? (fallback.question as Question) : q))
-          );
+          const updatedList = extractedQuestions.map(q => (q.id === editingQId ? (fallback.question as Question) : q));
+          setExtractedQuestions(updatedList);
           setEditingQId(null);
           setStatusMessage({ type: 'success', text: 'Question updated successfully.' });
+          runCompletenessAudit(updatedList);
         }
       }
     } catch (err) {
       setStatusMessage({ type: 'error', text: 'Failed to update question.' });
+    }
+  };
+
+  const handleSaveSlotOption = async (q: Question, slotId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setStatusMessage({ type: 'error', text: `Option ${slotId} text cannot be empty.` });
+      return;
+    }
+    const currentOptions = Array.isArray(q.options) ? [...q.options] : [];
+    const normalizedSlotId = slotId.trim().toUpperCase();
+
+    // Upsert the option into raw array
+    let found = false;
+    const updatedRaw = currentOptions.map((opt: any, idx: number) => {
+      const optId = typeof opt === 'object' && opt?.id ? String(opt.id).trim().toUpperCase() : String.fromCharCode(65 + idx);
+      if (optId === normalizedSlotId) {
+        found = true;
+        return typeof opt === 'string' ? { id: normalizedSlotId, text: trimmed } : { ...opt, id: normalizedSlotId, text: trimmed };
+      }
+      return typeof opt === 'string' ? { id: optId, text: opt } : { ...opt, id: optId };
+    });
+
+    if (!found) {
+      updatedRaw.push({ id: normalizedSlotId, text: trimmed });
+    }
+
+    // Canonical sorting: A, B, C, D, E (strictly NO Option F for BPSC or UPSC)
+    const canonicalOrder = ['A', 'B', 'C', 'D', 'E'];
+    const canonicalSortedOptions = updatedRaw
+      .map((opt: any, idx: number) => ({
+        id: String(opt.id || String.fromCharCode(65 + idx)).trim().toUpperCase(),
+        text: typeof opt.text === 'string' ? opt.text.trim() : '',
+      }))
+      .filter(opt => canonicalOrder.includes(opt.id)) // Strip any accidental Option F
+      .sort((a, b) => {
+        const idxA = canonicalOrder.indexOf(a.id);
+        const idxB = canonicalOrder.indexOf(b.id);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        return a.id.localeCompare(b.id);
+      });
+
+    setIsSavingSlot(true);
+    try {
+      const res = await api.correctQuestion(q.id, {
+        fieldChanged: 'options',
+        reason: `Added/updated canonical Option ${normalizedSlotId} to satisfy ${selectedExam} option policy`,
+        oldValue: `${currentOptions.length} options`,
+        newValue: `${canonicalSortedOptions.length} options (includes Option ${normalizedSlotId})`,
+        newOptions: canonicalSortedOptions,
+      });
+
+      await api.updateOcrQuestion(q.id, { options: canonicalSortedOptions });
+
+      const updatedQuestion = res?.question || { ...q, options: canonicalSortedOptions };
+      const updatedList = extractedQuestions.map(item =>
+        item.id === q.id ? { ...item, ...updatedQuestion, options: canonicalSortedOptions } : item
+      );
+
+      setExtractedQuestions(updatedList);
+      setAddingSlotForQ(null);
+      setSlotInputText('');
+
+      setStatusMessage({
+        type: 'success',
+        text: `Question #${q.questionNum || q.questionNumber}: Option ${normalizedSlotId} saved canonically into paper sequence!`,
+      });
+
+      runCompletenessAudit(updatedList);
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err.message || `Failed to save Option ${normalizedSlotId}.` });
+    } finally {
+      setIsSavingSlot(false);
     }
   };
 
@@ -452,7 +838,7 @@ export const OCRStudioView: React.FC = () => {
       setStatusMessage({ type: 'error', text: 'Please enter answer key text (e.g. 1 A 2 B 3 C 4 D).' });
       return;
     }
-    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    const jobId = getActiveJobId();
     if (!jobId) {
       setStatusMessage({ type: 'error', text: 'No active OCR job ID found. Please process a document first.' });
       return;
@@ -479,8 +865,65 @@ export const OCRStudioView: React.FC = () => {
     }
   };
 
+  const runCompletenessAudit = async (customQuestions?: Question[]) => {
+    const list = customQuestions || extractedQuestions;
+    const jobId = getActiveJobId();
+    setIsCheckingCompleteness(true);
+    try {
+      if (jobId) {
+        const res = await api.getOcrJobReview(jobId);
+        const comp = res?.completeness || (res?.expectedCount ? res : null);
+        if (comp) {
+          setCompletenessCheck(comp);
+          if (Array.isArray(res.questions) && res.questions.length > 0) {
+            setExtractedQuestions(res.questions);
+          }
+          return;
+        }
+      }
+      const exp = totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag);
+      const local = validatePaperCompleteness(selectedExam, list, exp);
+      setCompletenessCheck(local);
+    } catch {
+      const exp = totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag);
+      const local = validatePaperCompleteness(selectedExam, list, exp);
+      setCompletenessCheck(local);
+    } finally {
+      setIsCheckingCompleteness(false);
+    }
+  };
+
+  const handleStripOptionE = async (q: Question) => {
+    const originalOptions = q.options || [];
+    const filteredOptions = originalOptions.filter((opt: any) => {
+      const label = typeof opt === 'object' ? opt.id : '';
+      return label?.toUpperCase() !== 'E';
+    });
+    try {
+      const res = await api.correctQuestion(q.id, {
+        fieldChanged: 'options',
+        reason: 'Stripped Option E to enforce UPSC CSE 4-option (A-D) commission policy',
+        oldValue: `${originalOptions.length} options (includes Option E)`,
+        newValue: `${filteredOptions.length} options (A-D only)`,
+      });
+      const updated = res?.question || { ...q, options: filteredOptions };
+      setExtractedQuestions(prev => prev.map(item => (item.id === q.id ? { ...item, ...updated } : item)));
+      setStatusMessage({
+        type: 'success',
+        text: `Question #${q.questionNum || q.questionNumber}: Removed Option E to enforce UPSC 4-option policy.`,
+      });
+      runCompletenessAudit();
+    } catch (err: any) {
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to strip Option E.' });
+    }
+  };
+
+  const handleAddOptionE = async (q: Question) => {
+    await handleSaveSlotOption(q, 'E', 'More than one of the above / None of the above');
+  };
+
   const handlePublishEntirePaperToPyqCatalog = async () => {
-    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    const jobId = getActiveJobId();
     if (!jobId) {
       setStatusMessage({ type: 'error', text: 'No active OCR Job ID found to publish.' });
       return;
@@ -502,8 +945,15 @@ export const OCRStudioView: React.FC = () => {
         setExtractedQuestions(prev =>
           prev.map(q => ({ ...q, isPublished: true, status: 'PUBLISHED' as const }))
         );
+        runCompletenessAudit();
       } else {
-        setStatusMessage({ type: 'error', text: res.error || 'Failed to publish to PYQ catalog.' });
+        if (res.completeness) {
+          setCompletenessCheck(res.completeness);
+        }
+        setStatusMessage({
+          type: 'error',
+          text: res.error || 'Completeness validation blocked publishing this paper.',
+        });
       }
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: 'Exception while publishing to canonical PYQ catalog.' });
@@ -515,7 +965,7 @@ export const OCRStudioView: React.FC = () => {
   const handleFinalPublish = async (action: 'PUBLISH' | 'DRAFT') => {
     setIsPublishing(true);
     const targetIds = extractedQuestions.map(q => q.id);
-    const jobId = ocrResultMeta?.jobId || ocrResultMeta?.job?.id;
+    const jobId = getActiveJobId();
 
     try {
       const res = await api.bulkActionOcrQuestions({
@@ -593,7 +1043,62 @@ export const OCRStudioView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {recentJobs.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowJobSelector(!showJobSelector)}
+                  className="flex items-center gap-1.5 text-xs text-indigo-200 bg-indigo-950/90 hover:bg-indigo-900 border border-indigo-700/60 px-3 py-1.5 rounded-xl font-medium transition-all shadow-sm"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{getActiveJobId() ? `Job: ${getActiveJobId().slice(0, 14)}...` : 'Select OCR Job'}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+
+                {showJobSelector && (
+                  <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 text-xs space-y-1 max-h-72 overflow-y-auto">
+                    <div className="text-[11px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-slate-800">
+                      Recent Ingestion Jobs ({recentJobs.length})
+                    </div>
+                    {recentJobs.map((j) => {
+                      const isCurrent = j.id === getActiveJobId();
+                      return (
+                        <button
+                          key={j.id}
+                          type="button"
+                          onClick={() => {
+                            setShowJobSelector(false);
+                            loadJobForReview(j.id);
+                          }}
+                          className={`w-full text-left p-2 rounded-lg transition-all flex flex-col gap-0.5 ${
+                            isCurrent
+                              ? 'bg-amber-500/20 border border-amber-500/40 text-amber-200'
+                              : 'hover:bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white truncate">{j.fileName || j.id}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                              j.status === 'COMPLETED' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                              j.status === 'REVIEW_REQUIRED' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                              'bg-slate-800 text-slate-400'
+                            }`}>
+                              {j.status}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                            <span>{j.exam || 'BPSC'} • {j.detectedQuestionsCount || 0} Qs</span>
+                            <span className="font-mono text-[10px] text-slate-500">{new Date(j.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             <span className="text-xs text-indigo-200 bg-indigo-900/60 border border-indigo-700/50 px-3 py-1.5 rounded-xl font-medium">
               Step {currentStep} of 6
             </span>
@@ -1187,15 +1692,59 @@ export const OCRStudioView: React.FC = () => {
           <div>
             <h2 className="text-xl font-extrabold text-white">Deterministic OCR & Extraction Pipeline</h2>
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-              Extract authentic questions, parse choices & statements, align answer keys, and calculate forensic confidence scores.
+              Extract authentic questions, parse choices & statements, align answer keys, and calculate forensic confidence scores using isolated native CLI workers.
             </p>
           </div>
+
+          {/* Live Progress Metrics (When Active) */}
+          {isProcessing && (
+            <div className="bg-slate-950 border border-indigo-900/50 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-indigo-300 font-semibold uppercase tracking-wider">
+                  {jobProgress?.stage?.replace(/_/g, ' ') || 'PROCESSING'}
+                </span>
+                <span className="text-white font-mono font-bold">
+                  {jobProgress?.percentage || 5}%
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${Math.max(5, Math.min(100, jobProgress?.percentage || 5))}%` }}
+                />
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-3 gap-2 pt-2 text-center text-xs">
+                <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                  <div className="text-slate-400 text-[10px]">Pages</div>
+                  <div className="text-sm font-bold text-white">
+                    {jobProgress?.currentPage || 0} / {jobProgress?.totalPages || '...'}
+                  </div>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                  <div className="text-slate-400 text-[10px]">Questions Found</div>
+                  <div className="text-sm font-bold text-emerald-400">
+                    {jobProgress?.detectedQuestions || 0}
+                  </div>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                  <div className="text-slate-400 text-[10px]">Expected</div>
+                  <div className="text-sm font-bold text-amber-400">
+                    {totalExpectedQuestions}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Steps Indicator */}
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-left space-y-3">
             {[
-              { idx: 1, label: 'Validate PDF header & security structure' },
-              { idx: 2, label: 'Deterministic native text / Tesseract OCR extraction' },
+              { idx: 1, label: 'Validate PDF header & native system dependencies' },
+              { idx: 2, label: 'Deterministic native text / Tesseract CLI OCR extraction' },
               { idx: 3, label: 'Sequential boundary segmentation & 5-option normalization' },
               { idx: 4, label: 'Align solution key numbers & verification diagnostics' },
             ].map(st => (
@@ -1220,7 +1769,9 @@ export const OCRStudioView: React.FC = () => {
 
           <div className="pt-4 flex justify-center gap-4">
             <button
-              onClick={() => setCurrentStep(3)}
+              onClick={() => {
+                if (!isProcessing) setCurrentStep(3);
+              }}
               disabled={isProcessing}
               className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50"
             >
@@ -1235,7 +1786,7 @@ export const OCRStudioView: React.FC = () => {
               {isProcessing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
+                  <span>Processing in Background...</span>
                 </>
               ) : (
                 <>
@@ -1344,6 +1895,35 @@ export const OCRStudioView: React.FC = () => {
             </div>
           )}
 
+          {/* Paper Completeness & Option Policy Validator Banner */}
+          <PaperCompletenessBanner
+            exam={selectedExam}
+            expectedCount={ocrResultMeta?.totalExpected || totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag)}
+            detectedCount={extractedQuestions.length}
+            completenessCheck={completenessCheck}
+            missingNumbers={
+              completenessCheck?.missingNumbers ||
+              ocrResultMeta?.missingQuestionNums ||
+              calculateCanonicalMissingQuestions(
+                ocrResultMeta?.totalExpected || totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag),
+                extractedQuestions.map(q => Number(q.questionNum || q.questionNumber)).filter(n => !isNaN(n) && n > 0)
+              ).missingNumbers
+            }
+            duplicateNumbers={
+              completenessCheck?.duplicateNumbers ||
+              calculateCanonicalMissingQuestions(
+                ocrResultMeta?.totalExpected || totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag),
+                extractedQuestions.map(q => Number(q.questionNum || q.questionNumber)).filter(n => !isNaN(n) && n > 0)
+              ).duplicateNumbers
+            }
+            onAddMissingClick={(qNum) => {
+              setSuggestedMissingQNum(qNum);
+              setShowAddMissingModal(true);
+            }}
+            onRefreshCompleteness={() => runCompletenessAudit()}
+            isLoading={isCheckingCompleteness}
+          />
+
           {/* Stats Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
@@ -1386,6 +1966,23 @@ export const OCRStudioView: React.FC = () => {
 
             {/* Bulk Toolbar */}
             <div className="flex items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800 flex-wrap">
+              <button
+                onClick={() => {
+                  setSuggestedMissingQNum(undefined);
+                  setShowAddMissingModal(true);
+                }}
+                disabled={(completenessCheck?.missingNumbers?.length ?? 0) === 0}
+                title={
+                  (completenessCheck?.missingNumbers?.length ?? 0) === 0
+                    ? 'All canonical questions accounted for (0 missing questions).'
+                    : `Add missing canonical question (${completenessCheck?.missingNumbers?.length} unresolved)`
+                }
+                className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Missing Q</span>
+              </button>
+
               <button
                 onClick={() => setShowAnswerKeyModal(true)}
                 className="text-xs bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700 font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
@@ -1594,6 +2191,34 @@ export const OCRStudioView: React.FC = () => {
                         )}
 
                         <button
+                          onClick={() => {
+                            setRevisionTargetQuestion(q);
+                            setShowRevisionModal(true);
+                          }}
+                          className="text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1 font-medium transition"
+                          title="View provenance history and record audited revisions"
+                        >
+                          <History className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Audit ({q.corrections_count || (q as any).correctionsCount || 0})</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setFigureTargetQuestion(q);
+                            setShowFigureModal(true);
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-lg border flex items-center gap-1 font-medium transition ${
+                            q.image_url || q.imageUrl
+                              ? 'bg-purple-950/80 text-purple-300 border-purple-700 hover:bg-purple-900'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                          }`}
+                          title="Inspect, upload, or verify question diagram/figure"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>{q.image_url || q.imageUrl ? 'Diagram Attached' : 'Figure'}</span>
+                        </button>
+
+                        <button
                           onClick={() => (isEditing ? handleSaveInlineEdit() : handleStartEdit(q))}
                           className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1 rounded-lg border border-slate-700 flex items-center gap-1 font-medium"
                         >
@@ -1616,26 +2241,36 @@ export const OCRStudioView: React.FC = () => {
                           />
                         </div>
 
-                        {/* Options inline editing */}
+                        {/* Options inline editing with clear letter badges */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {(editForm.options || []).map((opt: any, oIdx: number) => {
+                            const optLetter = typeof opt === 'object' && opt?.id ? String(opt.id).toUpperCase() : String.fromCharCode(65 + oIdx);
                             const optText = typeof opt === 'string' ? opt : (opt?.text || '');
-                            const optKey = typeof opt === 'object' && opt?.id ? opt.id : oIdx;
+                            const isCorrect =
+                              editForm.correctAnswer === optLetter ||
+                              editForm.correctAnswer === String(oIdx) ||
+                              editForm.correctAnswer === String.fromCharCode(65 + oIdx);
                             return (
-                              <div key={`edit_opt_${q.id}_${optKey}_${oIdx}`} className="flex items-center gap-2">
-                                <input
-                                  type="radio"
-                                  name={`correct_${q.id}`}
-                                  checked={editForm.correctAnswer === String(oIdx)}
-                                  onChange={() => setEditForm({ ...editForm, correctAnswer: String(oIdx) })}
-                                  className="w-4 h-4 text-amber-500 focus:ring-amber-500 bg-slate-900"
-                                />
+                              <div key={`edit_opt_${q.id}_${optLetter}_${oIdx}`} className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5 cursor-pointer shrink-0" title={`Mark ${optLetter} as correct answer`}>
+                                  <input
+                                    type="radio"
+                                    name={`correct_${q.id}`}
+                                    checked={isCorrect}
+                                    onChange={() => setEditForm({ ...editForm, correctAnswer: optLetter })}
+                                    className="w-4 h-4 text-amber-500 focus:ring-amber-500 bg-slate-900 cursor-pointer"
+                                  />
+                                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${isCorrect ? 'bg-emerald-900 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                                    {optLetter}.
+                                  </span>
+                                </label>
                                 <input
                                   type="text"
                                   value={optText}
+                                  placeholder={`Option ${optLetter} text...`}
                                   onChange={e => {
                                     const updatedOpts = [...(editForm.options || [])];
-                                    updatedOpts[oIdx] = typeof opt === 'string' ? e.target.value : { ...opt, text: e.target.value };
+                                    updatedOpts[oIdx] = typeof opt === 'string' ? { id: optLetter, text: e.target.value } : { ...opt, id: optLetter, text: e.target.value };
                                     setEditForm({ ...editForm, options: updatedOpts });
                                   }}
                                   className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-xs focus:border-amber-500 focus:outline-none"
@@ -1694,6 +2329,95 @@ export const OCRStudioView: React.FC = () => {
                               <span>Passage / Context</span>
                             </div>
                             <p className="leading-relaxed whitespace-pre-wrap">{anyQ.passageText}</p>
+                          </div>
+                        )}
+
+                        {/* Exam Option Policy Notice & Actions */}
+                        {(() => {
+                          const isUpsc = isUpscExam(selectedExam);
+                          const isBpsc = isBpscExam(selectedExam);
+                          const rawOpts = (cardLang[q.id] === 'hi' && q.options_hi && q.options_hi.length > 0 ? q.options_hi : q.options) || [];
+                          const normalized = normalizeOptionsForExam(selectedExam, rawOpts);
+                          const missingSlots = normalized.filter(o => o.status === 'MISSING' || !o.text.trim()).map(o => o.id);
+                          const unexpectedSlots = normalized.filter(o => o.status === 'UNEXPECTED').map(o => o.id);
+
+                          if (isUpsc && unexpectedSlots.length > 0) {
+                            return (
+                              <div className="bg-rose-950/70 border border-rose-800 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2 text-rose-300">
+                                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                                  <span>
+                                    <strong>UPSC Violation:</strong> Option {unexpectedSlots.join(', ')} detected (UPSC CSE Prelims policy strictly requires Options A-D only).
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => handleStripOptionE(q)}
+                                  className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition text-xs shrink-0"
+                                >
+                                  Strip Option {unexpectedSlots[0]}
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          if (isBpsc && missingSlots.length > 0) {
+                            return (
+                              <div className="bg-amber-950/70 border border-amber-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                                <div className="flex items-center gap-2 text-amber-300">
+                                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <span>
+                                    <strong>BPSC Option Policy:</strong> Only {5 - missingSlots.length} of 5 options extracted. Missing slot{missingSlots.length > 1 ? 's' : ''}:{' '}
+                                    <strong className="text-amber-200">{missingSlots.join(', ')}</strong>.
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                  {missingSlots.map(slotId => (
+                                    <button
+                                      key={`btn_add_slot_${q.id}_${slotId}`}
+                                      onClick={() => {
+                                        setAddingSlotForQ({ qId: q.id, slotId });
+                                        setSlotInputText('');
+                                      }}
+                                      className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition text-xs flex items-center gap-1 shadow-sm"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Add Option {slotId}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })()}
+
+                        {/* Figure / Diagram Visual Content Block */}
+                        {(q.image_url || q.imageUrl) && (
+                          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center gap-3">
+                            <img
+                              src={q.image_url || q.imageUrl}
+                              alt={q.image_caption || q.imageCaption || 'Question figure'}
+                              className="max-h-24 max-w-xs object-contain rounded bg-black/40 border border-slate-800"
+                            />
+                            <div className="text-xs text-slate-300">
+                              <div className="font-semibold text-purple-300 flex items-center gap-1">
+                                <ImageIcon className="w-3.5 h-3.5" />
+                                <span>Verified Question Diagram</span>
+                              </div>
+                              {(q.image_caption || q.imageCaption) && (
+                                <p className="text-slate-400 text-[11px] mt-0.5">{q.image_caption || q.imageCaption}</p>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setFigureTargetQuestion(q);
+                                  setShowFigureModal(true);
+                                }}
+                                className="text-[11px] text-indigo-400 hover:underline mt-1 block"
+                              >
+                                Edit / Replace Diagram
+                              </button>
+                            </div>
                           </div>
                         )}
 
@@ -1757,34 +2481,146 @@ export const OCRStudioView: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Options List */}
+                        {/* Options List with Canonical Exam Policy Enforcement */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {((cardLang[q.id] === 'hi' && q.options_hi && q.options_hi.length > 0
-                            ? q.options_hi
-                            : q.options) || []
-                          ).map((opt: any, oIdx: number) => {
-                            const optLetter = (typeof opt === 'object' && opt?.id) ? opt.id.toUpperCase() : String.fromCharCode(65 + oIdx);
+                          {(() => {
+                            const rawOpts = (cardLang[q.id] === 'hi' && q.options_hi && q.options_hi.length > 0 ? q.options_hi : q.options) || [];
+                            const normalized = normalizeOptionsForExam(selectedExam, rawOpts);
                             const correctLetter = (q.correctAnswer || '').trim().toUpperCase();
-                            const isCorrect = correctLetter === optLetter || correctLetter === String(oIdx) || correctLetter === String.fromCharCode(65 + oIdx);
-                            const optText = typeof opt === 'string' ? opt : (opt?.text || '');
-                            const optKey = typeof opt === 'object' && opt?.id ? opt.id : oIdx;
-                            return (
-                              <div
-                                key={`card_opt_${q.id}_${optKey}_${oIdx}`}
-                                className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
-                                  isCorrect
-                                    ? 'bg-emerald-950/60 border-emerald-600 text-emerald-200 font-semibold ring-1 ring-emerald-500/30'
-                                    : 'bg-slate-950/60 border-slate-800 text-slate-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-400">{optLetter}.</span>
-                                  <span>{optText}</span>
+
+                            return normalized.map((opt, oIdx) => {
+                              const isMissing = opt.status === 'MISSING' || !opt.text.trim();
+                              const isUnexpected = opt.status === 'UNEXPECTED';
+                              const isBeingEdited = addingSlotForQ?.qId === q.id && addingSlotForQ?.slotId === opt.id;
+                              const isCorrect = !isMissing && (correctLetter === opt.id || correctLetter === String(oIdx));
+
+                              if (isMissing) {
+                                return (
+                                  <div
+                                    key={`card_opt_${q.id}_missing_${opt.id}_${oIdx}`}
+                                    className="p-2.5 rounded-xl border border-dashed border-amber-600/70 bg-amber-950/20 text-xs flex flex-col justify-center gap-2"
+                                  >
+                                    {isBeingEdited ? (
+                                      <div className="space-y-1.5 w-full">
+                                        <div className="flex items-center justify-between text-[11px] font-bold text-amber-300">
+                                          <span>Enter Option {opt.id} Text:</span>
+                                          <span className="text-slate-400 font-normal">Press Enter to save</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={slotInputText}
+                                            onChange={e => setSlotInputText(e.target.value)}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter') handleSaveSlotOption(q, opt.id, slotInputText);
+                                              if (e.key === 'Escape') {
+                                                setAddingSlotForQ(null);
+                                                setSlotInputText('');
+                                              }
+                                            }}
+                                            placeholder={`Enter canonical text for Option ${opt.id}...`}
+                                            className="flex-1 bg-slate-900 border border-amber-500 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                          />
+                                          <button
+                                            type="button"
+                                            disabled={isSavingSlot || !slotInputText.trim()}
+                                            onClick={() => handleSaveSlotOption(q, opt.id, slotInputText)}
+                                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition disabled:opacity-50 shrink-0"
+                                          >
+                                            {isSavingSlot ? 'Saving...' : 'Save'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setAddingSlotForQ(null);
+                                              setSlotInputText('');
+                                            }}
+                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition shrink-0"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-between w-full">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-amber-400">{opt.id}.</span>
+                                          <span className="text-amber-300/80 font-semibold italic text-[11px]">MISSING</span>
+                                          <span className="text-slate-500 text-[10px] hidden sm:inline">(Not extracted by OCR)</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAddingSlotForQ({ qId: q.id, slotId: opt.id });
+                                            setSlotInputText('');
+                                          }}
+                                          className="text-[11px] font-bold text-amber-300 bg-amber-950 hover:bg-amber-900 border border-amber-700/80 px-2 py-0.5 rounded-lg flex items-center gap-1 transition"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                          <span>Add {opt.id}</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              if (isUnexpected) {
+                                return (
+                                  <div
+                                    key={`card_opt_${q.id}_unexpected_${opt.id}_${oIdx}`}
+                                    className="p-2.5 rounded-xl border border-rose-800 bg-rose-950/40 text-xs flex items-center justify-between"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-rose-400">{opt.id}.</span>
+                                      <span className="text-rose-200">{opt.text}</span>
+                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 border border-rose-700">
+                                        UNEXPECTED
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStripOptionE(q)}
+                                      className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] rounded-lg transition"
+                                    >
+                                      Strip
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={`card_opt_${q.id}_${opt.id}_${oIdx}`}
+                                  className={`group p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+                                    isCorrect
+                                      ? 'bg-emerald-950/60 border-emerald-600 text-emerald-200 font-semibold ring-1 ring-emerald-500/30'
+                                      : 'bg-slate-950/60 border-slate-800 text-slate-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 flex-1 mr-2">
+                                    <span className="font-bold text-slate-400 shrink-0">{opt.id}.</span>
+                                    <span className="break-words">{opt.text}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {isCorrect && <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAddingSlotForQ({ qId: q.id, slotId: opt.id });
+                                        setSlotInputText(opt.text);
+                                      }}
+                                      className="opacity-60 hover:opacity-100 text-slate-400 hover:text-amber-400 p-0.5 rounded transition"
+                                      title={`Edit Option ${opt.id}`}
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 </div>
-                                {isCorrect && <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />}
-                              </div>
-                            );
-                          })}
+                              );
+                            });
+                          })()}
                         </div>
 
                         {/* Explanation block with Forensic Provenance */}
@@ -1921,6 +2757,41 @@ export const OCRStudioView: React.FC = () => {
             </div>
           </div>
 
+          {/* Completeness Guardrail Diagnostics in Step 6 */}
+          {completenessCheck && !completenessCheck.canPublish && (
+            <div className="bg-rose-950/40 border border-rose-800/80 rounded-2xl p-4 text-xs text-rose-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold flex items-center gap-1.5 text-rose-300">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  Official PYQ Catalog Completeness Lock ({completenessCheck.completenessPercentage}%)
+                </span>
+                <button
+                  onClick={() => setCurrentStep(5)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-rose-200 font-bold underline"
+                >
+                  Resolve in Review (Step 5)
+                </button>
+              </div>
+              <p className="text-rose-300">
+                Official Commission PYQ catalog papers require 100% complete question sequences and compliant commission option policies.
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-rose-300/90">
+                {completenessCheck.missingCount > 0 && (
+                  <span>• Missing sequence questions: {completenessCheck.missingCount} (e.g. #{completenessCheck.missingNumbers.slice(0, 10).join(', #')})</span>
+                )}
+                {completenessCheck.questionsWithUnexpectedOptions?.length > 0 && (
+                  <span>• UPSC questions with Option E: {completenessCheck.questionsWithUnexpectedOptions.length}</span>
+                )}
+                {completenessCheck.questionsWithMissingOptions?.length > 0 && (
+                  <span>• Questions with missing options: {completenessCheck.questionsWithMissingOptions.length}</span>
+                )}
+                {completenessCheck.questionsWithPendingAnswers?.length > 0 && (
+                  <span>• Questions pending answer key: {completenessCheck.questionsWithPendingAnswers.length}</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-800">
             <button
@@ -1942,8 +2813,9 @@ export const OCRStudioView: React.FC = () => {
 
               <button
                 onClick={handlePublishEntirePaperToPyqCatalog}
-                disabled={isPublishing || isPublishingToCatalog || readyCount === 0}
+                disabled={isPublishing || isPublishingToCatalog || readyCount === 0 || (completenessCheck !== null && !completenessCheck.canPublish)}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition-all disabled:opacity-50 w-full sm:w-auto flex items-center justify-center gap-2 text-sm"
+                title={completenessCheck && !completenessCheck.canPublish ? 'Blocked: Paper completeness check failed' : 'Publish complete paper to PYQ Catalog'}
               >
                 {isPublishingToCatalog ? (
                   <>
@@ -1980,6 +2852,82 @@ export const OCRStudioView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Missing Question Modal */}
+      {showAddMissingModal && (
+        <AddMissingQuestionModal
+          jobId={getActiveJobId()}
+          exam={selectedExam}
+          suggestedQuestionNum={suggestedMissingQNum}
+          existingMissingNumbers={
+            completenessCheck?.missingNumbers ||
+            calculateCanonicalMissingQuestions(
+              ocrResultMeta?.totalExpected || totalExpectedQuestions || getCanonicalExpectedQuestions(selectedExam, examTag),
+              extractedQuestions.map(q => Number(q.questionNum || q.questionNumber)).filter(n => !isNaN(n) && n > 0)
+            ).missingNumbers
+          }
+          onClose={() => {
+            setShowAddMissingModal(false);
+            setSuggestedMissingQNum(undefined);
+          }}
+          onQuestionAdded={(newQ, updatedCompleteness) => {
+            setExtractedQuestions(prev => {
+              const next = [...prev, newQ];
+              return next.sort((a, b) => Number(a.questionNum || a.questionNumber || 0) - Number(b.questionNum || b.questionNumber || 0));
+            });
+            if (updatedCompleteness) {
+              setCompletenessCheck(updatedCompleteness);
+            }
+            setStatusMessage({
+              type: 'success',
+              text: `Question #${newQ.questionNum || newQ.questionNumber} added directly to OCR job sequence!`,
+            });
+            runCompletenessAudit();
+          }}
+        />
+      )}
+
+      {/* Provenance & Revision Audit Modal */}
+      {showRevisionModal && revisionTargetQuestion && (
+        <QuestionRevisionModal
+          question={revisionTargetQuestion}
+          onClose={() => {
+            setShowRevisionModal(false);
+            setRevisionTargetQuestion(null);
+          }}
+          onCorrectionSaved={(updatedQ) => {
+            setExtractedQuestions(prev =>
+              prev.map(q => (q.id === updatedQ.id ? { ...q, ...updatedQ } : q))
+            );
+            setStatusMessage({
+              type: 'success',
+              text: `Audit correction recorded for Question #${updatedQ.questionNum || updatedQ.questionNumber}!`,
+            });
+            runCompletenessAudit();
+          }}
+        />
+      )}
+
+      {/* Figure / Diagram Editor Modal */}
+      {showFigureModal && figureTargetQuestion && (
+        <FigureEditorModal
+          question={figureTargetQuestion}
+          onClose={() => {
+            setShowFigureModal(false);
+            setFigureTargetQuestion(null);
+          }}
+          onFigureSaved={(updatedQ) => {
+            setExtractedQuestions(prev =>
+              prev.map(q => (q.id === updatedQ.id ? { ...q, ...updatedQ } : q))
+            );
+            setStatusMessage({
+              type: 'success',
+              text: `Figure updated and verified for Question #${updatedQ.questionNum || updatedQ.questionNumber}!`,
+            });
+            runCompletenessAudit();
+          }}
+        />
       )}
     </div>
   );

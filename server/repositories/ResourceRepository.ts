@@ -17,6 +17,17 @@ export interface DbResource {
   concept_id?: string;
   exam?: string;
   exam_tag?: string;
+  edition?: string;
+  publication_year?: number;
+  publisher?: string;
+  language?: string;
+  isbn?: string;
+  license_status?: string;
+  cover_image_url?: string;
+  tags?: string;
+  source_attribution?: string;
+  storage_provider?: string;
+  file_hash?: string;
   drive_file_id?: string;
   drive_folder_id?: string;
   file_name?: string;
@@ -55,6 +66,8 @@ export class ResourceRepository {
     topic?: string;
     exam?: string;
     resourceType?: string;
+    allowedTypes?: string[];
+    forRepository?: 'RESOURCE_LIBRARY' | 'SYLLABUS' | 'ALL';
     search?: string;
     sort?: 'recent' | 'pages' | 'title' | 'progress';
     userId?: string;
@@ -62,59 +75,66 @@ export class ResourceRepository {
     offset?: number;
   }): Promise<{ resources: DbResource[]; total: number }> {
     const conditions: string[] = [];
-    const values: any[] = [];
+    const whereValues: any[] = [];
     let paramIndex = 1;
-
-    let userIdParam1: number | null = null;
-    let userIdParam2: number | null = null;
-    if (filters?.userId) {
-      userIdParam1 = paramIndex++;
-      values.push(filters.userId);
-      userIdParam2 = paramIndex++;
-      values.push(filters.userId);
-    }
 
     if (filters?.status) {
       if (Array.isArray(filters.status)) {
         conditions.push(`r.status = ANY($${paramIndex++})`);
-        values.push(filters.status);
+        whereValues.push(filters.status);
       } else {
         conditions.push(`r.status = $${paramIndex++}`);
-        values.push(filters.status);
+        whereValues.push(filters.status);
       }
     }
 
     if (filters?.visibility) {
       if (Array.isArray(filters.visibility)) {
         conditions.push(`r.visibility = ANY($${paramIndex++})`);
-        values.push(filters.visibility);
+        whereValues.push(filters.visibility);
       } else {
         conditions.push(`r.visibility = $${paramIndex++}`);
-        values.push(filters.visibility);
+        whereValues.push(filters.visibility);
       }
     }
 
     if (filters?.subject && filters.subject !== 'ALL') {
       conditions.push(`(r.subject ILIKE $${paramIndex} OR r.subject_id ILIKE $${paramIndex})`);
-      values.push(`%${filters.subject}%`);
+      whereValues.push(`%${filters.subject}%`);
       paramIndex++;
     }
 
     if (filters?.topic && filters.topic !== 'ALL') {
       conditions.push(`r.topic ILIKE $${paramIndex}`);
-      values.push(`%${filters.topic}%`);
+      whereValues.push(`%${filters.topic}%`);
       paramIndex++;
     }
 
     if (filters?.exam && filters.exam !== 'ALL') {
       conditions.push(`(r.exam ILIKE $${paramIndex} OR r.exam_tag ILIKE $${paramIndex} OR r.exam = 'ALL')`);
-      values.push(`%${filters.exam}%`);
+      whereValues.push(`%${filters.exam}%`);
       paramIndex++;
     }
 
     if (filters?.resourceType && filters.resourceType !== 'ALL') {
       conditions.push(`(r.resource_type = $${paramIndex} OR r.type = $${paramIndex})`);
-      values.push(filters.resourceType);
+      whereValues.push(filters.resourceType);
+      paramIndex++;
+    } else if (filters?.allowedTypes && filters.allowedTypes.length > 0) {
+      conditions.push(`(r.resource_type = ANY($${paramIndex}) OR r.type = ANY($${paramIndex}))`);
+      whereValues.push(filters.allowedTypes);
+      paramIndex++;
+    } else if (filters?.forRepository === 'RESOURCE_LIBRARY') {
+      // Learner Resource Library canonical contract: Books, References, Official Documents only
+      const canonicalLibTypes = ['BOOK', 'TEXTBOOK', 'REFERENCE_RESOURCE', 'OFFICIAL_DOCUMENT', 'GOVERNMENT_REPORT', 'ARTICLE'];
+      conditions.push(`(r.resource_type = ANY($${paramIndex}) OR r.type = ANY($${paramIndex}))`);
+      whereValues.push(canonicalLibTypes);
+      paramIndex++;
+    } else if (filters?.forRepository === 'SYLLABUS') {
+      // Notes & Syllabus canonical contract: Syllabus and Study Notes only
+      const canonicalSyllabusTypes = ['SYLLABUS', 'STUDY_NOTE'];
+      conditions.push(`(r.resource_type = ANY($${paramIndex}) OR r.type = ANY($${paramIndex}))`);
+      whereValues.push(canonicalSyllabusTypes);
       paramIndex++;
     }
 
@@ -130,13 +150,13 @@ export class ResourceRepository {
         r.exam ILIKE $${paramIndex} OR
         r.resource_type ILIKE $${paramIndex}
       )`);
-      values.push(q);
+      whereValues.push(q);
       paramIndex++;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const countRes = await pool.query(`SELECT COUNT(*) FROM public.resources r ${whereClause}`, values);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM public.resources r ${whereClause}`, whereValues);
     const total = parseInt(countRes.rows[0].count, 10) || 0;
 
     const limit = Math.max(1, filters?.limit || 50);
@@ -147,40 +167,73 @@ export class ResourceRepository {
       orderBy = 'r.page_count DESC NULLS LAST, r.created_at DESC';
     } else if (filters?.sort === 'title') {
       orderBy = 'r.title ASC';
-    } else if (filters?.sort === 'progress' && filters.userId) {
+    } else if (filters?.sort === 'progress' && filters?.userId) {
       orderBy = 'COALESCE(p.progress_percentage, 0) DESC, r.created_at DESC';
     }
 
-    let query: string;
+    const queryValues = [...whereValues];
+    let queryParamIndex = paramIndex;
+
+    let selectFields = 'r.*, 1 AS last_page, 0 AS progress_percentage, false AS is_bookmarked';
+    let joins = '';
+
     if (filters?.userId) {
-      query = `
-        SELECT r.*,
-          COALESCE(p.last_page, 1) AS last_page,
-          COALESCE(p.progress_percentage, 0) AS progress_percentage,
-          (b.id IS NOT NULL) AS is_bookmarked
-        FROM public.resources r
-        LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $${userIdParam1}
-        LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $${userIdParam2}
-        ${whereClause}
-        ORDER BY ${orderBy}
-        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      const uParam1 = queryParamIndex++;
+      queryValues.push(filters.userId);
+      const uParam2 = queryParamIndex++;
+      queryValues.push(filters.userId);
+
+      selectFields = `
+        r.*,
+        COALESCE(p.last_page, 1) AS last_page,
+        COALESCE(p.progress_percentage, 0) AS progress_percentage,
+        (b.id IS NOT NULL) AS is_bookmarked
       `;
-    } else {
-      query = `
-        SELECT r.*
-        FROM public.resources r
-        ${whereClause}
-        ORDER BY ${orderBy}
-        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+      joins = `
+        LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $${uParam1}
+        LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $${uParam2}
       `;
     }
 
-    values.push(limit, offset);
-    const res = await pool.query(query, values);
+    const limitParam = queryParamIndex++;
+    queryValues.push(limit);
+    const offsetParam = queryParamIndex++;
+    queryValues.push(offset);
+
+    const query = `
+      SELECT ${selectFields}
+      FROM public.resources r
+      ${joins}
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT $${limitParam} OFFSET $${offsetParam}
+    `;
+
+    const res = await pool.query(query, queryValues);
     return {
       resources: res.rows.map(this.mapRowToResource),
       total,
     };
+  }
+
+  /**
+   * Canonical Resource Library: BOOK, TEXTBOOK, REFERENCE_RESOURCE, OFFICIAL_DOCUMENT only
+   */
+  async getResourceLibrary(filters?: Omit<Parameters<ResourceRepository['findAll']>[0], 'forRepository'>): Promise<{ resources: DbResource[]; total: number }> {
+    return this.findAll({
+      ...filters,
+      forRepository: 'RESOURCE_LIBRARY',
+    });
+  }
+
+  /**
+   * Canonical Notes & Syllabus: SYLLABUS, STUDY_NOTE only
+   */
+  async getSyllabusResources(filters?: Omit<Parameters<ResourceRepository['findAll']>[0], 'forRepository'>): Promise<{ resources: DbResource[]; total: number }> {
+    return this.findAll({
+      ...filters,
+      forRepository: 'SYLLABUS',
+    });
   }
 
   async findById(id: string, userId?: string): Promise<DbResource | null> {
@@ -205,6 +258,67 @@ export class ResourceRepository {
     return this.mapRowToResource(res.rows[0]);
   }
 
+  async findLikelyDuplicate(params: {
+    title: string;
+    author?: string;
+    fileHash?: string;
+    driveFileId?: string;
+    excludeId?: string;
+  }): Promise<DbResource | null> {
+    const { title, author, fileHash, driveFileId, excludeId } = params;
+
+    if (fileHash) {
+      const hashRes = await pool.query(
+        'SELECT * FROM public.resources WHERE file_hash = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1',
+        [fileHash, excludeId || null]
+      );
+      if (hashRes.rows.length > 0) {
+        return this.mapRowToResource(hashRes.rows[0]);
+      }
+    }
+
+    if (driveFileId) {
+      const driveRes = await pool.query(
+        'SELECT * FROM public.resources WHERE drive_file_id = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1',
+        [driveFileId, excludeId || null]
+      );
+      if (driveRes.rows.length > 0) {
+        return this.mapRowToResource(driveRes.rows[0]);
+      }
+    }
+
+    if (title && title.trim()) {
+      const cleanTitle = title.trim().toLowerCase();
+      if (author && author.trim()) {
+        const cleanAuthor = author.trim().toLowerCase();
+        const normRes = await pool.query(
+          `SELECT * FROM public.resources
+           WHERE LOWER(TRIM(title)) = $1
+             AND LOWER(TRIM(author)) = $2
+             AND ($3::text IS NULL OR id != $3)
+           LIMIT 1`,
+          [cleanTitle, cleanAuthor, excludeId || null]
+        );
+        if (normRes.rows.length > 0) {
+          return this.mapRowToResource(normRes.rows[0]);
+        }
+      } else {
+        const titleRes = await pool.query(
+          `SELECT * FROM public.resources
+           WHERE LOWER(TRIM(title)) = $1
+             AND ($2::text IS NULL OR id != $2)
+           LIMIT 1`,
+          [cleanTitle, excludeId || null]
+        );
+        if (titleRes.rows.length > 0) {
+          return this.mapRowToResource(titleRes.rows[0]);
+        }
+      }
+    }
+
+    return null;
+  }
+
   async create(data: Partial<DbResource>): Promise<DbResource> {
     const id = data.id || `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date();
@@ -213,15 +327,21 @@ export class ResourceRepository {
       INSERT INTO public.resources (
         id, title, author, description, resource_type, type,
         subject, subject_id, topic, concept_id, exam, exam_tag,
+        edition, publication_year, publisher, language, isbn,
+        license_status, cover_image_url, tags, source_attribution,
+        storage_provider, file_hash,
         drive_file_id, drive_folder_id, file_name, file_size,
         mime_type, page_count, status, visibility, uploaded_by,
         url, summary, read_time_minutes, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10, $11, $12,
-        $13, $14, $15, $16,
-        $17, $18, $19, $20, $21,
-        $22, $23, $24, $25, $26
+        $13, $14, $15, $16, $17,
+        $18, $19, $20, $21,
+        $22, $23,
+        $24, $25, $26, $27,
+        $28, $29, $30, $31, $32,
+        $33, $34, $35, $36, $37
       )
       RETURNING *
     `;
@@ -243,6 +363,17 @@ export class ResourceRepository {
       data.concept_id || null,
       data.exam || 'ALL',
       data.exam_tag || data.exam || 'ALL',
+      data.edition || null,
+      data.publication_year || null,
+      data.publisher || null,
+      data.language || 'English',
+      data.isbn || null,
+      data.license_status || 'REQUIRES_REVIEW',
+      data.cover_image_url || null,
+      data.tags || null,
+      data.source_attribution || null,
+      data.storage_provider || 'GOOGLE_DRIVE',
+      data.file_hash || null,
       data.drive_file_id || null,
       data.drive_folder_id || null,
       data.file_name || null,
@@ -273,6 +404,9 @@ export class ResourceRepository {
     const allowedFields: (keyof DbResource)[] = [
       'title', 'author', 'description', 'resource_type', 'type',
       'subject', 'subject_id', 'topic', 'concept_id', 'exam', 'exam_tag',
+      'edition', 'publication_year', 'publisher', 'language', 'isbn',
+      'license_status', 'cover_image_url', 'tags', 'source_attribution',
+      'storage_provider', 'file_hash',
       'drive_file_id', 'drive_folder_id', 'file_name', 'file_size',
       'mime_type', 'page_count', 'status', 'visibility', 'summary',
       'read_time_minutes', 'url',
@@ -319,6 +453,17 @@ export class ResourceRepository {
       concept_id: row.concept_id,
       exam: row.exam || row.exam_tag || 'ALL',
       exam_tag: row.exam_tag || row.exam || 'ALL',
+      edition: row.edition,
+      publication_year: row.publication_year ? Number(row.publication_year) : undefined,
+      publisher: row.publisher,
+      language: row.language || 'English',
+      isbn: row.isbn,
+      license_status: row.license_status || 'REQUIRES_REVIEW',
+      cover_image_url: row.cover_image_url,
+      tags: row.tags,
+      source_attribution: row.source_attribution,
+      storage_provider: row.storage_provider || 'GOOGLE_DRIVE',
+      file_hash: row.file_hash,
       drive_file_id: row.drive_file_id,
       drive_folder_id: row.drive_folder_id,
       file_name: row.file_name,

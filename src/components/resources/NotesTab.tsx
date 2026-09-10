@@ -21,20 +21,30 @@ export const NotesTab: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   useEffect(() => {
-    api.getResources().then(data => {
-      setResources(data);
+    api.getResources({ limit: 100 }).then(data => {
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.resources)
+        ? data.resources
+        : [];
+      setResources(list);
       setLoading(false);
     }).catch(err => {
       console.error('Failed to load notes resources:', err);
+      setResources([]);
       setLoading(false);
     });
   }, []);
 
   const categories = ['All', 'Polity', 'Economy', 'History', 'Geography', 'Environment', 'Science & Tech', 'Bihar Special'];
 
-  const filtered = resources.filter(r => {
-    const matchesSearch = !search || r.title.toLowerCase().includes(search.toLowerCase()) || (r.description && r.description.toLowerCase().includes(search.toLowerCase()));
-    const matchesCat = selectedCategory === 'All' || r.subject === selectedCategory || r.category === selectedCategory;
+  const safeResources = Array.isArray(resources) ? resources : [];
+  const filtered = safeResources.filter(r => {
+    if (!r) return false;
+    const title = r.title || '';
+    const desc = r.description || '';
+    const matchesSearch = !search || title.toLowerCase().includes(search.toLowerCase()) || desc.toLowerCase().includes(search.toLowerCase());
+    const matchesCat = selectedCategory === 'All' || r.subject === selectedCategory || (r as any).category === selectedCategory;
     return matchesSearch && matchesCat;
   });
 

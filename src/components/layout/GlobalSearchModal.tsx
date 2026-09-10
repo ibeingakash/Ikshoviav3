@@ -12,18 +12,39 @@ export const GlobalSearchModal: React.FC = () => {
     questions: any[];
     currentAffairs: any[];
     resources: any[];
+    pyqPapers: any[];
+    books: any[];
+    shortNotes: any[];
+    syllabus: any[];
+    mockTests: any[];
   }>({
     subjects: [],
     concepts: [],
     questions: [],
     currentAffairs: [],
     resources: [],
+    pyqPapers: [],
+    books: [],
+    shortNotes: [],
+    syllabus: [],
+    mockTests: [],
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!query.trim()) {
-      setResults({ subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] });
+      setResults({
+        subjects: [],
+        concepts: [],
+        questions: [],
+        currentAffairs: [],
+        resources: [],
+        pyqPapers: [],
+        books: [],
+        shortNotes: [],
+        syllabus: [],
+        mockTests: [],
+      });
       return;
     }
 
@@ -37,10 +58,26 @@ export const GlobalSearchModal: React.FC = () => {
           questions: Array.isArray(res?.questions) ? res.questions : [],
           currentAffairs: Array.isArray(res?.currentAffairs) ? res.currentAffairs : [],
           resources: Array.isArray(res?.resources) ? res.resources : [],
+          pyqPapers: Array.isArray(res?.pyqPapers) ? res.pyqPapers : [],
+          books: Array.isArray(res?.books) ? res.books : [],
+          shortNotes: Array.isArray(res?.shortNotes) ? res.shortNotes : [],
+          syllabus: Array.isArray(res?.syllabus) ? res.syllabus : [],
+          mockTests: Array.isArray(res?.mockTests) ? res.mockTests : [],
         });
       } catch (err) {
         console.error('Search failed:', err);
-        setResults({ subjects: [], concepts: [], questions: [], currentAffairs: [], resources: [] });
+        setResults({
+          subjects: [],
+          concepts: [],
+          questions: [],
+          currentAffairs: [],
+          resources: [],
+          pyqPapers: [],
+          books: [],
+          shortNotes: [],
+          syllabus: [],
+          mockTests: [],
+        });
       } finally {
         setLoading(false);
       }
@@ -52,6 +89,11 @@ export const GlobalSearchModal: React.FC = () => {
   if (!isSearchOpen) return null;
 
   const totalResults =
+    results.pyqPapers.length +
+    results.books.length +
+    results.shortNotes.length +
+    results.syllabus.length +
+    results.mockTests.length +
     results.concepts.length +
     results.questions.length +
     results.currentAffairs.length +
@@ -106,6 +148,220 @@ export const GlobalSearchModal: React.FC = () => {
             </div>
           )}
 
+          {/* 1. Official PYQ Papers [Official PYQ] */}
+          {results.pyqPapers.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-sky-400 tracking-wider uppercase mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Official Question Papers ({results.pyqPapers.length})
+                </span>
+                <span className="text-[10px] bg-sky-950 text-sky-300 border border-sky-800 px-1.5 py-0.5 rounded font-bold">
+                  Official PYQ
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {results.pyqPapers.map(p => (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      setActiveSection('pyq-practice');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-sky-900/60 text-sky-300 px-1.5 py-0.5 rounded">
+                          Official PYQ
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-sky-300">
+                          {p.title}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        {p.exam} • Year {p.year} {p.stage ? `• ${p.stage}` : ''} • {p.actual_question_count || 100} Official Questions
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-sky-400 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2. Resource Library Books & References [Book] */}
+          {results.books.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-emerald-400 tracking-wider uppercase mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
+                  Resource Library Books ({results.books.length})
+                </span>
+                <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-bold">
+                  Book
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {results.books.map(b => (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      (window as any).__ikshovia_auto_open_book_id = b.id;
+                      const url = new URL(window.location.href);
+                      url.searchParams.set('book_id', b.id);
+                      window.history.replaceState({}, '', url.toString());
+                      setActiveSection('resources');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-emerald-900/60 text-emerald-300 px-1.5 py-0.5 rounded">
+                          {b.badge || 'Book'}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-emerald-300">
+                          {b.title}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                        {b.author ? `By ${b.author} • ` : ''}{b.subject} {b.page_count ? `• ${b.page_count} Pages` : ''}
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 3. Revision Notes & Compendiums [Short Note] */}
+          {results.shortNotes.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-amber-400 tracking-wider uppercase mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Revision Notes & Compendiums ({results.shortNotes.length})
+                </span>
+                <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.5 rounded font-bold">
+                  Short Note
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {results.shortNotes.map(sn => (
+                  <div
+                    key={sn.id}
+                    onClick={() => {
+                      setActiveSection('short-notes');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-amber-900/60 text-amber-300 px-1.5 py-0.5 rounded">
+                          Short Note
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-amber-300">
+                          {sn.title}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                        {sn.subject} • {sn.topic} {sn.read_time_minutes ? `• ${sn.read_time_minutes} min read` : ''}
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Notes & Syllabus Documents [Syllabus] */}
+          {results.syllabus.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-teal-400 tracking-wider uppercase mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" />
+                  Notes & Syllabus ({results.syllabus.length})
+                </span>
+                <span className="text-[10px] bg-teal-950 text-teal-300 border border-teal-800 px-1.5 py-0.5 rounded font-bold">
+                  Syllabus
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {results.syllabus.map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => {
+                      setActiveSection('notes');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-teal-900/60 text-teal-300 px-1.5 py-0.5 rounded">
+                          Syllabus
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-teal-300">
+                          {s.title}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                        {s.exam} • {s.subject}
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-teal-400 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 5. Mock Tests [Mock Test] */}
+          {results.mockTests.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold text-purple-400 tracking-wider uppercase mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  Mock Tests ({results.mockTests.length})
+                </span>
+                <span className="text-[10px] bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded font-bold">
+                  Mock Test
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {results.mockTests.map(m => (
+                  <div
+                    key={m.id}
+                    onClick={() => {
+                      setActiveSection('mock-tests');
+                      setIsSearchOpen(false);
+                    }}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-purple-900/60 text-purple-300 px-1.5 py-0.5 rounded">
+                          Mock Test
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-purple-300">
+                          {m.title}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        {m.exam} • {m.total_questions || 100} Questions • {m.duration_minutes || 120} Mins
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 transition-transform group-hover:translate-x-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Concepts */}
           {results.concepts.length > 0 && (
             <div>
@@ -124,8 +380,13 @@ export const GlobalSearchModal: React.FC = () => {
                     className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors flex items-center justify-between group"
                   >
                     <div>
-                      <div className="text-xs font-semibold text-slate-200 group-hover:text-indigo-300">
-                        {c.title}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase bg-indigo-900/60 text-indigo-300 px-1.5 py-0.5 rounded">
+                          Concept
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 group-hover:text-indigo-300">
+                          {c.title}
+                        </span>
                       </div>
                       <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{c.summary}</div>
                     </div>
@@ -136,7 +397,7 @@ export const GlobalSearchModal: React.FC = () => {
             </div>
           )}
 
-          {/* Questions */}
+          {/* Practice Questions */}
           {results.questions.length > 0 && (
             <div>
               <div className="text-[11px] font-bold text-emerald-400 tracking-wider uppercase mb-2 flex items-center gap-1.5">
@@ -153,13 +414,13 @@ export const GlobalSearchModal: React.FC = () => {
                     }}
                     className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors"
                   >
-                    <div className="text-xs text-slate-200 line-clamp-2">{q.question}</div>
-                    <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
-                      <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-semibold">
-                        {q.difficulty}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold uppercase bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded">
+                        Practice Question
                       </span>
-                      <span>{q.examTag || 'Practice'}</span>
+                      <span className="text-[10px] text-slate-400">{q.examTag || 'Practice'}</span>
                     </div>
+                    <div className="text-xs text-slate-200 line-clamp-2">{q.question}</div>
                   </div>
                 ))}
               </div>
@@ -183,38 +444,13 @@ export const GlobalSearchModal: React.FC = () => {
                     }}
                     className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors"
                   >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold uppercase bg-rose-950 text-rose-300 border border-rose-800 px-1.5 py-0.5 rounded">
+                        Current Affairs
+                      </span>
+                    </div>
                     <div className="text-xs font-semibold text-slate-200">{ca.title}</div>
                     <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{ca.summary}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Official Resources & Documents */}
-          {results.resources.length > 0 && (
-            <div>
-              <div className="text-[11px] font-bold text-amber-400 tracking-wider uppercase mb-2 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5" />
-                Official Resources & Documents ({results.resources.length})
-              </div>
-              <div className="space-y-1.5">
-                {results.resources.map(r => (
-                  <div
-                    key={r.id}
-                    onClick={() => {
-                      setActiveSection('resources');
-                      setIsSearchOpen(false);
-                    }}
-                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-xl cursor-pointer transition-colors"
-                  >
-                    <div className="text-xs font-semibold text-slate-200">{r.title}</div>
-                    <div className="text-[11px] text-slate-400 line-clamp-2 mt-0.5">{r.summary}</div>
-                    {r.source && (
-                      <div className="text-[10px] text-amber-300/80 font-mono mt-1">
-                        Source: {r.source}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

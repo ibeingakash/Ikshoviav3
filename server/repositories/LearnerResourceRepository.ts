@@ -217,13 +217,19 @@ export class LearnerResourceRepository {
 
       const typesRes = await pool.query(
         `SELECT DISTINCT resource_type FROM public.resources
-         WHERE resource_type IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
+         WHERE resource_type IS NOT NULL
+           AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
+           AND status IN ('READY', 'PUBLISHED')
+           AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY resource_type ASC`
       );
 
       const examsRes = await pool.query(
         `SELECT DISTINCT exam FROM public.resources
-         WHERE exam IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
+         WHERE exam IS NOT NULL
+           AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
+           AND status IN ('READY', 'PUBLISHED')
+           AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY exam ASC`
       );
 
@@ -237,8 +243,8 @@ export class LearnerResourceRepository {
     } catch {
       return {
         subjects: ['Indian Polity', 'Modern History', 'Economy', 'Environment & Ecology', 'Bihar Special', 'General Studies'],
-        topics: ['Fundamental Rights', 'National Movement', 'Fiscal Policy', 'Protected Areas', 'Champaran Satyagraha', 'Syllabus'],
-        resourceTypes: ['BOOK', 'NOTES', 'OFFICIAL_DOCUMENT', 'SYLLABUS'],
+        topics: ['Fundamental Rights', 'National Movement', 'Fiscal Policy', 'Protected Areas', 'Champaran Satyagraha'],
+        resourceTypes: ['BOOK', 'REFERENCE_RESOURCE', 'OFFICIAL_DOCUMENT'],
         exams: ['UPSC CSE', 'BPSC', 'ALL'],
         tags: ['Prelims Core', 'Mains Paper II', 'Modern History', 'Polity', 'Constitution'],
       };

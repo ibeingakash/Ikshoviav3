@@ -2,13 +2,14 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { currentAffairsRepository } from '../server/repositories/CurrentAffairsRepository.js';
 
 describe('Current Affairs Article Quality Gate & News Engine', () => {
+  let articles: any[] = [];
+
   beforeAll(async () => {
     await currentAffairsRepository.ensureSeedArticles();
-  });
+    articles = await currentAffairsRepository.listArticles();
+  }, 20000);
 
-  it('1. Excludes generic homepages from Current Affairs feed', async () => {
-    const articles = await currentAffairsRepository.listArticles();
-    
+  it('1. Excludes generic homepages from Current Affairs feed', () => {
     // Ensure no generic institutional homepage titles exist
     const homepageTitles = [
       'indian space research organisation',
@@ -29,16 +30,14 @@ describe('Current Affairs Article Quality Gate & News Engine', () => {
     }
   });
 
-  it('2. Excludes proxy/test resources from Current Affairs feed', async () => {
-    const articles = await currentAffairsRepository.listArticles();
+  it('2. Excludes proxy/test resources from Current Affairs feed', () => {
     for (const art of articles) {
       expect(art.id).not.toBe('res_03fb84bc5a39');
       expect(art.title.toLowerCase()).not.toContain('proxy test');
     }
   });
 
-  it('3. Surfaces actual verified events & announcements with structured schema', async () => {
-    const articles = await currentAffairsRepository.listArticles();
+  it('3. Surfaces actual verified events & announcements with structured schema', () => {
     expect(articles.length).toBeGreaterThanOrEqual(7);
 
     // Verify ISRO Gaganyaan mission announcement is surfaced with all fields
@@ -54,8 +53,7 @@ describe('Current Affairs Article Quality Gate & News Engine', () => {
     expect(gaganyaanArt?.source).toBe('Indian Space Research Organisation (ISRO)');
   });
 
-  it('4. Never displays "Generic Http" or raw metadata as publisher', async () => {
-    const articles = await currentAffairsRepository.listArticles();
+  it('4. Never displays "Generic Http" or raw metadata as publisher', () => {
     for (const art of articles) {
       expect(art.source.toLowerCase()).not.toBe('generic http');
       expect(art.source).not.toBe('PRIMARY_GOVT');

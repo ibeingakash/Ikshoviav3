@@ -1,6 +1,13 @@
+import crypto from 'crypto';
 import pool from '../db/pool.js';
 import { OCRJob, Question, FieldConfidence } from '../../src/types/index.js';
 import { questionRepository } from './QuestionRepository.js';
+import {
+  validatePaperCompleteness,
+  normalizeOptionsForExam,
+  calculateCanonicalMissingQuestions,
+  PaperCompletenessCheck,
+} from '../../src/lib/examOptionPolicy.js';
 
 export interface OcrJobRecord {
   id: string;
@@ -48,8 +55,16 @@ export interface ExtractedQuestionRecord extends Question {
   } | null;
   aiAssisted?: boolean;
   parseConfidence?: number;
-  structureStatus?: 'AUTO_VERIFIED' | 'NEEDS_REVIEW' | 'FAILED';
+  structureStatus?: 'AUTO_VERIFIED' | 'NEEDS_REVIEW' | 'FAILED' | 'MANUALLY_VERIFIED';
   sourcePageCrop?: string;
+  originalOcrText?: string;
+  originalOptions?: any[];
+  imageUrl?: string;
+  imageCaption?: string;
+  figureStatus?: 'FIGURE_VERIFIED' | 'FIGURE_REVIEW_REQUIRED' | 'FIGURE_MISSING' | 'FIGURE_NOT_REQUIRED';
+  correctionsCount?: number;
+  lastCorrectedAt?: string;
+  lastCorrectedBy?: string;
 }
 
 export class OcrRepository {
@@ -133,8 +148,41 @@ export class OcrRepository {
       ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_source TEXT;
       ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_page_number INT;
       ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS solution_question_number INT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS original_ocr_text TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS original_options JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS image_caption TEXT;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS figure_status TEXT DEFAULT 'FIGURE_NOT_REQUIRED';
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS corrections_count INT DEFAULT 0;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS last_corrected_at TIMESTAMPTZ;
+      ALTER TABLE public.ocr_extracted_questions ADD COLUMN IF NOT EXISTS last_corrected_by TEXT;
+
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS original_ocr_text TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS original_options JSONB DEFAULT '[]'::jsonb;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS image_caption TEXT;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS figure_status TEXT DEFAULT 'FIGURE_NOT_REQUIRED';
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS corrections_count INT DEFAULT 0;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS last_corrected_at TIMESTAMPTZ;
+      ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS last_corrected_by TEXT;
+
+      CREATE TABLE IF NOT EXISTS public.question_revisions (
+        id TEXT PRIMARY KEY,
+        question_id TEXT NOT NULL,
+        job_id TEXT,
+        revision_num INT NOT NULL DEFAULT 1,
+        source_origin TEXT NOT NULL,
+        field_changed TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT,
+        reason TEXT,
+        details JSONB DEFAULT '{}'::jsonb,
+        changed_by TEXT,
+        changed_at TIMESTAMPTZ DEFAULT NOW()
+      );
 
       CREATE INDEX IF NOT EXISTS idx_ocr_extracted_questions_job_id ON public.ocr_extracted_questions(job_id);
+      CREATE INDEX IF NOT EXISTS idx_question_revisions_qid ON public.question_revisions(question_id);
     `);
   }
 
@@ -291,6 +339,7 @@ export class OcrRepository {
             question_type, statements, statements_hi, match_data, match_data_hi,
             document_hash, official_source_url, source_domain, ai_assisted,
             parse_confidence, structure_status, answer_key_status, solution_source, solution_page_number, solution_question_number,
+            original_ocr_text, original_options, image_url, image_caption, figure_status, corrections_count, last_corrected_at, last_corrected_by,
             created_at, updated_at
           ) VALUES (
             $1, $2, $3, $4, $5,
@@ -303,6 +352,7 @@ export class OcrRepository {
             $31, $32, $33, $34, $35,
             $36, $37, $38, $39,
             $40, $41, $42, $43, $44, $45,
+            $46, $47, $48, $49, $50, $51, $52, $53,
             NOW(), NOW()
           )
           ON CONFLICT (id) DO UPDATE SET
@@ -349,18 +399,31 @@ export class OcrRepository {
             solution_source = EXCLUDED.solution_source,
             solution_page_number = EXCLUDED.solution_page_number,
             solution_question_number = EXCLUDED.solution_question_number,
+            original_ocr_text = COALESCE(public.ocr_extracted_questions.original_ocr_text, EXCLUDED.original_ocr_text),
+            original_options = COALESCE(public.ocr_extracted_questions.original_options, EXCLUDED.original_options),
+            image_url = EXCLUDED.image_url,
+            image_caption = EXCLUDED.image_caption,
+            figure_status = EXCLUDED.figure_status,
+            corrections_count = EXCLUDED.corrections_count,
+            last_corrected_at = EXCLUDED.last_corrected_at,
+            last_corrected_by = EXCLUDED.last_corrected_by,
             updated_at = NOW()
           RETURNING *
         `;
 
+        const qAny = q as any;
+        const questionTextResolved = q.question || qAny.questionText || qAny.text || qAny.textEn || `Question #${q.questionNum || qAny.questionNumber || 1}`;
+        const questionEnResolved = q.question_en || qAny.questionEn || qAny.textEn || null;
+        const questionHiResolved = q.question_hi || qAny.questionHi || qAny.textHi || null;
+
         const values = [
           q.id,
           jobId,
-          q.questionNum || q.questionNumber || null,
+          q.questionNum || qAny.questionNumber || null,
           q.pageNumber || 1,
-          q.question,
-          q.question_en || null,
-          q.question_hi || null,
+          questionTextResolved,
+          questionEnResolved,
+          questionHiResolved,
           JSON.stringify(q.options || []),
           JSON.stringify(q.options_en || []),
           JSON.stringify(q.options_hi || []),
@@ -377,7 +440,7 @@ export class OcrRepository {
           q.pyqYear || null,
           q.source || 'OCR_IMPORTED',
           q.isPyq || false,
-          q.hasVisualContent || false,
+          Boolean(q.hasVisualContent || q.imageUrl),
           JSON.stringify(q.fieldConfidence || {}),
           q.ocrConfidence || 0.0,
           q.status || 'NEEDS_REVIEW',
@@ -399,6 +462,14 @@ export class OcrRepository {
           q.solutionSource || null,
           q.solutionPageNumber || null,
           q.solutionQuestionNumber || null,
+          q.originalOcrText || (q as any).original_ocr_text || questionTextResolved,
+          JSON.stringify(q.originalOptions || (q as any).original_options || q.options || []),
+          q.imageUrl || (q as any).image_url || null,
+          q.imageCaption || (q as any).image_caption || null,
+          q.figureStatus || (q as any).figure_status || (q.imageUrl ? 'FIGURE_VERIFIED' : (q.hasVisualContent ? 'FIGURE_REVIEW_REQUIRED' : 'FIGURE_NOT_REQUIRED')),
+          q.correctionsCount || (q as any).corrections_count || 0,
+          q.lastCorrectedAt || (q as any).last_corrected_at || null,
+          q.lastCorrectedBy || (q as any).last_corrected_by || null,
         ];
 
         const res = await client.query(query, values);
@@ -479,7 +550,7 @@ export class OcrRepository {
 
     // Admin OCR uploads are strictly ADMIN_IMPORTED.
     // Official Commission is strictly for papers ingested by the official crawler pipeline.
-    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' = 
+    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' =
       (job as any)?.isOfficialIngestion ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
     const client = await pool.connect();
@@ -488,8 +559,8 @@ export class OcrRepository {
 
       // 1. Update in staging table
       await client.query(
-        `UPDATE public.ocr_extracted_questions 
-         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4, 
+        `UPDATE public.ocr_extracted_questions
+         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4,
              difficulty = $5, exam_tag = $6, pyq_year = $7, destination = $8, updated_at = NOW()
          WHERE id = $9`,
         [resolvedSourceType === 'OFFICIAL_COMMISSION', finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, questionId]
@@ -516,6 +587,11 @@ export class OcrRepository {
         statements_hi: eq.statements_hi,
         matchData: eq.matchData,
         matchData_hi: eq.matchData_hi,
+        imageUrl: eq.imageUrl,
+        imageCaption: eq.imageCaption,
+        figureStatus: eq.figureStatus,
+        originalOcrText: eq.originalOcrText || eq.question,
+        originalOptions: eq.originalOptions || eq.options,
       };
 
       await questionRepository.create(publishedQuestion);
@@ -707,14 +783,37 @@ export class OcrRepository {
       topicId?: string;
       conceptId?: string;
       difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+      force?: boolean;
     }
-  ): Promise<{ success: boolean; publishedCount: number; blockedCount: number; paperId?: string; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    publishedCount: number;
+    blockedCount: number;
+    paperId?: string;
+    error?: string;
+    completeness?: PaperCompletenessCheck;
+  }> {
     const job = await this.getJobById(jobId);
     if (!job) return { success: false, publishedCount: 0, blockedCount: 0, error: 'Job not found' };
 
     const questions = await this.getQuestionsByJobId(jobId);
     if (questions.length === 0) {
       return { success: false, publishedCount: 0, blockedCount: 0, error: 'No questions in job' };
+    }
+
+    const finalExam = metadata?.exam || job.exam || 'UPSC CSE';
+    const expectedCount = job.expectedQuestionCount || (finalExam === 'BPSC' ? 150 : 100);
+
+    // Prompt requirement: Paper Completeness Validation before Publish
+    const completeness = validatePaperCompleteness(finalExam, questions, expectedCount);
+    if (!completeness.canPublish && !metadata?.force) {
+      return {
+        success: false,
+        publishedCount: 0,
+        blockedCount: questions.length,
+        error: `Publication blocked: Paper completeness validation failed (${completeness.completenessPercentage}% complete). ${completeness.summaryRemarks.join('; ')}`,
+        completeness,
+      };
     }
 
     let publishedCount = 0;
@@ -730,7 +829,7 @@ export class OcrRepository {
         topicId: metadata?.topicId || q.topicId,
         conceptId: metadata?.conceptId || q.conceptId,
         difficulty: (metadata?.difficulty || (q.difficulty === 'EASY' || q.difficulty === 'HARD' ? q.difficulty : 'MEDIUM')) as 'EASY' | 'MEDIUM' | 'HARD',
-        exam: metadata?.exam || job.exam,
+        exam: finalExam,
         pyqYear: metadata?.year || job.year,
         paper: metadata?.paper || job.paper,
       });
@@ -747,12 +846,460 @@ export class OcrRepository {
       approvedCount: publishedCount,
     });
 
-    const finalExam = metadata?.exam || job.exam || 'UPSC CSE';
     const finalYear = metadata?.year || job.year || 2025;
     const finalPaper = metadata?.paper || job.paper || 'General Studies Paper-I';
     const paperId = `${finalExam.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalYear}_${finalPaper.toLowerCase().replace(/[^a-z0-9]/g, '_')}`.replace(/__+/g, '_');
 
-    return { success: true, publishedCount, blockedCount, paperId };
+    return { success: true, publishedCount, blockedCount, paperId, completeness };
+  }
+
+  async checkJobCompleteness(jobId: string): Promise<PaperCompletenessCheck | null> {
+    const job = await this.getJobById(jobId);
+    if (!job) return null;
+    const questions = await this.getQuestionsByJobId(jobId);
+    const expected = job.expectedQuestionCount || (job.exam === 'BPSC' ? 150 : 100);
+    return validatePaperCompleteness(job.exam, questions, expected);
+  }
+
+  async getJobReviewSummary(jobId: string): Promise<any | null> {
+    const job = await this.getJobById(jobId);
+    if (!job) return null;
+    const questions = await this.getQuestionsByJobId(jobId);
+    const expectedCount = job.expectedQuestionCount || (job.exam === 'BPSC' ? 150 : 100);
+    const completeness = validatePaperCompleteness(job.exam, questions, expectedCount);
+
+    return {
+      success: true,
+      job: {
+        ...job,
+        id: job.id,
+        jobId: job.id,
+      },
+      questions,
+      expectedCount: completeness.expectedCount,
+      detectedCount: completeness.detectedCount,
+      ocrDetectedCount: completeness.ocrDetectedCount,
+      adminAddedCount: completeness.adminAddedCount,
+      totalAccountedCount: completeness.totalAccountedCount,
+      missingCount: completeness.missingCount,
+      missingQuestions: completeness.missingNumbers,
+      missingNumbers: completeness.missingNumbers,
+      duplicates: completeness.duplicateNumbers,
+      duplicateNumbers: completeness.duplicateNumbers,
+      unexpectedQuestions: completeness.unexpectedNumbers || [],
+      unexpectedNumbers: completeness.unexpectedNumbers || [],
+      questionNumbers: completeness.questionNumbers || [],
+      optionPolicy: completeness.optionPolicy,
+      optionValidation: completeness.optionViolations || [],
+      optionViolations: completeness.optionViolations || [],
+      questionsWithMissingOptions: completeness.questionsWithMissingOptions || [],
+      questionsWithUnexpectedOptions: completeness.questionsWithUnexpectedOptions || [],
+      questionsWithPendingAnswers: completeness.questionsWithPendingAnswers || [],
+      answersBoundCount: completeness.answersBoundCount || 0,
+      answerBinding: {
+        totalBound: completeness.answersBoundCount || 0,
+        totalPending: completeness.questionsWithPendingAnswers?.length || 0,
+        boundPercentage: Math.round(((completeness.answersBoundCount || 0) / (questions.length || 1)) * 100),
+      },
+      figures: {
+        totalWithVisualContent: completeness.questionsWithFigures || 0,
+        figureReviewPendingCount: completeness.figureReviewPendingCount || 0,
+        figureVerifiedCount: questions.filter(q => q.figureStatus === 'FIGURE_VERIFIED').length,
+        figureMissingCount: questions.filter(q => q.figureStatus === 'FIGURE_MISSING').length,
+      },
+      completeness,
+      canPublish: completeness.canPublish,
+      publishBlockedReasons: completeness.blockReasons || [],
+    };
+  }
+
+  /**
+   * Correct a question (staging or already published) with full audit trail.
+   * For OFFICIAL_COMMISSION: original provenance is strictly preserved!
+   */
+  async recordQuestionCorrection(params: {
+    questionId: string;
+    fieldChanged: 'questionText' | 'options' | 'correctAnswer' | 'explanation' | 'figure';
+    oldValue?: string;
+    newValue?: string;
+    reason?: string;
+    details?: any;
+    changedBy?: string;
+    newQuestionText?: string;
+    newOptions?: any[];
+    newCorrectAnswer?: string;
+    newExplanation?: string;
+    newImageUrl?: string;
+    newImageCaption?: string;
+    newFigureStatus?: string;
+  }): Promise<{ success: boolean; question?: any; revision?: any; error?: string }> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const eqRes = await client.query('SELECT * FROM public.ocr_extracted_questions WHERE id = $1', [params.questionId]);
+      let isStaging = eqRes.rows.length > 0;
+      let questionRow = eqRes.rows[0];
+      let sourceOrigin = 'ADMIN_IMPORTED';
+
+      if (!isStaging) {
+        const qRes = await client.query('SELECT * FROM public.questions WHERE id = $1', [params.questionId]);
+        if (qRes.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return { success: false, error: 'Question not found in staging or questions bank' };
+        }
+        questionRow = qRes.rows[0];
+        // CRITICAL: Preserve source_origin / source_type for OFFICIAL_COMMISSION
+        sourceOrigin = questionRow.source_type || questionRow.source || 'OFFICIAL_COMMISSION';
+      } else {
+        const isOfficialJob = questionRow.job_id
+          ? Boolean(
+              questionRow.source === 'OFFICIAL_COMMISSION' ||
+              (await client.query(
+                "SELECT id FROM public.ocr_jobs WHERE id = $1 AND (commission IS NOT NULL OR official_source_url IS NOT NULL OR exam ILIKE '%BPSC%' OR exam ILIKE '%UPSC%')",
+                [questionRow.job_id]
+              )).rows.length > 0
+            )
+          : questionRow.source === 'OFFICIAL_COMMISSION';
+        sourceOrigin = isOfficialJob ? 'OFFICIAL_COMMISSION' : (questionRow.source || 'ADMIN_IMPORTED');
+      }
+
+      const currentCorrectionsCount = Number(questionRow.corrections_count || 0);
+      const revisionNum = currentCorrectionsCount + 1;
+      const revisionId = `rev_${crypto.randomBytes(8).toString('hex')}`;
+
+      // 1. Insert into public.question_revisions
+      await client.query(
+        `INSERT INTO public.question_revisions (
+          id, question_id, job_id, revision_num, source_origin, field_changed,
+          old_value, new_value, reason, details, changed_by, changed_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, $11, NOW()
+        )`,
+        [
+          revisionId,
+          params.questionId,
+          questionRow.job_id || questionRow.source_job_id || null,
+          revisionNum,
+          sourceOrigin,
+          params.fieldChanged,
+          params.oldValue || '',
+          params.newValue || '',
+          params.reason || 'Admin manual correction',
+          JSON.stringify(params.details || {}),
+          params.changedBy || 'admin',
+        ]
+      );
+
+      let updatedQuestion: any = null;
+
+      if (isStaging) {
+        const originalOcrText = questionRow.original_ocr_text || questionRow.question_text;
+        const originalOptions = questionRow.original_options || questionRow.options;
+
+        const updatedText = params.newQuestionText !== undefined ? params.newQuestionText : questionRow.question_text;
+        const updatedOptions = params.newOptions !== undefined ? JSON.stringify(params.newOptions) : questionRow.options;
+        const updatedAnswer = params.newCorrectAnswer !== undefined ? params.newCorrectAnswer : questionRow.correct_answer;
+        const updatedExplanation = params.newExplanation !== undefined ? params.newExplanation : questionRow.explanation;
+        const updatedImageUrl = params.newImageUrl !== undefined ? params.newImageUrl : questionRow.image_url;
+        const updatedCaption = params.newImageCaption !== undefined ? params.newImageCaption : questionRow.image_caption;
+        const updatedFigStatus = params.newFigureStatus !== undefined ? params.newFigureStatus : (updatedImageUrl ? 'FIGURE_VERIFIED' : questionRow.figure_status);
+
+        const updateRes = await client.query(
+          `UPDATE public.ocr_extracted_questions
+           SET question_text = $1,
+               options = $2,
+               correct_answer = $3,
+               explanation = $4,
+               image_url = $5,
+               image_caption = $6,
+               figure_status = $7,
+               has_visual_content = $8,
+               original_ocr_text = COALESCE(original_ocr_text, $9),
+               original_options = COALESCE(original_options, $10),
+               corrections_count = $11,
+               last_corrected_at = NOW(),
+               last_corrected_by = $12,
+               source = CASE WHEN $14 = 'OFFICIAL_COMMISSION' THEN 'OFFICIAL_COMMISSION' ELSE source END,
+               structure_status = 'MANUALLY_VERIFIED',
+               status = CASE WHEN $3 <> '' THEN 'READY_TO_PUBLISH' ELSE status END,
+               updated_at = NOW()
+           WHERE id = $13
+           RETURNING *`,
+          [
+            updatedText,
+            updatedOptions,
+            updatedAnswer,
+            updatedExplanation,
+            updatedImageUrl,
+            updatedCaption,
+            updatedFigStatus,
+            Boolean(updatedImageUrl),
+            originalOcrText,
+            typeof originalOptions === 'string' ? originalOptions : JSON.stringify(originalOptions),
+            revisionNum,
+            params.changedBy || 'admin',
+            params.questionId,
+            sourceOrigin,
+          ]
+        );
+        updatedQuestion = this.mapRowToExtractedQuestion(updateRes.rows[0]);
+      } else {
+        // Published questions table: PRESERVE source_type / source_origin!
+        const originalOcrText = questionRow.original_ocr_text || questionRow.question;
+        const originalOptions = questionRow.original_options || questionRow.options;
+
+        const updatedText = params.newQuestionText !== undefined ? params.newQuestionText : questionRow.question;
+        const updatedOptions = params.newOptions !== undefined ? JSON.stringify(params.newOptions) : questionRow.options;
+        const updatedAnswer = params.newCorrectAnswer !== undefined ? params.newCorrectAnswer : questionRow.correct_answer;
+        const updatedExplanation = params.newExplanation !== undefined ? params.newExplanation : questionRow.explanation;
+        const updatedImageUrl = params.newImageUrl !== undefined ? params.newImageUrl : questionRow.image_url;
+        const updatedCaption = params.newImageCaption !== undefined ? params.newImageCaption : questionRow.image_caption;
+        const updatedFigStatus = params.newFigureStatus !== undefined ? params.newFigureStatus : (updatedImageUrl ? 'FIGURE_VERIFIED' : questionRow.figure_status);
+
+        const updateRes = await client.query(
+          `UPDATE public.questions
+           SET question = $1,
+               options = $2,
+               correct_answer = $3,
+               explanation = $4,
+               image_url = $5,
+               image_caption = $6,
+               figure_status = $7,
+               has_visual_content = $8,
+               original_ocr_text = COALESCE(original_ocr_text, $9),
+               original_options = COALESCE(original_options, $10),
+               corrections_count = $11,
+               last_corrected_at = NOW(),
+               last_corrected_by = $12,
+               updated_at = NOW()
+           WHERE id = $13
+           RETURNING *`,
+          [
+            updatedText,
+            updatedOptions,
+            updatedAnswer,
+            updatedExplanation,
+            updatedImageUrl,
+            updatedCaption,
+            updatedFigStatus,
+            Boolean(updatedImageUrl),
+            originalOcrText,
+            typeof originalOptions === 'string' ? originalOptions : JSON.stringify(originalOptions),
+            revisionNum,
+            params.changedBy || 'admin',
+            params.questionId,
+          ]
+        );
+        updatedQuestion = updateRes.rows[0];
+      }
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        question: updatedQuestion,
+        revision: {
+          id: revisionId,
+          questionId: params.questionId,
+          revisionNum,
+          sourceOrigin,
+          fieldChanged: params.fieldChanged,
+          oldValue: params.oldValue,
+          newValue: params.newValue,
+          reason: params.reason,
+          changedBy: params.changedBy || 'admin',
+          changedAt: new Date().toISOString(),
+        },
+      };
+    } catch (err: any) {
+      await client.query('ROLLBACK');
+      return { success: false, error: err.message };
+    } finally {
+      client.release();
+    }
+  }
+
+  async getQuestionRevisions(questionId: string): Promise<any[]> {
+    const res = await pool.query(
+      'SELECT * FROM public.question_revisions WHERE question_id = $1 ORDER BY revision_num DESC, changed_at DESC',
+      [questionId]
+    );
+    return res.rows.map(r => ({
+      id: r.id,
+      questionId: r.question_id,
+      jobId: r.job_id,
+      revisionNum: r.revision_num,
+      sourceOrigin: r.source_origin,
+      fieldChanged: r.field_changed,
+      oldValue: r.old_value,
+      newValue: r.new_value,
+      reason: r.reason,
+      details: typeof r.details === 'string' ? JSON.parse(r.details) : r.details,
+      changedBy: r.changed_by,
+      changedAt: r.changed_at,
+    }));
+  }
+
+  /**
+   * Add a missing question to an existing OCR job with strict exam option policy enforcement.
+   */
+  async addMissingQuestionToJob(
+    jobId: string,
+    data: {
+      questionNum: number;
+      question: string;
+      questionEn?: string;
+      questionHi?: string;
+      options: { id: string; text: string }[];
+      optionsEn?: { id: string; text: string }[];
+      optionsHi?: { id: string; text: string }[];
+      correctAnswer?: string;
+      explanation?: string;
+      explanationEn?: string;
+      explanationHi?: string;
+      imageUrl?: string;
+      imageCaption?: string;
+      figureStatus?: 'FIGURE_VERIFIED' | 'FIGURE_REVIEW_REQUIRED' | 'FIGURE_MISSING' | 'FIGURE_NOT_REQUIRED';
+      subjectId?: string;
+      topicId?: string;
+      conceptId?: string;
+      difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+      pageNumber?: number;
+    },
+    actorId?: string
+  ): Promise<{ success: boolean; question?: ExtractedQuestionRecord; completeness?: any; error?: string }> {
+    const job = await this.getJobById(jobId);
+    if (!job) return { success: false, error: 'Job not found' };
+
+    // Strict duplicate check: Do not permit inserting already accounted question numbers
+    const existingQ = await pool.query(
+      'SELECT id FROM public.ocr_extracted_questions WHERE job_id = $1 AND question_num = $2',
+      [jobId, data.questionNum]
+    );
+    if (existingQ.rows.length > 0) {
+      return {
+        success: false,
+        error: `Question #${data.questionNum} already exists in this OCR job. Duplicate question numbers are not permitted.`,
+      };
+    }
+
+    const exam = job.exam || 'UPSC CSE';
+    const norm = normalizeOptionsForExam(exam, data.options);
+
+    // Provenance rule: preserve OFFICIAL_COMMISSION for official commission papers
+    const isOfficialCommission = Boolean(
+      job.commission ||
+      job.officialSourceUrl ||
+      (job as any)?.isOfficialIngestion ||
+      (job.exam && (job.exam.includes('BPSC') || job.exam.includes('UPSC')) && (job.year || (job as any).isPyq))
+    );
+    const resolvedSourceOrigin = isOfficialCommission ? 'OFFICIAL_COMMISSION' : 'ADMIN_ADDED';
+
+    const questionId = `ocr_q_${jobId}_${data.questionNum}_${crypto.randomBytes(3).toString('hex')}`;
+    const newRecord: ExtractedQuestionRecord = {
+      id: questionId,
+      jobId,
+      questionNum: data.questionNum,
+      questionNumber: data.questionNum,
+      pageNumber: data.pageNumber || 1,
+      subjectId: data.subjectId || 'sub_polity',
+      topicId: data.topicId || 'top_rights',
+      conceptId: data.conceptId || 'c_art32',
+      type: 'MCQ',
+      questionType: 'SINGLE_CHOICE',
+      question: data.question.trim(),
+      question_en: data.questionEn || data.question.trim(),
+      question_hi: data.questionHi,
+      options: norm.map(item => ({ id: item.id, text: item.text })),
+      options_en: data.optionsEn,
+      options_hi: data.optionsHi,
+      correctAnswer: data.correctAnswer || '',
+      explanation: data.explanation || '',
+      explanation_en: data.explanationEn,
+      explanation_hi: data.explanationHi,
+      availableLanguages: data.questionHi ? ['en', 'hi'] : ['en'],
+      difficulty: data.difficulty || 'MEDIUM',
+      examTag: job.exam,
+      pyqYear: job.year,
+      source: resolvedSourceOrigin,
+      isPyq: isOfficialCommission,
+      hasVisualContent: Boolean(data.imageUrl),
+      imageUrl: data.imageUrl,
+      imageCaption: data.imageCaption,
+      figureStatus: data.figureStatus || (data.imageUrl ? 'FIGURE_VERIFIED' : 'FIGURE_NOT_REQUIRED'),
+      fieldConfidence: {
+        question: 'HIGH',
+        options: 'HIGH',
+        answer: data.correctAnswer ? 'HIGH' : 'LOW',
+        explanation: data.explanation ? 'HIGH' : 'LOW',
+      },
+      ocrConfidence: 100,
+      status: data.correctAnswer ? 'READY_TO_PUBLISH' : 'NEEDS_REVIEW',
+      destination: 'PRACTICE_BANK',
+      validationErrors: [],
+      aiAssisted: false,
+      parseConfidence: 1.0,
+      structureStatus: 'MANUALLY_VERIFIED',
+      answerKeyStatus: data.correctAnswer ? 'ANSWER_BOUND' : 'ANSWER_PENDING',
+      isPublished: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastCorrectedBy: actorId || 'admin',
+      lastCorrectedAt: new Date().toISOString(),
+      correctionsCount: 1,
+    };
+
+    const saved = await this.saveExtractedQuestions(jobId, [newRecord]);
+    const createdQuestion = saved[0];
+
+    // Immutable audit record in question_revisions
+    try {
+      const revisionId = `rev_${crypto.randomBytes(8).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO public.question_revisions (
+          id, question_id, job_id, revision_num, source_origin, field_changed,
+          old_value, new_value, reason, details, changed_by, changed_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, $11, NOW()
+        )`,
+        [
+          revisionId,
+          questionId,
+          jobId,
+          1,
+          resolvedSourceOrigin,
+          'question_created',
+          '',
+          `Created Missing Question #${data.questionNum}`,
+          'Admin manually added missing canonical question',
+          JSON.stringify({ questionNum: data.questionNum, optionsCount: norm.length, exam }),
+          actorId || 'admin',
+        ]
+      );
+    } catch (revErr) {
+      console.warn('[OcrRepository] Failed to write initial revision log:', revErr);
+    }
+
+    // Re-evaluate missing questions for the job
+    const allQuestions = await this.getQuestionsByJobId(jobId);
+    const detectedNums = allQuestions
+      .map(q => q.questionNum || q.questionNumber)
+      .filter((n): n is number => typeof n === 'number' && !isNaN(n));
+
+    const expectedCount = job.expectedQuestionCount || (exam === 'BPSC' ? 150 : 100);
+    const seq = calculateCanonicalMissingQuestions(expectedCount, detectedNums);
+    const completeness = validatePaperCompleteness(exam, allQuestions, expectedCount);
+
+    await this.updateJob(jobId, {
+      detectedQuestionsCount: allQuestions.length,
+      missingQuestionNumbers: seq.missingNumbers,
+      duplicateQuestionNumbers: seq.duplicateNumbers,
+    });
+
+    return { success: true, question: createdQuestion, completeness };
   }
 
   async bulkApproveQuestions(
@@ -826,7 +1373,7 @@ export class OcrRepository {
         const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
 
         await client.query(
-          `UPDATE public.ocr_extracted_questions 
+          `UPDATE public.ocr_extracted_questions
            SET status = 'READY_TO_PUBLISH',
                subject_id = $1, topic_id = $2, concept_id = $3,
                difficulty = $4, exam_tag = $5, pyq_year = $6, destination = $7,
@@ -1272,6 +1819,18 @@ export class OcrRepository {
       solutionPageNumber: row.solution_page_number ? Number(row.solution_page_number) : undefined,
       solutionQuestionNumber: row.solution_question_number ? Number(row.solution_question_number) : undefined,
       isPublished: row.status === 'PUBLISHED' || row.status === 'APPROVED',
+      originalOcrText: row.original_ocr_text || undefined,
+      originalOptions: Array.isArray(row.original_options)
+        ? row.original_options
+        : typeof row.original_options === 'string'
+        ? JSON.parse(row.original_options)
+        : undefined,
+      imageUrl: row.image_url || undefined,
+      imageCaption: row.image_caption || undefined,
+      figureStatus: row.figure_status || (row.image_url ? 'FIGURE_VERIFIED' : (row.has_visual_content ? 'FIGURE_REVIEW_REQUIRED' : 'FIGURE_NOT_REQUIRED')),
+      correctionsCount: row.corrections_count ? Number(row.corrections_count) : 0,
+      lastCorrectedAt: row.last_corrected_at || undefined,
+      lastCorrectedBy: row.last_corrected_by || undefined,
     };
   }
 }

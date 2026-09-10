@@ -12,6 +12,7 @@ export interface GoogleOAuthTokens {
 export interface DriveFolderStructure {
   rootId: string;
   resourcesId: string;
+  booksId?: string;
   officialDocsId: string;
   notesId: string;
 }
@@ -50,7 +51,7 @@ export class GoogleDriveService {
     if (process.env.GOOGLE_DRIVE_REDIRECT_URI) {
       return process.env.GOOGLE_DRIVE_REDIRECT_URI;
     }
-    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshoviav3.onrender.com' : 'http://localhost:3000');
+    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshovia.onrender.com' : 'http://localhost:3000');
     return `${appUrl.replace(/\/+$/, '')}/api/auth/google/callback`;
   }
 
@@ -280,12 +281,14 @@ export class GoogleDriveService {
 
     // 2. Sub-folders
     const resourcesId = await this.getOrCreateFolder('Resources', rootId, accessToken);
+    const booksId = await this.getOrCreateFolder('Books', resourcesId, accessToken);
     const officialDocsId = await this.getOrCreateFolder('Official-Documents', rootId, accessToken);
     const notesId = await this.getOrCreateFolder('IKSHOVIA-Notes', rootId, accessToken);
 
     const folders: DriveFolderStructure = {
       rootId,
       resourcesId,
+      booksId,
       officialDocsId,
       notesId,
     };

@@ -6,6 +6,7 @@ import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './syllabu
 import { currentAffairsRepository } from '../repositories/CurrentAffairsRepository.js';
 import { pyqRepository } from '../repositories/PyqRepository.js';
 import { ocrRepository } from '../repositories/OcrRepository.js';
+import { shortNotesRepository } from '../repositories/ShortNotesRepository.js';
 import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
 import { seedCanonicalResources } from './seedResources.js';
 
@@ -93,8 +94,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
   try {
     // 1. Check if core tables already exist
     const checkRes = await pool.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
+      SELECT table_name
+      FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name IN ('users', 'current_affairs', 'questions', 'learner_models', 'mock_tests');
     `);
 
@@ -421,6 +422,22 @@ export async function ensureDatabaseSchema(): Promise<void> {
       console.log('[DB Schema] Applied Migration 007 (payment_orders, payments, webhook_events) successfully.');
     }
 
+    // 2d. Apply Payment Environment Separation & Entitlement Lifecycle Migration 008
+    const envSepSqlPath = path.resolve(process.cwd(), 'supabase/migrations/008_payment_environment_separation.sql');
+    if (fs.existsSync(envSepSqlPath)) {
+      const envSepSql = fs.readFileSync(envSepSqlPath, 'utf8');
+      await pool.query(envSepSql);
+      console.log('[DB Schema] Applied Migration 008 (payment environment separation & entitlement lifecycle) successfully.');
+    }
+
+    // 2e. Apply Admin Book Upload & Metadata Migration 009
+    const bookUploadSqlPath = path.resolve(process.cwd(), 'supabase/migrations/009_admin_book_upload_and_metadata.sql');
+    if (fs.existsSync(bookUploadSqlPath)) {
+      const bookUploadSql = fs.readFileSync(bookUploadSqlPath, 'utf8');
+      await pool.query(bookUploadSql);
+      console.log('[DB Schema] Applied Migration 009 (admin book upload & metadata) successfully.');
+    }
+
     // 3. Ensure authentic syllabus, question bank, official PYQ, and canonical courses seeds exist
     await ensureSyllabusSeed();
     await ensureQuestionBankSeed();
@@ -429,14 +446,15 @@ export async function ensureDatabaseSchema(): Promise<void> {
     await pyqRepository.initSchema();
     await pyqRepository.seedOfficialPapers();
     await ocrRepository.initSchema();
+    await shortNotesRepository.init();
     await ensureContentOriginSeparation();
     await seedCanonicalResources();
 
     // 4. Verify total tables
     const tableRes = await pool.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
       ORDER BY table_name;
     `);
 
@@ -468,8 +486,8 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.pyq_papers
       SET source_type = 'ADMIN_IMPORTED'
-      WHERE id ILIKE '%flt%' 
-         OR id ILIKE '%mock%' 
+      WHERE id ILIKE '%flt%'
+         OR id ILIKE '%mock%'
          OR id ILIKE '%bpsc_2026%'
          OR paper_name ILIKE '%flt%'
          OR paper_name ILIKE '%mock%'
@@ -478,7 +496,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
       UPDATE public.pyq_papers
       SET source_type = 'OFFICIAL_COMMISSION'
-      WHERE id NOT ILIKE '%flt%' 
+      WHERE id NOT ILIKE '%flt%'
         AND id NOT ILIKE '%mock%'
         AND id NOT ILIKE '%bpsc_2026%'
         AND (source_domain IN ('upsc.gov.in', 'bpsc.bihar.gov.in', 'official') OR official_source_url ILIKE '%upsc.gov.in%' OR official_source_url ILIKE '%bpsc.bihar.gov.in%');
@@ -497,7 +515,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.questions
       SET source_type = 'ADMIN_IMPORTED', is_pyq = false
-      WHERE source = 'OCR_VERIFIED_IMPORT' 
+      WHERE source = 'OCR_VERIFIED_IMPORT'
          OR source_job_id IS NOT NULL
          OR exam_tag ILIKE '%FLT%'
          OR paper ILIKE '%FLT%'
@@ -522,7 +540,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 1: BPSC 2026 FLT 2 (149 questions)
     const flt2Questions = await pool.query(`
-      SELECT * FROM public.pyq_questions 
+      SELECT * FROM public.pyq_questions
       WHERE paper_id = 'bpsc_2026_flt_2'
       ORDER BY question_number ASC;
     `);
@@ -594,7 +612,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 2: BPSC 2026 Prelims (146 questions)
     const prelimsQuestions = await pool.query(`
-      SELECT * FROM public.pyq_questions 
+      SELECT * FROM public.pyq_questions
       WHERE paper_id = 'bpsc_2026_bpsc_prelims'
       ORDER BY question_number ASC;
     `);
@@ -681,7 +699,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     for (const job of publishedOcrJobs.rows) {
       const qRes = await pool.query(`
-        SELECT * FROM public.ocr_extracted_questions 
+        SELECT * FROM public.ocr_extracted_questions
         WHERE job_id = $1 AND correct_answer IS NOT NULL AND correct_answer != ''
         ORDER BY question_num ASC;
       `, [job.id]);

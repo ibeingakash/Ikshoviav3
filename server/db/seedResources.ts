@@ -246,7 +246,7 @@ export const CANONICAL_SEED_RESOURCES: SeedItem[] = [
     subject_id: 'sub_environment',
     topic: 'Ecosystems, Protected Areas & Climate Treaties',
     exam: 'UPSC CSE',
-    resource_type: 'NOTES',
+    resource_type: 'BOOK',
     visibility: 'PUBLIC',
     status: 'PUBLISHED',
     read_time_minutes: 90,
@@ -339,7 +339,7 @@ export const CANONICAL_SEED_RESOURCES: SeedItem[] = [
     description:
       'Official examination compendium outlining the multi-stage architecture of Preliminary Examination (GS Paper I & CSAT) and Mains Examination (Essay, GS-I to GS-IV, Optional Subjects) with marking rubrics.',
     subject: 'General Studies',
-    subject_id: 'sub_general',
+    subject_id: 'sub_full_length',
     topic: 'Examination Architecture, Cutoff Trends & Syllabus Analysis',
     exam: 'UPSC CSE',
     resource_type: 'SYLLABUS',
@@ -409,6 +409,13 @@ export async function seedCanonicalResources(): Promise<void> {
       fs.writeFileSync(filePath, pdfBuffer);
 
       // 2. Insert into public.resources
+      const dbType =
+        item.resource_type === 'NOTES' || item.resource_type === 'NOTE'
+          ? 'NOTE'
+          : ['BOOK', 'PDF', 'ARTICLE', 'VIDEO', 'PYQ'].includes(item.resource_type)
+          ? item.resource_type
+          : 'PDF';
+
       await pool.query(
         `INSERT INTO public.resources (
           id, title, author, description, resource_type, type, subject, subject_id,
@@ -437,7 +444,7 @@ export async function seedCanonicalResources(): Promise<void> {
           item.author,
           item.description,
           item.resource_type,
-          item.resource_type,
+          dbType,
           item.subject,
           item.subject_id,
           item.topic,

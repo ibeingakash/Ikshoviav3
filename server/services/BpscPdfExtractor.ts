@@ -3,7 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { execSync } from 'child_process';
 import sharp from 'sharp';
-import Tesseract from 'tesseract.js';
+import { safeTesseractRecognize } from './tesseractManager.js';
+import { calculateSafeColumnCrops, preprocessCropForOcr, validateImageDimensions } from './ocrImagePreprocessor.js';
 import { bpscDiscoveryAdapter, ValidatedPdfResult } from './BpscDiscoveryAdapter.js';
 
 export interface ExtractedQuestion {
@@ -82,7 +83,7 @@ export class BpscPdfExtractor {
    */
   classifySubjectAndTopic(text: string): { subject: string; subjectId: string; topic: string; gsPaper: string; prelimsArea: string } {
     const t = text.toLowerCase();
-    
+
     if (t.includes('bihar') || t.includes('patna') || t.includes('gaya') || t.includes('champaran') || t.includes('mithila') || t.includes('shrikrishna singh') || t.includes('kisan sabha') || t.includes('nagi bird')) {
       return {
         subject: 'Bihar Special',
@@ -192,7 +193,7 @@ export class BpscPdfExtractor {
       let stem = fullContent;
       const options: Array<{ id: string; text: string; code?: string; isCorrect?: boolean }> = [];
       const optRegex = /\n\(([A-E])\)\s+([^\n]+)/g;
-      
+
       const allOptMatches = [...fullContent.matchAll(optRegex)];
 
       if (allOptMatches.length >= 2) {
@@ -286,39 +287,45 @@ export class BpscPdfExtractor {
   }
 
   /**
-   * Process a rendered page PNG image using two-column extraction.
+   * Process a rendered page PNG image using robust, safe column extraction.
+   * Prevents invalid/null pix images, handles single/double column dynamically, and cleans temporary files safely.
    */
   async processPageImage(imagePath: string, paperId: string, pdfUrl: string, pageNumber: number): Promise<ExtractedQuestion[]> {
     const metadata = await sharp(imagePath).metadata();
     const width = metadata.width || 1490;
     const height = metadata.height || 2105;
-    const halfWidth = Math.floor(width / 2);
 
-    const leftPath = `/tmp/col_left_${path.basename(imagePath)}`;
-    const rightPath = `/tmp/col_right_${path.basename(imagePath)}`;
+    const validation = validateImageDimensions(
+      { width, height, format: metadata.format, density: metadata.density },
+      `BpscPdfExtractor.processPageImage(${path.basename(imagePath)})`
+    );
 
-    // Left column crop
-    await sharp(imagePath)
-      .extract({ left: 35, top: 35, width: halfWidth - 45, height: height - 70 })
-      .toFile(leftPath);
+    if (!validation.valid) {
+      console.warn(`[BpscPdfExtractor] Skipping invalid page image ${imagePath}: ${validation.reason}`);
+      return [];
+    }
 
-    // Right column crop
-    await sharp(imagePath)
-      .extract({ left: halfWidth + 10, top: 35, width: halfWidth - 45, height: height - 70 })
-      .toFile(rightPath);
+    const columnCrops = calculateSafeColumnCrops(width, height);
+    const questions: ExtractedQuestion[] = [];
+    const baseName = path.basename(imagePath, path.extname(imagePath));
 
-    const [leftRes, rightRes] = await Promise.all([
-      Tesseract.recognize(leftPath, 'eng'),
-      Tesseract.recognize(rightPath, 'eng')
-    ]);
+    for (const cropConfig of columnCrops) {
+      const cropPath = `/tmp/col_${cropConfig.label}_${baseName}.png`;
+      try {
+        await preprocessCropForOcr(imagePath, cropPath, cropConfig.bounds, cropConfig.label, pageNumber);
+        const ocrRes = await safeTesseractRecognize(cropPath, 'eng');
+        if (ocrRes.text && ocrRes.text.trim().length > 10) {
+          const colQuestions = this.parseColumnText(ocrRes.text, paperId, pdfUrl, pageNumber);
+          questions.push(...colQuestions);
+        }
+      } catch (colErr: any) {
+        console.warn(`[BpscPdfExtractor] Column ${cropConfig.label} extraction error on page ${pageNumber}:`, colErr?.message || colErr);
+      } finally {
+        try { fs.unlinkSync(cropPath); } catch {}
+      }
+    }
 
-    // Clean temp crops
-    try { fs.unlinkSync(leftPath); fs.unlinkSync(rightPath); } catch (e) {}
-
-    const leftQuestions = this.parseColumnText(leftRes.data.text, paperId, pdfUrl, pageNumber);
-    const rightQuestions = this.parseColumnText(rightRes.data.text, paperId, pdfUrl, pageNumber);
-
-    return [...leftQuestions, ...rightQuestions];
+    return questions;
   }
 }
 

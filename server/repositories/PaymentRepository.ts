@@ -16,6 +16,7 @@ export interface PaymentOrderRecord {
   amount: number;
   currency: string;
   status: PaymentStatus;
+  environment: 'LIVE' | 'TEST';
   metadata: Record<string, any>;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +33,7 @@ export interface PaymentRecord {
   amount: number;
   currency: string;
   status: PaymentStatus;
+  environment: 'LIVE' | 'TEST';
   method?: string;
   verifiedAt?: string;
   metadata: Record<string, any>;
@@ -48,6 +50,7 @@ export interface UserPurchaseItem {
   amount: number;
   currency: string;
   status: PaymentStatus;
+  environment?: 'LIVE' | 'TEST';
   paymentMethod?: string;
   paidAt?: string;
   entitlementStatus?: string;
@@ -70,6 +73,7 @@ export interface AdminPaymentListItem {
   amount: number;
   currency: string;
   status: PaymentStatus;
+  environment: 'LIVE' | 'TEST';
   method?: string;
   verifiedAt?: string;
   createdAt: string;
@@ -89,15 +93,22 @@ export class PaymentRepository {
     amount: number;
     currency?: string;
     status?: PaymentStatus;
+    environment?: 'LIVE' | 'TEST';
     metadata?: Record<string, any>;
   }): Promise<PaymentOrderRecord> {
     const query = `
       INSERT INTO public.payment_orders (
         id, user_id, course_id, price_id, provider, provider_order_id,
-        amount, currency, status, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        amount, currency, status, environment, metadata, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
       RETURNING *;
     `;
+
+    const env = data.environment || 'LIVE';
+    const metadata = {
+      ...(data.metadata || {}),
+      environment: env,
+    };
 
     const res = await pool.query(query, [
       data.id,
@@ -109,7 +120,8 @@ export class PaymentRepository {
       data.amount,
       data.currency || 'INR',
       data.status || 'CREATED',
-      JSON.stringify(data.metadata || {}),
+      env,
+      JSON.stringify(metadata),
     ]);
 
     return this.mapOrder(res.rows[0]);
@@ -171,6 +183,7 @@ export class PaymentRepository {
     amount: number;
     currency?: string;
     status?: PaymentStatus;
+    environment?: 'LIVE' | 'TEST';
     method?: string;
     verifiedAt?: Date;
     metadata?: Record<string, any>;
@@ -178,10 +191,16 @@ export class PaymentRepository {
     const query = `
       INSERT INTO public.payments (
         id, order_id, user_id, course_id, provider, provider_payment_id,
-        provider_order_id, amount, currency, status, method, verified_at, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+        provider_order_id, amount, currency, status, environment, method, verified_at, metadata, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
       RETURNING *;
     `;
+
+    const env = data.environment || 'LIVE';
+    const metadata = {
+      ...(data.metadata || {}),
+      environment: env,
+    };
 
     const res = await pool.query(query, [
       data.id,
@@ -194,9 +213,10 @@ export class PaymentRepository {
       data.amount,
       data.currency || 'INR',
       data.status || 'PENDING',
+      env,
       data.method || null,
       data.verifiedAt || null,
-      JSON.stringify(data.metadata || {}),
+      JSON.stringify(metadata),
     ]);
 
     return this.mapPayment(res.rows[0]);
@@ -261,7 +281,7 @@ export class PaymentRepository {
 
   async listUserPurchases(userId: string): Promise<UserPurchaseItem[]> {
     const query = `
-      SELECT 
+      SELECT
         p.id as payment_id,
         p.order_id,
         p.course_id,
@@ -270,6 +290,7 @@ export class PaymentRepository {
         p.amount,
         p.currency,
         p.status,
+        p.environment,
         p.method as payment_method,
         p.verified_at,
         p.created_at,
@@ -297,6 +318,7 @@ export class PaymentRepository {
         amount: parseFloat(row.amount),
         currency: row.currency || 'INR',
         status: row.status,
+        environment: (row.environment || 'LIVE') as 'LIVE' | 'TEST',
         paymentMethod: row.payment_method,
         paidAt: row.verified_at ? new Date(row.verified_at).toISOString() : new Date(row.created_at).toISOString(),
         entitlementStatus: row.entitlement_status,
@@ -310,6 +332,7 @@ export class PaymentRepository {
     status?: string;
     courseId?: string;
     search?: string;
+    environment?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ items: AdminPaymentListItem[]; total: number }> {
@@ -325,6 +348,11 @@ export class PaymentRepository {
     if (filters?.courseId && filters.courseId !== 'ALL') {
       conditions.push(`p.course_id = $${paramIndex++}`);
       params.push(filters.courseId);
+    }
+
+    if (filters?.environment && filters.environment !== 'ALL') {
+      conditions.push(`p.environment = $${paramIndex++}`);
+      params.push(filters.environment);
     }
 
     if (filters?.search && filters.search.trim()) {
@@ -356,7 +384,7 @@ export class PaymentRepository {
     const offset = filters?.offset || 0;
 
     const query = `
-      SELECT 
+      SELECT
         p.id,
         p.order_id,
         p.user_id,
@@ -371,6 +399,7 @@ export class PaymentRepository {
         p.amount,
         p.currency,
         p.status,
+        p.environment,
         p.method,
         p.verified_at,
         p.created_at,
@@ -404,6 +433,7 @@ export class PaymentRepository {
       amount: parseFloat(row.amount),
       currency: row.currency || 'INR',
       status: row.status,
+      environment: (row.environment || 'LIVE') as 'LIVE' | 'TEST',
       method: row.method,
       verifiedAt: row.verified_at ? new Date(row.verified_at).toISOString() : undefined,
       createdAt: new Date(row.created_at).toISOString(),
@@ -421,34 +451,50 @@ export class PaymentRepository {
     pendingCount: number;
     refundedCount: number;
     failedCount: number;
+    testRevenue: number;
+    testPaidCount: number;
   }> {
     const res = await pool.query(`
-      SELECT 
+      SELECT
         status,
+        environment,
         COUNT(*) as count,
         COALESCE(SUM(amount), 0) as total_amount
       FROM public.payments
-      GROUP BY status;
+      GROUP BY status, environment;
     `);
 
-    let totalRevenue = 0;
-    let paidCount = 0;
-    let pendingCount = 0;
-    let refundedCount = 0;
-    let failedCount = 0;
+    let totalRevenue = 0; // Strictly LIVE
+    let paidCount = 0;    // Strictly LIVE
+    let pendingCount = 0; // Strictly LIVE
+    let refundedCount = 0;// Strictly LIVE
+    let failedCount = 0;  // Strictly LIVE
+
+    let testRevenue = 0;  // Strictly TEST
+    let testPaidCount = 0;// Strictly TEST
 
     for (const r of res.rows) {
       const c = parseInt(r.count, 10);
       const amt = parseFloat(r.total_amount);
-      if (r.status === 'PAID') {
-        paidCount = c;
-        totalRevenue += amt;
-      } else if (r.status === 'PENDING' || r.status === 'CREATED') {
-        pendingCount += c;
-      } else if (r.status === 'REFUNDED') {
-        refundedCount += c;
-      } else if (r.status === 'FAILED') {
-        failedCount += c;
+      const env = (r.environment || 'LIVE').toUpperCase();
+
+      if (env === 'TEST') {
+        if (r.status === 'PAID') {
+          testRevenue += amt;
+          testPaidCount += c;
+        }
+      } else {
+        // Strictly LIVE
+        if (r.status === 'PAID') {
+          paidCount += c;
+          totalRevenue += amt;
+        } else if (r.status === 'PENDING' || r.status === 'CREATED') {
+          pendingCount += c;
+        } else if (r.status === 'REFUNDED') {
+          refundedCount += c;
+        } else if (r.status === 'FAILED') {
+          failedCount += c;
+        }
       }
     }
 
@@ -458,34 +504,36 @@ export class PaymentRepository {
       pendingCount,
       refundedCount,
       failedCount,
+      testRevenue,
+      testPaidCount,
     };
   }
 
   async getCommercialDashboardMetrics(): Promise<CommercialDashboardMetrics> {
     const coursesRes = await pool.query(`
-      SELECT 
+      SELECT
         COUNT(*) as total_courses,
         COUNT(*) FILTER (WHERE is_active = true) as active_courses
       FROM public.courses;
     `);
 
     const entitlementsRes = await pool.query(`
-      SELECT 
-        COUNT(DISTINCT user_id) FILTER (WHERE status = 'ACTIVE' AND source = 'PAYMENT' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_paid_users,
-        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_entitlements,
-        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND starts_at <= NOW() AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '7 days') as expiring_7d,
-        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND starts_at <= NOW() AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '30 days') as expiring_30d
+      SELECT
+        COUNT(DISTINCT user_id) FILTER (WHERE status = 'ACTIVE' AND source = 'PAYMENT' AND environment = 'LIVE' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_paid_users,
+        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND environment = 'LIVE' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_entitlements,
+        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND environment = 'LIVE' AND starts_at <= NOW() AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '7 days') as expiring_7d,
+        COUNT(*) FILTER (WHERE status = 'ACTIVE' AND environment = 'LIVE' AND starts_at <= NOW() AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '30 days') as expiring_30d
       FROM public.entitlements;
     `);
 
     const paymentsRes = await pool.query(`
-      SELECT 
-        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID'), 0) as total_verified_revenue,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND created_at >= date_trunc('month', CURRENT_DATE)), 0) as this_month_revenue,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND created_at >= NOW() - INTERVAL '30 days'), 0) as last_30d_revenue,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED'), 0) as refunds_amount,
-        COUNT(*) FILTER (WHERE status = 'FAILED') as failed_count,
-        COUNT(*) FILTER (WHERE status IN ('PENDING', 'CREATED')) as pending_count
+      SELECT
+        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE'), 0) as total_verified_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE' AND created_at >= date_trunc('month', CURRENT_DATE)), 0) as this_month_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE' AND created_at >= NOW() - INTERVAL '30 days'), 0) as last_30d_revenue,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'REFUNDED' AND environment = 'LIVE'), 0) as refunds_amount,
+        COUNT(*) FILTER (WHERE status = 'FAILED' AND environment = 'LIVE') as failed_count,
+        COUNT(*) FILTER (WHERE status IN ('PENDING', 'CREATED') AND environment = 'LIVE') as pending_count
       FROM public.payments;
     `);
 
@@ -534,12 +582,12 @@ export class PaymentRepository {
     }
 
     const query = `
-      SELECT 
-        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PAID'), 0) as gross_verified_revenue,
-        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'REFUNDED'), 0) as refunded_amount,
-        COUNT(p.id) FILTER (WHERE p.status = 'PAID') as paid_orders_count
+      SELECT
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE'), 0) as gross_verified_revenue,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'REFUNDED' AND p.environment = 'LIVE'), 0) as refunded_amount,
+        COUNT(p.id) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE') as paid_orders_count
       FROM public.payments p
-      WHERE 1=1 ${dateFilter};
+      WHERE 1=1 AND p.environment = 'LIVE' ${dateFilter};
     `;
 
     const res = await pool.query(query, params);
@@ -550,7 +598,7 @@ export class PaymentRepository {
     const netRevenue = gross - refunds;
     const aov = paidCount > 0 ? Math.round((gross / paidCount) * 100) / 100 : 0;
 
-    // Enrollments in this period
+    // Enrollments in this period (LIVE ONLY)
     let entDateFilter = '';
     const entParams: any[] = [];
     if (timeRange === 'today') {
@@ -570,7 +618,7 @@ export class PaymentRepository {
     }
 
     const entRes = await pool.query(
-      `SELECT COUNT(*) as count FROM public.entitlements WHERE source = 'PAYMENT' ${entDateFilter}`,
+      `SELECT COUNT(*) as count FROM public.entitlements WHERE source = 'PAYMENT' AND environment = 'LIVE' ${entDateFilter}`,
       entParams
     );
     const enrollments = parseInt(entRes.rows[0]?.count || '0', 10);
@@ -610,23 +658,24 @@ export class PaymentRepository {
     }
 
     const query = `
-      SELECT 
+      SELECT
         c.id as course_id,
         c.name as course_name,
         c.exam as course_exam,
-        COUNT(p.id) FILTER (WHERE p.status = 'PAID') as paid_orders,
-        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PAID'), 0) as gross_revenue,
-        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'REFUNDED'), 0) as refunds,
+        COUNT(p.id) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE') as paid_orders,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE'), 0) as gross_revenue,
+        COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'REFUNDED' AND p.environment = 'LIVE'), 0) as refunds,
         (
           SELECT COUNT(DISTINCT e.user_id)
           FROM public.entitlements e
           WHERE e.course_id = c.id
             AND e.status = 'ACTIVE'
+            AND e.environment = 'LIVE'
             AND e.starts_at <= NOW()
             AND (e.expires_at IS NULL OR e.expires_at > NOW())
         ) as active_students
       FROM public.courses c
-      LEFT JOIN public.payments p ON p.course_id = c.id ${dateFilter}
+      LEFT JOIN public.payments p ON (p.course_id = c.id AND p.environment = 'LIVE') ${dateFilter}
       GROUP BY c.id, c.name, c.exam
       ORDER BY gross_revenue DESC, c.name ASC;
     `;
@@ -695,6 +744,7 @@ export class PaymentRepository {
       amount: parseFloat(row.amount),
       currency: row.currency,
       status: row.status,
+      environment: (row.environment || 'LIVE') as 'LIVE' | 'TEST',
       metadata: row.metadata || {},
       createdAt: new Date(row.created_at).toISOString(),
       updatedAt: new Date(row.updated_at).toISOString(),
@@ -713,6 +763,7 @@ export class PaymentRepository {
       amount: parseFloat(row.amount),
       currency: row.currency,
       status: row.status,
+      environment: (row.environment || 'LIVE') as 'LIVE' | 'TEST',
       method: row.method,
       verifiedAt: row.verified_at ? new Date(row.verified_at).toISOString() : undefined,
       metadata: row.metadata || {},

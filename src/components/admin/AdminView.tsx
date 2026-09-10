@@ -61,8 +61,8 @@ export const AdminView: React.FC = () => {
       setMetrics(m);
       setUsersList(u);
       setDrafts(d);
-    } catch (err) {
-      console.error('Failed to load admin data:', err);
+    } catch (err: any) {
+      console.warn('Unable to load full admin data bundle, using cached defaults:', err?.message);
     } finally {
       setLoading(false);
     }

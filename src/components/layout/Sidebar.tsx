@@ -62,22 +62,24 @@ export const Sidebar: React.FC = () => {
 
   // Learning Hub Items
   const learningNavItems: NavItem[] = [
-    { id: 'pyq-practice', label: 'PYQ Practice', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
+    { id: 'pyq-practice', label: 'Official PYQ Papers', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'mock-tests', label: 'Mock Tests', icon: FileCheck2, badge: 'Simulations', badgeColor: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
     { id: 'practice', label: 'Topic & Subject Practice', icon: BookOpen },
     { id: 'courses-catalog', label: 'Course Catalog & Plans', icon: Tag, badge: 'Courses', badgeColor: 'bg-emerald-100 text-emerald-900 border border-emerald-300' },
     { id: 'learner-purchases', label: 'My Purchases & Receipts', icon: Receipt },
     { id: 'goals', label: 'Study Plan', icon: Calendar },
     { id: 'current-affairs', label: 'Current Affairs', icon: Newspaper },
+    { id: 'short-notes', label: 'Short Notes & Cards', icon: BookOpen, badge: 'High Yield', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'notes', label: 'Notes & Syllabus', icon: FileText },
     { id: 'analytics', label: 'Performance Analytics', icon: BarChart3 },
     { id: 'revision', label: 'Bookmarks & Mistakes', icon: Bookmark, badge: learnerModel?.dueRevisionCount ? `${learnerModel.dueRevisionCount}` : undefined },
-    { id: 'resources', label: 'Resource Library', icon: Layers },
+    { id: 'resources', label: 'Resource Library', icon: Layers, badge: 'Books', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
   ];
 
   // Administration Hub Items
   const adminNavItems: NavItem[] = [
     { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+    { id: 'admin-short-notes', label: 'Short Notes Studio', icon: BookOpen, badge: 'OCR' },
     { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
     { id: 'admin-coupons', label: 'Coupons & Offers', icon: Tag, badge: 'Discounts' },
     { id: 'admin-users', label: 'User Management', icon: Users, badge: 'Users' },
@@ -106,7 +108,10 @@ export const Sidebar: React.FC = () => {
     if (itemId === 'practice' && (activeSection === 'practice' || activeSection === 'practice-subject' || activeSection === 'practice-full')) return true;
     if (label.includes('Daily Quiz') && (activeSection === 'daily-quiz')) return true;
     if (label.includes('Bookmarks') && (activeSection === 'revision' || activeSection === 'bookmarks')) return true;
-    if (label.includes('Notes') && (activeSection === 'notes' || (activeSection === 'resources' && label === 'Notes & Syllabus'))) return true;
+    if (itemId === 'short-notes' && (activeSection === 'short-notes')) return true;
+    if (itemId === 'admin-short-notes' && (activeSection === 'admin-short-notes')) return true;
+    if (itemId === 'notes' && activeSection === 'notes') return true;
+    if (itemId === 'resources' && activeSection === 'resources') return true;
     if (label.includes('Content Import') && (activeSection === 'admin-ocr' || activeSection === 'admin-content-import')) return true;
     return false;
   };

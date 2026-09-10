@@ -62,6 +62,18 @@ export const AdminResourceStudioView: React.FC = () => {
   const [uploadVisibility, setUploadVisibility] = useState<ResourceVisibility>('ALL_LEARNERS');
   const [uploadAutoPublish, setUploadAutoPublish] = useState<boolean>(true);
 
+  // Book Ingestion Metadata (Requirement 1, 2)
+  const [uploadEdition, setUploadEdition] = useState<string>('');
+  const [uploadPubYear, setUploadPubYear] = useState<string>('');
+  const [uploadPublisher, setUploadPublisher] = useState<string>('');
+  const [uploadLanguage, setUploadLanguage] = useState<string>('English');
+  const [uploadIsbn, setUploadIsbn] = useState<string>('');
+  const [uploadLicenseStatus, setUploadLicenseStatus] = useState<string>('REQUIRES_REVIEW');
+  const [uploadCoverImageUrl, setUploadCoverImageUrl] = useState<string>('');
+  const [uploadSourceAttribution, setUploadSourceAttribution] = useState<string>('');
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; existing: any } | null>(null);
+  const [forceDuplicateUpload, setForceDuplicateUpload] = useState<boolean>(false);
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -71,6 +83,13 @@ export const AdminResourceStudioView: React.FC = () => {
 
   // PDF Preview Modal
   const [previewResource, setPreviewResource] = useState<LearningResource | null>(null);
+
+  // Ingestion Review & RAG Chunks Modal (Requirement 10)
+  const [reviewResource, setReviewResource] = useState<LearningResource | null>(null);
+  const [reviewDetails, setReviewDetails] = useState<any | null>(null);
+  const [loadingReview, setLoadingReview] = useState<boolean>(false);
+  const [reprocessing, setReprocessing] = useState<boolean>(false);
+  const [reprocessMessage, setReprocessMessage] = useState<string | null>(null);
 
   // Grounding Test Modal
   const [groundingTestResource, setGroundingTestResource] = useState<LearningResource | null>(null);
@@ -185,8 +204,8 @@ export const AdminResourceStudioView: React.FC = () => {
   };
 
   // Execute Upload & Pipeline
-  const handleUploadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUploadSubmit = async (e?: React.FormEvent, overrideDuplicate: boolean = false) => {
+    if (e) e.preventDefault();
     if (!selectedFile || !fileBase64) {
       setUploadError('Please select a valid PDF file.');
       return;
@@ -202,6 +221,7 @@ export const AdminResourceStudioView: React.FC = () => {
 
     setIsUploading(true);
     setUploadError(null);
+    setDuplicateWarning(null);
     setUploadStage('Initiating Resumable Upload to Google Drive...');
 
     try {
@@ -227,6 +247,15 @@ export const AdminResourceStudioView: React.FC = () => {
         exam: uploadExam,
         visibility: uploadVisibility,
         autoPublish: uploadAutoPublish,
+        edition: uploadEdition.trim() || undefined,
+        publicationYear: uploadPubYear ? Number(uploadPubYear) : undefined,
+        publisher: uploadPublisher.trim() || undefined,
+        language: uploadLanguage.trim() || undefined,
+        isbn: uploadIsbn.trim() || undefined,
+        licenseStatus: uploadLicenseStatus || undefined,
+        coverImageUrl: uploadCoverImageUrl.trim() || undefined,
+        sourceAttribution: uploadSourceAttribution.trim() || undefined,
+        allowDuplicate: overrideDuplicate || forceDuplicateUpload,
       });
 
       setUploadStage('Ingestion completed successfully!');
@@ -240,11 +269,56 @@ export const AdminResourceStudioView: React.FC = () => {
         setUploadAuthor('');
         setUploadDescription('');
         setUploadTags('');
+        setUploadEdition('');
+        setUploadPubYear('');
+        setUploadPublisher('');
+        setUploadIsbn('');
+        setUploadCoverImageUrl('');
+        setUploadSourceAttribution('');
+        setDuplicateWarning(null);
+        setForceDuplicateUpload(false);
         fetchResources();
       }, 1200);
     } catch (err: any) {
       setIsUploading(false);
+      if (err.code === 'DUPLICATE_DETECTED') {
+        setDuplicateWarning({
+          message: err.message || 'A similar book already exists.',
+          existing: err.existing,
+        });
+        return;
+      }
       setUploadError(err.message || 'Failed to ingest resource');
+    }
+  };
+
+  const handleOpenReview = async (res: LearningResource) => {
+    setReviewResource(res);
+    setLoadingReview(true);
+    setReprocessMessage(null);
+    try {
+      const details = await api.getResourceReview(res.id);
+      setReviewDetails(details);
+    } catch (err: any) {
+      console.error('Failed to load review details:', err);
+    } finally {
+      setLoadingReview(false);
+    }
+  };
+
+  const handleReprocess = async (resourceId: string) => {
+    setReprocessing(true);
+    setReprocessMessage(null);
+    try {
+      await api.reprocessResource(resourceId);
+      const updatedDetails = await api.getResourceReview(resourceId);
+      setReviewDetails(updatedDetails);
+      setReprocessMessage('Text extraction and RAG knowledge chunks re-indexed successfully!');
+      fetchResources();
+    } catch (err: any) {
+      setReprocessMessage(`Reprocessing failed: ${err.message}`);
+    } finally {
+      setReprocessing(false);
     }
   };
 
@@ -316,23 +390,40 @@ export const AdminResourceStudioView: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {driveStatus.connected ? (
               <>
                 <button
                   onClick={handleEnsureFolders}
                   className="px-3.5 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition flex items-center gap-2"
-                  title="Verify IKSHOVIA/Resources, Official-Documents, Notes folder hierarchy"
+                  title="Verify IKSHOVIA/Resources, Books, Official-Documents, Notes folder hierarchy"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Verify Folders
                 </button>
                 <button
-                  onClick={() => setShowUploadModal(true)}
+                  onClick={() => {
+                    setUploadType('BOOK');
+                    setDuplicateWarning(null);
+                    setForceDuplicateUpload(false);
+                    setShowUploadModal(true);
+                  }}
                   className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition shadow-sm flex items-center gap-2"
                 >
-                  <Upload className="w-4 h-4" />
-                  Upload Resource
+                  <BookOpen className="w-4 h-4" />
+                  Upload Book
+                </button>
+                <button
+                  onClick={() => {
+                    setUploadType('NOTES');
+                    setDuplicateWarning(null);
+                    setForceDuplicateUpload(false);
+                    setShowUploadModal(true);
+                  }}
+                  className="px-3.5 py-2 text-sm font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition flex items-center gap-2"
+                >
+                  <FileUp className="w-4 h-4" />
+                  Upload Document / Note
                 </button>
               </>
             ) : (
@@ -528,8 +619,18 @@ export const AdminResourceStudioView: React.FC = () => {
                       <div className="font-semibold text-stone-900 truncate" title={res.title}>
                         {res.title}
                       </div>
-                      <div className="text-xs text-stone-500 truncate">
-                        By {res.author || 'IKSHOVIA Faculty'}
+                      <div className="text-xs text-stone-500 truncate flex items-center gap-1.5 mt-0.5">
+                        <span>By {res.author || 'IKSHOVIA Faculty'}</span>
+                        {res.edition && (
+                          <span className="px-1.5 py-0.2 bg-stone-100 text-stone-600 rounded text-[10px] font-medium border border-stone-200">
+                            {res.edition}
+                          </span>
+                        )}
+                        {res.publication_year && (
+                          <span className="text-[10px] text-stone-400">
+                            ({res.publication_year})
+                          </span>
+                        )}
                       </div>
                     </td>
 
@@ -575,6 +676,15 @@ export const AdminResourceStudioView: React.FC = () => {
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Review Ingestion & Knowledge Chunks */}
+                        <button
+                          onClick={() => handleOpenReview(res)}
+                          className="p-1.5 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition"
+                          title="Review Ingestion, OCR & Knowledge Chunks"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </button>
+
                         {/* Preview PDF */}
                         <button
                           onClick={() => setPreviewResource(res)}
@@ -815,6 +925,155 @@ export const AdminResourceStudioView: React.FC = () => {
                 />
               </div>
 
+              {/* Book-Specific Metadata (when BOOK is selected) */}
+              {uploadType === 'BOOK' && (
+                <div className="p-3.5 bg-amber-50/40 rounded-xl border border-amber-200/80 space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 uppercase tracking-wider">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Book Ingestion Metadata</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Edition</label>
+                      <input
+                        type="text"
+                        value={uploadEdition}
+                        onChange={(e) => setUploadEdition(e.target.value)}
+                        placeholder="e.g. 6th Edition Revised"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Publication Year</label>
+                      <input
+                        type="number"
+                        min="1900"
+                        max="2030"
+                        value={uploadPubYear}
+                        onChange={(e) => setUploadPubYear(e.target.value)}
+                        placeholder="e.g. 2023"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Publisher</label>
+                      <input
+                        type="text"
+                        value={uploadPublisher}
+                        onChange={(e) => setUploadPublisher(e.target.value)}
+                        placeholder="e.g. McGraw Hill Education"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Language</label>
+                      <select
+                        value={uploadLanguage}
+                        onChange={(e) => setUploadLanguage(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 bg-white"
+                      >
+                        <option value="English">English</option>
+                        <option value="Hindi">Hindi</option>
+                        <option value="Bilingual">Bilingual (Hindi + English)</option>
+                        <option value="Other">Other Regional</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">ISBN (Optional)</label>
+                      <input
+                        type="text"
+                        value={uploadIsbn}
+                        onChange={(e) => setUploadIsbn(e.target.value)}
+                        placeholder="e.g. 978-9353160197"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">License / Copyright</label>
+                      <select
+                        value={uploadLicenseStatus}
+                        onChange={(e) => setUploadLicenseStatus(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 bg-white"
+                      >
+                        <option value="REQUIRES_REVIEW">Requires Review</option>
+                        <option value="ACADEMIC_FAIR_USE">Academic Fair Use</option>
+                        <option value="PUBLIC_DOMAIN">Public Domain</option>
+                        <option value="OPEN_ACCESS">Open Access (CC-BY)</option>
+                        <option value="LICENSED">Licensed Institutional</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Source / Attribution</label>
+                      <input
+                        type="text"
+                        value={uploadSourceAttribution}
+                        onChange={(e) => setUploadSourceAttribution(e.target.value)}
+                        placeholder="e.g. Standard UPSC Reference"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-stone-700 mb-1">Cover Image URL (Optional)</label>
+                      <input
+                        type="url"
+                        value={uploadCoverImageUrl}
+                        onChange={(e) => setUploadCoverImageUrl(e.target.value)}
+                        placeholder="https://... cover thumbnail image"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Duplicate Warning Banner */}
+              {duplicateWarning && (
+                <div className="p-4 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-900">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Duplicate Book Detected</span>
+                  </div>
+                  <p className="leading-relaxed">{duplicateWarning.message}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForceDuplicateUpload(true);
+                        handleUploadSubmit(undefined, true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition shadow-sm"
+                    >
+                      Upload as New Edition / Revision Anyway
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDuplicateWarning(null);
+                        setShowUploadModal(false);
+                        if (duplicateWarning.existing) {
+                          setSearchQuery(duplicateWarning.existing.title || '');
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-white border border-stone-300 text-stone-700 font-medium rounded-lg hover:bg-stone-50 transition"
+                    >
+                      Cancel & View Existing
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Auto Publish Checkbox */}
               <div className="flex items-center gap-2 pt-1">
                 <input
@@ -873,6 +1132,208 @@ export const AdminResourceStudioView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INGESTION REVIEW & RAG CHUNKS MODAL */}
+      {reviewResource && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-stone-200 flex items-center justify-between bg-stone-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-purple-50 text-purple-700 rounded-xl border border-purple-200">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-stone-900 text-base">{reviewResource.title}</h3>
+                  <p className="text-xs text-stone-500">
+                    Ingestion Review • OCR Status • Page-Aware RAG Knowledge Chunks
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setReviewResource(null);
+                  setReviewDetails(null);
+                  setReprocessMessage(null);
+                }}
+                className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {loadingReview ? (
+                <div className="py-12 text-center text-stone-500 flex flex-col items-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-purple-600" />
+                  <span className="text-xs">Loading ingestion analysis & chunks...</span>
+                </div>
+              ) : reviewDetails ? (
+                <>
+                  {/* Metadata Summary Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200 text-xs">
+                    <div>
+                      <span className="text-stone-400 block text-[11px]">Author</span>
+                      <span className="font-semibold text-stone-800 truncate block">{reviewResource.author || 'Faculty'}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block text-[11px]">Edition / Year</span>
+                      <span className="font-semibold text-stone-800 block">
+                        {reviewResource.edition || 'Standard'} {reviewResource.publication_year ? `(${reviewResource.publication_year})` : ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block text-[11px]">Publisher</span>
+                      <span className="font-semibold text-stone-800 block">{reviewResource.publisher || 'IKSHOVIA'}</span>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block text-[11px]">License</span>
+                      <span className="font-semibold text-stone-800 block">{reviewResource.license_status || 'ACADEMIC_FAIR_USE'}</span>
+                    </div>
+                  </div>
+
+                  {/* Health & Extraction Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3.5 rounded-xl border border-stone-200 bg-white">
+                      <span className="text-[11px] font-semibold text-stone-500 uppercase block">Extraction Status</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`w-2.5 h-2.5 rounded-full ${reviewDetails.extractionStatus === 'EXTRACTED' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                        <span className="font-bold text-stone-900 text-sm">{reviewDetails.extractionStatus}</span>
+                      </div>
+                      <span className="text-[11px] text-stone-400 mt-1 block">
+                        Method: {reviewDetails.document?.extractionMethod || 'DIRECT_TEXT'}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-stone-200 bg-white">
+                      <span className="text-[11px] font-semibold text-stone-500 uppercase block">Extracted Content</span>
+                      <p className="font-bold text-stone-900 text-sm mt-1">
+                        {(reviewDetails.document?.charCount || 0).toLocaleString()} characters
+                      </p>
+                      <span className="text-[11px] text-stone-400 mt-1 block">
+                        Across {reviewDetails.document?.pageCount || reviewResource.page_count || 1} pages
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl border border-stone-200 bg-white">
+                      <span className="text-[11px] font-semibold text-stone-500 uppercase block">Knowledge Base Chunks</span>
+                      <p className="font-bold text-purple-700 text-sm mt-1">
+                        {reviewDetails.chunksCount} RAG Chunks
+                      </p>
+                      <span className="text-[11px] text-emerald-600 font-medium mt-1 block">
+                        {reviewDetails.isIndexed ? '✓ Grounded for AI Tutor' : 'Pending Indexing'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Storage Details */}
+                  <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-100 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-blue-900 block">Google Drive Storage Location</span>
+                      <span className="text-blue-700 font-mono text-[11px]">
+                        File ID: {reviewResource.drive_file_id || 'Stored locally in public/resources'}
+                      </span>
+                    </div>
+                    <a
+                      href={`/api/resources/${reviewResource.id}/stream`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-blue-700 font-medium hover:bg-blue-50 text-xs flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      View PDF Stream
+                    </a>
+                  </div>
+
+                  {/* Sample Chunks Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-stone-800 uppercase tracking-wider">
+                        Indexed Knowledge Chunks Sample ({reviewDetails.sampleChunks?.length || 0} of {reviewDetails.chunksCount})
+                      </h4>
+                    </div>
+                    <div className="space-y-2">
+                      {reviewDetails.sampleChunks && reviewDetails.sampleChunks.length > 0 ? (
+                        reviewDetails.sampleChunks.map((chunk: any, idx: number) => (
+                          <div key={chunk.id || idx} className="p-3 rounded-xl border border-stone-200 bg-stone-50 text-xs">
+                            <div className="flex items-center justify-between font-semibold text-stone-700 text-[11px] mb-1">
+                              <span>Chunk #{chunk.chunkIndex + 1}: {chunk.heading || 'Section'}</span>
+                              <span className="text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                Page {chunk.pageNumber}
+                              </span>
+                            </div>
+                            <p className="text-stone-600 leading-relaxed italic">{chunk.preview}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-stone-400 italic py-2">No chunks indexed yet for this resource.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Reprocess message */}
+                  {reprocessMessage && (
+                    <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                      reprocessMessage.includes('failed')
+                        ? 'bg-red-50 text-red-700 border border-red-200'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    }`}>
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>{reprocessMessage}</span>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-stone-200 bg-stone-50 flex items-center justify-between">
+              <button
+                onClick={() => handleReprocess(reviewResource.id)}
+                disabled={reprocessing}
+                className="px-4 py-2 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-xl transition flex items-center gap-2 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${reprocessing ? 'animate-spin' : ''}`} />
+                {reprocessing ? 'Reprocessing Extraction & Chunks...' : 'Reprocess Extraction & RAG'}
+              </button>
+
+              <div className="flex items-center gap-2">
+                {reviewResource.status !== 'PUBLISHED' ? (
+                  <button
+                    onClick={async () => {
+                      await handleStatusChange(reviewResource, 'PUBLISHED');
+                      setReviewResource({ ...reviewResource, status: 'PUBLISHED' });
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition"
+                  >
+                    Publish to Learner Library
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await handleStatusChange(reviewResource, 'READY');
+                      setReviewResource({ ...reviewResource, status: 'READY' });
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-200 hover:bg-stone-300 rounded-xl transition"
+                  >
+                    Unpublish to Draft
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setReviewResource(null);
+                    setReviewDetails(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-200 rounded-xl transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

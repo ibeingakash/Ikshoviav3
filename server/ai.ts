@@ -111,8 +111,8 @@ Mistake Category: ${context.mistakeType || 'N/A'}
           `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
            FROM public.data_chunks c
            JOIN public.data_documents d ON c.document_id = d.id
-           JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
-           WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+           JOIN public.resources r ON (d.resource_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+           WHERE (d.resource_id = $1 OR (c.metadata_json->>'resourceId') = $1)
              AND (c.content ILIKE ANY($2) OR c.heading ILIKE ANY($2) OR c.section ILIKE ANY($2))
            ORDER BY c.chunk_index ASC
            LIMIT 4`,
@@ -129,8 +129,8 @@ Mistake Category: ${context.mistakeType || 'N/A'}
             `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
              FROM public.data_chunks c
              JOIN public.data_documents d ON c.document_id = d.id
-             JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
-             WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+             JOIN public.resources r ON (d.resource_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+             WHERE (d.resource_id = $1 OR (c.metadata_json->>'resourceId') = $1)
              ORDER BY ABS(COALESCE((c.metadata_json->>'pageNumber')::int, 1) - $2) ASC, c.chunk_index ASC
              LIMIT 3`,
             [resourceIdFilter, pageNum]
@@ -145,8 +145,8 @@ Mistake Category: ${context.mistakeType || 'N/A'}
           `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
            FROM public.data_chunks c
            JOIN public.data_documents d ON c.document_id = d.id
-           JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
-           WHERE (d.resource_id = $1 OR d.external_id = $1 OR (c.metadata_json->>'resourceId') = $1)
+           JOIN public.resources r ON (d.resource_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+           WHERE (d.resource_id = $1 OR (c.metadata_json->>'resourceId') = $1)
            ORDER BY c.chunk_index ASC
            LIMIT 3`,
           [resourceIdFilter]
@@ -162,7 +162,7 @@ Mistake Category: ${context.mistakeType || 'N/A'}
         `SELECT c.content, c.heading, c.section, c.metadata_json, r.title as resource_title, r.author as resource_author
          FROM public.data_chunks c
          JOIN public.data_documents d ON c.document_id = d.id
-         JOIN public.resources r ON (d.resource_id = r.id OR d.external_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
+         JOIN public.resources r ON (d.resource_id = r.id OR (c.metadata_json->>'resourceId') = r.id)
          WHERE (c.content ILIKE ANY($1) OR c.heading ILIKE ANY($1) OR r.title ILIKE ANY($1))
            AND r.status IN ('READY', 'PUBLISHED')
            AND r.visibility NOT IN ('ADMIN_ONLY')

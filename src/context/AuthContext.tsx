@@ -27,14 +27,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.getMe();
       if (res && res.user) {
         setUser(res.user);
+        localStorage.setItem('ikshovia_user_role', res.user.role);
+        localStorage.setItem('ikshovia_user_id', res.user.id);
       } else {
         localStorage.removeItem('ikshovia_token');
+        localStorage.removeItem('ikshovia_user_role');
+        localStorage.removeItem('ikshovia_user_id');
         setUser(null);
       }
-    } catch (err) {
-      console.error('Failed to fetch user auth:', err);
-      localStorage.removeItem('ikshovia_token');
-      setUser(null);
+    } catch (err: any) {
+      console.warn('Network notice during auth validation:', err?.message);
     } finally {
       setLoading(false);
     }
@@ -53,6 +55,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (res.user && res.token) {
         localStorage.setItem('ikshovia_token', res.token);
+        localStorage.setItem('ikshovia_user_role', res.user.role);
+        localStorage.setItem('ikshovia_user_id', res.user.id);
         setUser(res.user);
       }
     } finally {
@@ -69,6 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (res.user && res.token) {
         localStorage.setItem('ikshovia_token', res.token);
+        localStorage.setItem('ikshovia_user_role', res.user.role);
+        localStorage.setItem('ikshovia_user_id', res.user.id);
         setUser(res.user);
       }
     } finally {
@@ -78,6 +84,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     localStorage.removeItem('ikshovia_token');
+    localStorage.removeItem('ikshovia_user_role');
+    localStorage.removeItem('ikshovia_user_id');
     setUser(null);
   };
 

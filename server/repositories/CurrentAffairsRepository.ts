@@ -597,16 +597,34 @@ export class CurrentAffairsRepository {
     const query = `
       SELECT * FROM public.current_affairs
       ${whereClause}
-      ORDER BY 
-        CASE 
-          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1 
-          ELSE 2 
+      ORDER BY
+        CASE
+          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1
+          ELSE 2
         END,
         date DESC, relevance_score DESC, created_at DESC;
     `;
 
     const res = await pool.query(query, values);
     let allRecords = res.rows.map(row => this.mapRowToRecord(row));
+
+    const GENERIC_HOMEPAGE_TITLES = new Set([
+      'indian space research organisation',
+      'reserve bank of india',
+      'example domain',
+      'home',
+      'index',
+      'welcome',
+    ]);
+    const isGenericHomepage = (title?: string, url?: string) => {
+      const lowerTitle = (title || '').toLowerCase().trim();
+      const normUrl = (url || '').trim().toLowerCase().replace(/\/+$/, '');
+      if (GENERIC_HOMEPAGE_TITLES.has(lowerTitle)) return true;
+      if (normUrl === 'https://www.isro.gov.in' || normUrl === 'https://rbi.org.in' || normUrl === 'https://example.com') return true;
+      return false;
+    };
+
+    allRecords = allRecords.filter(r => !isGenericHomepage(r.title, r.sourceUrl));
 
     // Also fetch valid knowledge base resources if no date/status filter blocks it
     if (!filters.date && !filters.status) {
@@ -618,11 +636,15 @@ export class CurrentAffairsRepository {
           LEFT JOIN public.data_documents d ON d.resource_id = r.id
           WHERE (r.title NOT ILIKE '%proxy test%' AND r.title NOT ILIKE '%test resource%' AND (s.name IS NULL OR s.name NOT ILIKE '%proxy test%'))
             AND r.id NOT LIKE 'res_03fb%' AND r.id NOT LIKE 'res_6bb7%' AND r.id NOT LIKE 'res_3ba5%'
+            AND LOWER(TRIM(r.title)) NOT IN ('indian space research organisation', 'reserve bank of india', 'example domain', 'home', 'index', 'welcome')
+            AND r.url NOT IN ('https://www.isro.gov.in/', 'https://www.isro.gov.in', 'https://rbi.org.in/', 'https://rbi.org.in')
           ORDER BY r.created_at DESC
           LIMIT 100;
         `);
 
-        const bridged: CurrentAffairRecord[] = resourceRes.rows.map(row => {
+        const bridged: CurrentAffairRecord[] = resourceRes.rows
+          .filter(row => !isGenericHomepage(row.title, row.url))
+          .map(row => {
           const sourceName = this.normalizeSourceName(row.source_name || row.title, row.url);
           const cat = (row.title || '').toLowerCase().includes('fisheries') || (row.title || '').toLowerCase().includes('economy')
             ? 'Economy'

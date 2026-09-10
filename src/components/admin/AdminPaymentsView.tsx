@@ -22,6 +22,8 @@ import {
   X,
   Copy,
   Check,
+  FlaskConical,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 
@@ -40,6 +42,7 @@ interface AdminPaymentItem {
   amount: number;
   currency: string;
   status: 'PAID' | 'FAILED' | 'REFUNDED' | 'PENDING' | 'CREATED';
+  environment?: 'LIVE' | 'TEST';
   method?: string;
   verifiedAt?: string;
   createdAt: string;
@@ -54,6 +57,8 @@ interface PaymentMetrics {
   pendingCount: number;
   refundedCount: number;
   failedCount: number;
+  testRevenue?: number;
+  testPaidCount?: number;
 }
 
 interface GatewayStatus {
@@ -71,6 +76,7 @@ export const AdminPaymentsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [courseFilter, setCourseFilter] = useState('ALL');
+  const [environmentFilter, setEnvironmentFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [coursesList, setCoursesList] = useState<{ id: string; name: string }[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,6 +91,12 @@ export const AdminPaymentsView: React.FC = () => {
   const [refundError, setRefundError] = useState<string | null>(null);
   const [refundSuccessMsg, setRefundSuccessMsg] = useState<string | null>(null);
 
+  // Purge Test Data Modal State
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [purgeSuccessMsg, setPurgeSuccessMsg] = useState<string | null>(null);
+
   // Copied indicator
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -95,6 +107,7 @@ export const AdminPaymentsView: React.FC = () => {
       const res = await api.getAdminPayments({
         status: statusFilter,
         courseId: courseFilter,
+        environment: environmentFilter,
         search: searchQuery,
       });
 
@@ -121,7 +134,7 @@ export const AdminPaymentsView: React.FC = () => {
 
   useEffect(() => {
     fetchPaymentsData();
-  }, [statusFilter, courseFilter]);
+  }, [statusFilter, courseFilter, environmentFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +175,24 @@ export const AdminPaymentsView: React.FC = () => {
     }
   };
 
+  const handleExecutePurgeTestData = async () => {
+    setIsPurging(true);
+    setPurgeError(null);
+    try {
+      const res = await api.purgeTestTransactions();
+      setPurgeSuccessMsg(res.message || 'Test sandbox records safely removed.');
+      setTimeout(() => {
+        setShowPurgeModal(false);
+        setPurgeSuccessMsg(null);
+        fetchPaymentsData();
+      }, 1500);
+    } catch (err: any) {
+      setPurgeError(err.message || 'Failed to purge test transactions');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'PAID':
@@ -195,6 +226,23 @@ export const AdminPaymentsView: React.FC = () => {
           </span>
         );
     }
+  };
+
+  const getEnvironmentBadge = (environment?: string) => {
+    if (environment === 'TEST') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-amber-50 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md">
+          <FlaskConical className="w-2.5 h-2.5 text-amber-600" />
+          TEST MODE
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md">
+        <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
+        LIVE
+      </span>
+    );
   };
 
   return (
@@ -264,49 +312,70 @@ export const AdminPaymentsView: React.FC = () => {
         </div>
       )}
 
-      {/* Gateway Configuration Warning if not configured */}
-      {gatewayStatus && !gatewayStatus.isConfigured && (
-        <div className="p-4 bg-amber-50/90 border border-amber-300/80 rounded-2xl flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-900 space-y-1">
-            <div className="font-bold">Payment Gateway Credentials Required</div>
-            <p className="leading-relaxed">
-              Razorpay API credentials (<code className="bg-amber-100 px-1 rounded">RAZORPAY_KEY_ID</code> and{' '}
-              <code className="bg-amber-100 px-1 rounded">RAZORPAY_KEY_SECRET</code>) are not configured in your
-              environment. Checkout orders are safely prevented until credentials are set, protecting both the platform
-              and learner entitlements.
-            </p>
+      {/* TEST MODE ENVIRONMENT SANDBOX NOTICE */}
+      {Boolean((metrics?.testPaidCount || 0) > 0 || gatewayStatus?.mode === 'TEST') && (
+        <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-xl text-amber-800 shrink-0 mt-0.5">
+              <FlaskConical className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-950 uppercase font-mono tracking-wide">
+                  Test Mode Sandbox Active
+                </span>
+                <span className="text-[10px] bg-amber-200/80 text-amber-900 font-mono font-bold px-2 py-0.5 rounded-md">
+                  EXCLUDED FROM PRODUCTION REVENUE
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/90 mt-1 leading-relaxed">
+                {metrics?.testPaidCount || 0} test transaction(s) recorded (total ₹{(metrics?.testRevenue || 0).toLocaleString('en-IN')}).
+                In accordance with payment separation rules, test mode transactions are safely tagged as <code className="bg-amber-100 px-1 rounded font-bold font-mono text-[11px]">TEST</code> and strictly excluded from live production financial analytics.
+              </p>
+            </div>
           </div>
+
+          {(metrics?.testPaidCount || 0) > 0 && (
+            <div className="shrink-0 self-start sm:self-center">
+              <button
+                onClick={() => setShowPurgeModal(true)}
+                className="px-3.5 py-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-700" />
+                <span>Purge Test Sandbox Data</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Financial Metrics Cards */}
+      {/* Financial Metrics Cards (Strictly Live Production Revenue) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
+        {/* Total Live Revenue */}
         <div className="bg-white border border-stone-200/90 p-5 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between text-xs text-stone-500 font-bold uppercase font-mono">
-            <span>Total Verified Revenue</span>
+            <span>Verified Live Revenue</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-serif-editorial font-bold text-stone-900 mt-1.5">
             ₹{(metrics?.totalRevenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
           <div className="text-[11px] text-emerald-700 font-medium mt-1">
-            {metrics?.paidCount || 0} Successful Transactions
+            {metrics?.paidCount || 0} Live Verified Transactions
           </div>
         </div>
 
         {/* Paid Count */}
         <div className="bg-white border border-stone-200/90 p-5 rounded-2xl shadow-2xs">
           <div className="flex items-center justify-between text-xs text-stone-500 font-bold uppercase font-mono">
-            <span>Verified Enrollments</span>
+            <span>Live Enrollments</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-serif-editorial font-bold text-emerald-700 mt-1.5">
             {metrics?.paidCount || 0}
           </div>
           <div className="text-[11px] text-stone-500 font-medium mt-1">
-            Active course entitlements granted
+            Production course entitlements granted
           </div>
         </div>
 
@@ -353,8 +422,23 @@ export const AdminPaymentsView: React.FC = () => {
         </form>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Environment Filter */}
           <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
             <Filter className="w-3.5 h-3.5 text-stone-400" />
+            <span>Env:</span>
+          </div>
+          <select
+            value={environmentFilter}
+            onChange={e => setEnvironmentFilter(e.target.value)}
+            className="px-3 py-1.5 bg-[#FCFBF9] border border-stone-200 rounded-xl text-xs font-bold text-stone-700 cursor-pointer focus:outline-hidden"
+          >
+            <option value="ALL">All Environments</option>
+            <option value="LIVE">LIVE Only (Production)</option>
+            <option value="TEST">TEST Only (Sandbox)</option>
+          </select>
+
+          {/* Status Filter */}
+          <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
             <span>Status:</span>
           </div>
           <select
@@ -393,6 +477,7 @@ export const AdminPaymentsView: React.FC = () => {
             <thead>
               <tr className="bg-[#FAF8F5] border-b border-stone-200 text-stone-500 font-mono text-[11px] uppercase tracking-wider">
                 <th className="py-3 px-4">Transaction / Order</th>
+                <th className="py-3 px-4">Environment</th>
                 <th className="py-3 px-4">Learner</th>
                 <th className="py-3 px-4">Course Program</th>
                 <th className="py-3 px-4">Amount</th>
@@ -405,18 +490,18 @@ export const AdminPaymentsView: React.FC = () => {
             <tbody className="divide-y divide-stone-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-stone-400">
+                  <td colSpan={9} className="py-12 text-center text-stone-400">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#35156B]" />
                     <span>Loading payment transactions...</span>
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-stone-500">
+                  <td colSpan={9} className="py-12 text-center text-stone-500">
                     <Receipt className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                     <p className="font-bold text-sm text-stone-700">No payment transactions found</p>
                     <p className="text-xs text-stone-400 mt-1">
-                      {searchQuery || statusFilter !== 'ALL'
+                      {searchQuery || statusFilter !== 'ALL' || environmentFilter !== 'ALL'
                         ? 'Try adjusting your filter or search query.'
                         : 'New enrollments and orders will appear here automatically.'}
                     </p>
@@ -446,6 +531,11 @@ export const AdminPaymentsView: React.FC = () => {
                             Gateway: {p.providerPaymentId}
                           </div>
                         )}
+                      </td>
+
+                      {/* Environment Badge */}
+                      <td className="py-3 px-4">
+                        {getEnvironmentBadge(p.environment)}
                       </td>
 
                       {/* Learner */}
@@ -545,9 +635,12 @@ export const AdminPaymentsView: React.FC = () => {
           <div className="bg-white border border-stone-200 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-5 animate-scale-in">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div>
-                <span className="text-[10px] font-mono font-bold bg-[#35156B] text-amber-300 px-2 py-0.5 rounded-full">
-                  PAYMENT RECORD
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-[#35156B] text-amber-300 px-2 py-0.5 rounded-full">
+                    PAYMENT RECORD
+                  </span>
+                  {getEnvironmentBadge(selectedPayment.environment)}
+                </div>
                 <h2 className="text-lg font-serif-editorial font-bold text-stone-900 mt-1">
                   Transaction #{selectedPayment.id}
                 </h2>
@@ -561,6 +654,16 @@ export const AdminPaymentsView: React.FC = () => {
             </div>
 
             <div className="space-y-3.5 text-xs">
+              {selectedPayment.environment === 'TEST' && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex items-start gap-2.5">
+                  <FlaskConical className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">
+                    <span className="font-bold">Test Sandbox Record: </span>
+                    This transaction was generated during Razorpay Sandbox testing. It is excluded from production revenue reports and verified financial ledgers.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 p-3 bg-[#FAF8F5] rounded-xl border border-stone-200/80">
                 <div>
                   <span className="text-[10px] uppercase font-mono text-stone-400 font-bold block">Status</span>
@@ -584,6 +687,12 @@ export const AdminPaymentsView: React.FC = () => {
 
               {/* Technical IDs */}
               <div className="space-y-2 p-3 bg-stone-900 text-stone-300 rounded-xl font-mono text-[11px]">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
+                  <span className="text-stone-400">Environment:</span>
+                  <span className={selectedPayment.environment === 'TEST' ? 'text-amber-300' : 'text-emerald-400'}>
+                    {selectedPayment.environment || 'LIVE'}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
                   <span className="text-stone-400">Internal Order ID:</span>
                   <span className="text-amber-300">{selectedPayment.orderId}</span>
@@ -660,6 +769,75 @@ export const AdminPaymentsView: React.FC = () => {
         </div>
       )}
 
+      {/* PURGE TEST SANDBOX CONFIRMATION MODAL */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-stone-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-amber-600" />
+                <h2 className="text-lg font-serif-editorial font-bold text-stone-900">
+                  Purge Test Sandbox Data
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowPurgeModal(false)}
+                disabled={isPurging}
+                className="text-stone-400 hover:text-stone-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-stone-600">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  Clean Test / Sandbox Records
+                </div>
+                <p className="leading-relaxed text-[11px]">
+                  This action will permanently remove all records explicitly marked with <code className="bg-amber-100 px-1 rounded font-bold font-mono">environment = 'TEST'</code>, including test orders and test entitlements.
+                </p>
+                <p className="text-[11px] font-bold text-emerald-800 pt-1">
+                  ✓ Genuine live production data, users, and courses are completely protected and untouched.
+                </p>
+              </div>
+
+              {purgeError && (
+                <div className="p-2.5 bg-rose-100 text-rose-900 border border-rose-300 rounded-xl text-[11px]">
+                  {purgeError}
+                </div>
+              )}
+
+              {purgeSuccessMsg && (
+                <div className="p-2.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-[11px] font-bold">
+                  {purgeSuccessMsg}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-stone-100 pt-3 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setShowPurgeModal(false)}
+                disabled={isPurging}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleExecutePurgeTestData}
+                disabled={isPurging}
+                className="px-5 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-2xs"
+              >
+                <Trash2 className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />
+                <span>{isPurging ? 'Purging Sandbox Data...' : 'Confirm Purge'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* REFUND CONFIRMATION MODAL */}
       {refundTarget && (
         <div className="fixed inset-0 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -701,6 +879,10 @@ export const AdminPaymentsView: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-stone-400">Course:</span>
                   <span className="font-bold text-stone-800">{refundTarget.courseName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-stone-400">Environment:</span>
+                  <span className="font-bold text-stone-800">{refundTarget.environment || 'LIVE'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-400">Gateway Payment ID:</span>

@@ -20,6 +20,8 @@ import { KnowledgeGraphView } from './components/graph/KnowledgeGraphView.js';
 import { AnalyticsView } from './components/analytics/AnalyticsView.js';
 import { CurrentAffairsView } from './components/currentaffairs/CurrentAffairsView.js';
 import { ResourcesView } from './components/resources/ResourcesView.js';
+import { ShortNotesView } from './components/resources/ShortNotesView.js';
+import { ShortNotesAdminView } from './components/admin/ShortNotesAdminView.js';
 import { GoalsView } from './components/goals/GoalsView.js';
 import { ProfileView } from './components/profile/ProfileView.js';
 import { SettingsView } from './components/settings/SettingsView.js';
@@ -40,6 +42,7 @@ import { CommercialHubView } from './components/admin/CommercialHubView.js';
 import { CouponsAdminView } from './components/admin/CouponsAdminView.js';
 import { CourseCatalogView } from './components/courses/CourseCatalogView.js';
 import { LearnerPurchasesView } from './components/courses/LearnerPurchasesView.js';
+import { NotesSyllabusView } from './components/syllabus/NotesSyllabusView.js';
 import { DownloadAppView } from './components/download/DownloadAppView.js';
 import { initCapacitorApp } from './lib/capacitor.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
@@ -186,8 +189,11 @@ const MainContent: React.FC = () => {
       case 'current-affairs':
         return <CurrentAffairsView />;
       case 'resources':
-      case 'notes':
         return <ResourcesView />;
+      case 'notes':
+        return <NotesSyllabusView />;
+      case 'short-notes':
+        return <ShortNotesView />;
       case 'goals':
         return <GoalsView />;
       case 'profile':
@@ -199,6 +205,8 @@ const MainContent: React.FC = () => {
         return <DownloadAppView onBackToHome={() => setActiveSection('dashboard')} />;
       case 'admin-dashboard':
         return <AdminDashboardView />;
+      case 'admin-short-notes':
+        return <ShortNotesAdminView />;
       case 'admin-questions':
         return <QuestionBankView />;
       case 'admin-mock-builder':

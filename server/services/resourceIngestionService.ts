@@ -17,6 +17,16 @@ export interface IngestResourceParams {
   buffer: Buffer;
   uploadedBy: string;
   autoPublish?: boolean;
+  edition?: string;
+  publicationYear?: number;
+  publisher?: string;
+  language?: string;
+  isbn?: string;
+  licenseStatus?: string;
+  coverImageUrl?: string;
+  tags?: string;
+  sourceAttribution?: string;
+  allowDuplicate?: boolean;
 }
 
 export class ResourceIngestionService {
@@ -41,7 +51,30 @@ export class ResourceIngestionService {
    * 6. Mark READY / PUBLISHED
    */
   public async ingestResource(params: IngestResourceParams): Promise<DbResource> {
-    const { buffer, fileName, title, author, description, resourceType, subject, topic, exam, visibility, uploadedBy, autoPublish } = params;
+    const {
+      buffer,
+      fileName,
+      title,
+      author,
+      description,
+      resourceType,
+      subject,
+      topic,
+      exam,
+      visibility,
+      uploadedBy,
+      autoPublish,
+      edition,
+      publicationYear,
+      publisher,
+      language,
+      isbn,
+      licenseStatus,
+      coverImageUrl,
+      tags,
+      sourceAttribution,
+      allowDuplicate,
+    } = params;
 
     // 1. Security & File Validation
     if (!buffer || buffer.length === 0) {
@@ -55,14 +88,34 @@ export class ResourceIngestionService {
       throw new Error('Invalid file format. Uploaded file is not a valid PDF document.');
     }
 
+    const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+    // Duplicate Book & Resource Protection (Requirement 22)
+    if (!allowDuplicate) {
+      const existing = await resourceRepository.findLikelyDuplicate({
+        title,
+        author,
+        fileHash,
+      });
+      if (existing) {
+        const err: any = new Error(
+          `A similar book already exists: "${existing.title}" by ${existing.author || 'IKSHOVIA Faculty'}`
+        );
+        err.code = 'DUPLICATE_DETECTED';
+        err.existing = existing;
+        throw err;
+      }
+    }
+
     const sanitizedFileName = (fileName || 'resource.pdf')
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .replace(/_+/g, '_');
 
     // Determine Google Drive folder category
-    let folderCategory: 'RESOURCES' | 'OFFICIAL_DOCUMENTS' | 'NOTES' = 'RESOURCES';
-    if (resourceType === 'OFFICIAL_DOCUMENT') folderCategory = 'OFFICIAL_DOCUMENTS';
-    if (resourceType === 'NOTES') folderCategory = 'NOTES';
+    let folderCategory: 'BOOKS' | 'RESOURCES' | 'OFFICIAL_DOCUMENTS' | 'NOTES' = 'RESOURCES';
+    if (resourceType === 'BOOK') folderCategory = 'BOOKS';
+    else if (resourceType === 'OFFICIAL_DOCUMENT') folderCategory = 'OFFICIAL_DOCUMENTS';
+    else if (resourceType === 'NOTES') folderCategory = 'NOTES';
 
     // 2. Create Initial Record in PostgreSQL
     const resource = await resourceRepository.create({
@@ -74,6 +127,17 @@ export class ResourceIngestionService {
       subject,
       topic: topic || '',
       exam: exam || 'ALL',
+      edition: edition || null,
+      publication_year: publicationYear ? Number(publicationYear) : undefined,
+      publisher: publisher || null,
+      language: language || 'English',
+      isbn: isbn || null,
+      license_status: licenseStatus || 'REQUIRES_REVIEW',
+      cover_image_url: coverImageUrl || null,
+      tags: tags || null,
+      source_attribution: sourceAttribution || null,
+      storage_provider: 'GOOGLE_DRIVE',
+      file_hash: fileHash,
       file_name: sanitizedFileName,
       file_size: buffer.length,
       mime_type: 'application/pdf',
@@ -299,6 +363,195 @@ export class ResourceIngestionService {
 
     console.log(`[ResourceIngestion] Indexed ${chunkIndex} knowledge chunks for '${resourceTitle}'`);
     return chunkIndex;
+  }
+
+  /**
+   * Retrieves comprehensive extraction, storage, and RAG indexing review details for admin.
+   */
+  public async getResourceReviewDetails(resourceId: string) {
+    const resource = await resourceRepository.findById(resourceId);
+    if (!resource) return null;
+
+    // Fetch document record
+    const docRes = await pool.query(
+      `SELECT * FROM public.data_documents WHERE resource_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [resourceId]
+    );
+    const document = docRes.rows[0] || null;
+
+    // Count chunks
+    const chunkCountRes = await pool.query(
+      `SELECT COUNT(*)::int as count FROM public.data_chunks WHERE (metadata_json->>'resourceId') = $1`,
+      [resourceId]
+    );
+    const chunksCount = chunkCountRes.rows[0]?.count || 0;
+
+    // Fetch sample chunks
+    const sampleChunksRes = await pool.query(
+      `SELECT id, chunk_index, content, heading, section, metadata_json
+       FROM public.data_chunks
+       WHERE (metadata_json->>'resourceId') = $1
+       ORDER BY chunk_index ASC LIMIT 3`,
+      [resourceId]
+    );
+
+    const charCount = document?.clean_text ? document.clean_text.length : 0;
+    let extractionStatus: 'EXTRACTED' | 'PARTIAL' | 'FAILED' = 'EXTRACTED';
+    if (charCount === 0) {
+      extractionStatus = 'FAILED';
+    } else if (charCount < 300) {
+      extractionStatus = 'PARTIAL';
+    }
+
+    const requiresReview = extractionStatus !== 'EXTRACTED' || chunksCount === 0;
+
+    return {
+      resource,
+      document: document
+        ? {
+            id: document.id,
+            charCount,
+            pageCount: document.page_count,
+            language: document.language,
+            extractionStatus: document.extraction_status,
+            extractionMethod: document.extraction_method,
+            createdAt: document.created_at,
+          }
+        : null,
+      chunksCount,
+      sampleChunks: sampleChunksRes.rows.map(r => ({
+        id: r.id,
+        chunkIndex: r.chunk_index,
+        heading: r.heading,
+        section: r.section,
+        pageNumber: r.metadata_json?.pageNumber || 1,
+        preview: (r.content || '').substring(0, 180) + '...',
+      })),
+      isIndexed: chunksCount > 0,
+      extractionStatus,
+      requiresReview,
+    };
+  }
+
+  /**
+   * Reprocesses text extraction and knowledge chunk indexing for an existing resource.
+   */
+  public async reprocessResource(resourceId: string): Promise<DbResource> {
+    const resource = await resourceRepository.findById(resourceId);
+    if (!resource) {
+      throw new Error(`Resource ${resourceId} not found.`);
+    }
+
+    console.log(`[ResourceIngestion] Reprocessing resource ${resourceId} (${resource.title})...`);
+    await resourceRepository.update(resourceId, { status: 'PROCESSING' });
+
+    let buffer: Buffer | null = null;
+
+    // 1. Try downloading from Google Drive if drive_file_id exists
+    if (resource.drive_file_id) {
+      try {
+        const storage = getStorageProvider();
+        const stream = await storage.downloadFileStream(resource.drive_file_id);
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        buffer = Buffer.concat(chunks);
+      } catch (dErr: any) {
+        console.warn(`[ResourceIngestion] Could not download from storage provider: ${dErr.message}`);
+      }
+    }
+
+    // 2. Check local fallback file
+    if (!buffer || buffer.length === 0) {
+      const fs = await import('fs');
+      const path = await import('path');
+      const localPath = path.resolve(process.cwd(), 'public/resources', `${resource.id}.pdf`);
+      if (fs.existsSync(localPath)) {
+        buffer = fs.readFileSync(localPath);
+      }
+    }
+
+    if (!buffer || buffer.length === 0) {
+      await resourceRepository.update(resourceId, { status: 'ERROR' });
+      throw new Error('PDF file could not be retrieved from Google Drive or local storage for reprocessing.');
+    }
+
+    // 3. Extract text & OCR
+    let extractedText = '';
+    let pageCount = resource.page_count || 1;
+    let extractionMethod = 'DIRECT_TEXT';
+
+    try {
+      const textExtract = await extractTextFromPdfBuffer(buffer);
+      extractedText = textExtract.text || '';
+      pageCount = Math.max(1, textExtract.pageCount || 1);
+      if (textExtract.pdfType === 'SCANNED') {
+        extractionMethod = 'OCR_REQUIRED';
+      }
+    } catch (err: any) {
+      console.warn(`[ResourceIngestion] Reprocess text extract error: ${err.message}`);
+    }
+
+    if (extractedText.trim().length < 200) {
+      try {
+        const ocrResult = await rasterizeAndOcrScannedPdf(buffer, resource.id);
+        if (ocrResult && ocrResult.ocrText && ocrResult.ocrText.trim().length > extractedText.trim().length) {
+          extractedText = ocrResult.ocrText;
+          pageCount = Math.max(pageCount, ocrResult.pagesProcessed || 1);
+          extractionMethod = 'TESSERACT_OCR';
+        }
+      } catch (ocrErr: any) {
+        console.warn(`[ResourceIngestion] OCR reprocess notice: ${ocrErr.message}`);
+      }
+    }
+
+    // 4. Update data_documents
+    const docId = `doc_${crypto.randomBytes(6).toString('hex')}`;
+    await pool.query(
+      `INSERT INTO public.data_documents (
+        id, resource_id, raw_text, clean_text, mime_type, file_size_bytes,
+        page_count, language, extraction_status, extraction_method, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING`,
+      [
+        docId,
+        resource.id,
+        extractedText,
+        extractedText.replace(/\s+/g, ' ').trim(),
+        'application/pdf',
+        buffer.length,
+        pageCount,
+        'en',
+        extractedText.trim().length > 0 ? 'EXTRACTED' : 'PARTIAL',
+        extractionMethod,
+      ]
+    );
+
+    // 5. Delete old chunks for this resource
+    await pool.query(`DELETE FROM public.data_chunks WHERE (metadata_json->>'resourceId') = $1`, [resource.id]);
+
+    // 6. Create new page-aware chunks
+    await this.createPageAwareChunks(
+      docId,
+      resource.id,
+      resource.title,
+      resource.author,
+      resource.subject || 'General Studies',
+      extractedText,
+      pageCount
+    );
+
+    // 7. Update status to READY (or keep PUBLISHED if it was already published)
+    const nextStatus = resource.status === 'PUBLISHED' ? 'PUBLISHED' : 'READY';
+    const updated = await resourceRepository.update(resource.id, {
+      page_count: pageCount,
+      status: nextStatus,
+      read_time_minutes: Math.max(5, Math.ceil(pageCount * 2.5)),
+    });
+
+    console.log(`[ResourceIngestion] Reprocessing complete for ${resource.id} (Status: ${nextStatus}, Pages: ${pageCount})`);
+    return updated || resource;
   }
 }
 
