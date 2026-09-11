@@ -83,7 +83,7 @@ export class BpscPdfExtractor {
    */
   classifySubjectAndTopic(text: string): { subject: string; subjectId: string; topic: string; gsPaper: string; prelimsArea: string } {
     const t = text.toLowerCase();
-
+    
     if (t.includes('bihar') || t.includes('patna') || t.includes('gaya') || t.includes('champaran') || t.includes('mithila') || t.includes('shrikrishna singh') || t.includes('kisan sabha') || t.includes('nagi bird')) {
       return {
         subject: 'Bihar Special',
@@ -193,7 +193,7 @@ export class BpscPdfExtractor {
       let stem = fullContent;
       const options: Array<{ id: string; text: string; code?: string; isCorrect?: boolean }> = [];
       const optRegex = /\n\(([A-E])\)\s+([^\n]+)/g;
-
+      
       const allOptMatches = [...fullContent.matchAll(optRegex)];
 
       if (allOptMatches.length >= 2) {

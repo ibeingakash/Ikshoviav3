@@ -273,7 +273,11 @@ export class IKSHOVIADatabase {
   private isSaving = false;
 
   constructor() {
-    const handleMutation = () => this.scheduleSave();
+    // Phase 1 Optimization: PostgreSQL is the authoritative production store.
+    // In-memory collections provide low-latency caching without triggering monolithic storage uploads.
+    const handleMutation = () => {
+      // In-memory state updated; no storage upload triggered.
+    };
 
     this.users = new PersistentMap<string, UserProfile>('users', handleMutation);
     this.userPasswords = new PersistentMap<string, string>('user_passwords', handleMutation);
@@ -299,17 +303,20 @@ export class IKSHOVIADatabase {
   }
 
   private scheduleSave() {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-    }
-    this.saveTimer = setTimeout(() => {
-      this.save().catch(err => {
-        console.warn('[DB] Background Supabase save warning:', err.message);
-      });
-    }, 250);
+    // Phase 1 Optimization: Disabled for normal mutations.
+    // PostgreSQL is the single source of truth for persistent data.
   }
 
-  public async save(): Promise<void> {
+  /**
+   * Explicit legacy snapshot utility.
+   * Only runs when explicitly requested with forceSnapshot=true or via ENABLE_LEGACY_STORAGE_SNAPSHOT=true.
+   * Ordinary application mutations NEVER trigger this method.
+   */
+  public async save(forceSnapshot: boolean = false): Promise<void> {
+    if (!forceSnapshot && process.env.ENABLE_LEGACY_STORAGE_SNAPSHOT !== 'true') {
+      return;
+    }
+
     if (this.isSaving) return;
     this.isSaving = true;
 
@@ -351,6 +358,8 @@ export class IKSHOVIADatabase {
 
       if (error) {
         console.warn('[DB] Supabase storage dump upload notice:', error.message);
+      } else {
+        console.log('[DB] Explicit manual storage snapshot uploaded successfully.');
       }
     } catch (err: any) {
       console.warn('[DB] Supabase save exception:', err.message);
@@ -359,7 +368,17 @@ export class IKSHOVIADatabase {
     }
   }
 
-  public async loadFromSupabase(): Promise<boolean> {
+  /**
+   * Isolated legacy backup restore utility.
+   * Server startup does NOT depend on this for normal operation.
+   * Only runs if explicitly invoked with forceRestore=true or ENABLE_LEGACY_STORAGE_RESTORE=true.
+   */
+  public async loadFromSupabase(forceRestore: boolean = false): Promise<boolean> {
+    if (!forceRestore && process.env.ENABLE_LEGACY_STORAGE_RESTORE !== 'true') {
+      console.log('[DB] Supabase Storage store download bypassed (PostgreSQL is authoritative source of truth).');
+      return false;
+    }
+
     const supabase = getSupabase();
     if (!supabase) {
       console.warn('[DB] Supabase client is not configured.');
@@ -955,12 +974,12 @@ export class IKSHOVIADatabase {
     ];
     this.notifications.set('usr_student', notifList);
 
-    this.save();
-    console.log('[DB] Persistent database initial seeding complete.');
+    // Initial in-memory seeding complete (PostgreSQL is authoritative persistent store)
+    console.log('[DB] Persistent database in-memory initial seeding complete.');
   }
 
   public ensureAuthoritativeContent() {
-    console.log('[DB] Synchronizing authoritative UPSC & BPSC syllabus, PYQ bank, and Current Affairs...');
+    console.log('[DB] Synchronizing authoritative UPSC & BPSC syllabus, PYQ bank, and Current Affairs in-memory...');
     
     // Always merge official subjects
     OFFICIAL_SUBJECTS.forEach(sub => {
@@ -990,8 +1009,6 @@ export class IKSHOVIADatabase {
     // Ensure system accounts exist
     if (this.users.size === 0) {
       this.seedIfEmpty();
-    } else {
-      this.save();
     }
   }
 
@@ -1009,8 +1026,8 @@ export class IKSHOVIADatabase {
 export const db = new IKSHOVIADatabase();
 
 export async function initDatabase(): Promise<IKSHOVIADatabase> {
-  console.log('[DB] Initializing persistent database...');
-  await db.loadFromSupabase();
+  console.log('[DB] Initializing persistent database (PostgreSQL authoritative)...');
+  // Optimization Phase 1: Bypassed monolithic Supabase Storage JSON download (ikshovia_store.json)
   db.ensureAuthoritativeContent();
   await db.loadFromPostgres();
   return db;

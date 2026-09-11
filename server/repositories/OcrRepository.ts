@@ -550,7 +550,7 @@ export class OcrRepository {
 
     // Admin OCR uploads are strictly ADMIN_IMPORTED.
     // Official Commission is strictly for papers ingested by the official crawler pipeline.
-    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' =
+    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' = 
       (job as any)?.isOfficialIngestion ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
     const client = await pool.connect();
@@ -559,8 +559,8 @@ export class OcrRepository {
 
       // 1. Update in staging table
       await client.query(
-        `UPDATE public.ocr_extracted_questions
-         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4,
+        `UPDATE public.ocr_extracted_questions 
+         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4, 
              difficulty = $5, exam_tag = $6, pyq_year = $7, destination = $8, updated_at = NOW()
          WHERE id = $9`,
         [resolvedSourceType === 'OFFICIAL_COMMISSION', finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, questionId]
@@ -1329,14 +1329,20 @@ export class OcrRepository {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      const fetchRes = await client.query(
+        'SELECT * FROM public.ocr_extracted_questions WHERE id = ANY($1::text[])',
+        [questionIds]
+      );
+      const rowMap = new Map<string, any>(fetchRes.rows.map(r => [r.id, r]));
+
       for (const qId of questionIds) {
-        const res = await client.query('SELECT * FROM public.ocr_extracted_questions WHERE id = $1', [qId]);
-        if (res.rows.length === 0) {
+        const row = rowMap.get(qId);
+        if (!row) {
           rejectedIds.push(qId);
           blockedReasons.push({ questionId: qId, reason: 'Question not found in database' });
           continue;
         }
-        const eq = this.mapRowToExtractedQuestion(res.rows[0]);
+        const eq = this.mapRowToExtractedQuestion(row);
 
         // Validate approval prerequisites
         if (!eq.question || eq.question.trim().length < 5) {
@@ -1373,7 +1379,7 @@ export class OcrRepository {
         const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
 
         await client.query(
-          `UPDATE public.ocr_extracted_questions
+          `UPDATE public.ocr_extracted_questions 
            SET status = 'READY_TO_PUBLISH',
                subject_id = $1, topic_id = $2, concept_id = $3,
                difficulty = $4, exam_tag = $5, pyq_year = $6, destination = $7,
@@ -1434,8 +1440,14 @@ export class OcrRepository {
     const rejectedIds: string[] = [];
     const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
 
+    const fetchRes = await pool.query(
+      'SELECT * FROM public.ocr_extracted_questions WHERE id = ANY($1::text[])',
+      [questionIds]
+    );
+    const rowMap = new Map<string, any>(fetchRes.rows.map(r => [r.id, this.mapRowToExtractedQuestion(r)]));
+
     for (const qId of questionIds) {
-      const eq = await this.getExtractedQuestionById(qId);
+      const eq = rowMap.get(qId);
       if (!eq) {
         rejectedIds.push(qId);
         blockedReasons.push({ questionId: qId, reason: 'Question not found in database' });
@@ -1541,12 +1553,25 @@ export class OcrRepository {
   }
 
   async bulkRejectQuestions(jobId: string, questionIds: string[]): Promise<number> {
-    let count = 0;
-    for (const qId of questionIds) {
-      const ok = await this.rejectQuestion(qId);
-      if (ok) count++;
+    if (!questionIds.length) return 0;
+    try {
+      const res = await pool.query(
+        `UPDATE public.ocr_extracted_questions
+         SET status = 'REJECTED', updated_at = NOW()
+         WHERE id = ANY($1::text[])`,
+        [questionIds]
+      );
+      await this.recalculateJobCounts(jobId);
+      return res.rowCount || 0;
+    } catch (err: any) {
+      console.warn('[OcrRepository] bulkRejectQuestions batch update notice (using sequential fallback):', err.message);
+      let count = 0;
+      for (const qId of questionIds) {
+        const ok = await this.rejectQuestion(qId);
+        if (ok) count++;
+      }
+      return count;
     }
-    return count;
   }
 
   async recalculateJobCounts(jobId: string): Promise<void> {

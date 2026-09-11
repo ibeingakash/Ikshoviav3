@@ -298,12 +298,12 @@ export class ShortNotesRepository {
         const note = noteRes.rows[0];
 
         if (note) {
-          // 1. Delete local file cache if present
+          // 1. Delete local temp file cache if present in /uploads/
           if (note.source_file_url && typeof note.source_file_url === 'string') {
             try {
               const fs = await import('fs');
               const path = await import('path');
-              if (note.source_file_url.startsWith('/uploads/') || note.source_file_url.startsWith('/resources/')) {
+              if (note.source_file_url.startsWith('/uploads/short_notes/')) {
                 const localFilePath = path.resolve(process.cwd(), 'public', note.source_file_url.replace(/^\//, ''));
                 if (fs.existsSync(localFilePath)) {
                   fs.unlinkSync(localFilePath);
@@ -313,27 +313,15 @@ export class ShortNotesRepository {
               console.warn('[ShortNotesRepository] Local file cleanup notice:', fErr?.message);
             }
           }
-
-          // 2. Clean up Google Drive file if dedicated drive file exists
-          if (note.resource_id) {
-            try {
-              const resRow = await pool.query(`SELECT drive_file_id FROM public.resources WHERE id = $1`, [note.resource_id]);
-              if (resRow.rows.length > 0 && resRow.rows[0].drive_file_id) {
-                const { googleDriveStorage } = await import('../services/storage/GoogleDriveStorage.js');
-                await googleDriveStorage.deleteFile(resRow.rows[0].drive_file_id).catch(() => {});
-              }
-            } catch (dErr: any) {
-              console.warn('[ShortNotesRepository] Drive cleanup notice:', dErr?.message);
-            }
-          }
         }
 
-        // 3. Clean up associated blocks, progress and bookmarks (cascaded safely)
+        // 2. Clean up associated blocks, progress and bookmarks (cascaded safely)
+        // DO NOT delete shared resources, books, questions or Google Drive files
         await pool.query(`DELETE FROM short_note_bookmarks WHERE short_note_id = $1`, [id]);
         await pool.query(`DELETE FROM short_note_user_progress WHERE short_note_id = $1`, [id]);
         await pool.query(`DELETE FROM short_note_blocks WHERE short_note_id = $1`, [id]);
 
-        // 4. Delete the note record
+        // 3. Delete the note record
         await pool.query(`DELETE FROM short_notes WHERE id = $1`, [id]);
       }
     } catch (err: any) {
@@ -458,28 +446,55 @@ export class ShortNotesRepository {
         let pIdx = 1;
 
         if (options.status) {
-          conditions.push(`status = $${pIdx++}`);
+          conditions.push(`sn.status = $${pIdx++}`);
           params.push(options.status);
         }
         if (options.subject) {
-          conditions.push(`LOWER(subject) = LOWER($${pIdx++})`);
+          conditions.push(`LOWER(sn.subject) = LOWER($${pIdx++})`);
           params.push(options.subject);
         }
         if (options.topic) {
-          conditions.push(`LOWER(topic) = LOWER($${pIdx++})`);
+          conditions.push(`LOWER(sn.topic) = LOWER($${pIdx++})`);
           params.push(options.topic);
         }
         if (options.exam && options.exam !== 'ALL') {
-          conditions.push(`(exam = $${pIdx++} OR exam = 'ALL')`);
+          conditions.push(`(sn.exam = $${pIdx++} OR sn.exam = 'ALL')`);
           params.push(options.exam);
         }
         if (options.search) {
-          conditions.push(`(LOWER(title) LIKE $${pIdx} OR LOWER(topic) LIKE $${pIdx} OR LOWER(subject) LIKE $${pIdx} OR LOWER(description) LIKE $${pIdx})`);
+          conditions.push(`(LOWER(sn.title) LIKE $${pIdx} OR LOWER(sn.topic) LIKE $${pIdx} OR LOWER(sn.subject) LIKE $${pIdx} OR LOWER(sn.description) LIKE $${pIdx})`);
           params.push(`%${options.search.toLowerCase()}%`);
           pIdx++;
         }
 
-        const countQuery = `SELECT COUNT(*) FROM short_notes WHERE ${conditions.join(' AND ')}`;
+        let userParamPlaceholder = '';
+        if (options.userId) {
+          params.push(options.userId);
+          userParamPlaceholder = `$${pIdx++}`;
+        }
+
+        if (options.onlyBookmarked && userParamPlaceholder) {
+          conditions.push(`b.id IS NOT NULL`);
+        }
+        if (options.onlyReviewed && userParamPlaceholder) {
+          conditions.push(`p.is_reviewed = true`);
+        }
+
+        const joinBookmarks = userParamPlaceholder
+          ? `LEFT JOIN short_note_bookmarks b ON b.short_note_id = sn.id AND b.user_id = ${userParamPlaceholder}`
+          : `LEFT JOIN (SELECT NULL::text AS id, NULL::text AS short_note_id) b ON 1=0`;
+
+        const joinProgress = userParamPlaceholder
+          ? `LEFT JOIN short_note_user_progress p ON p.short_note_id = sn.id AND p.user_id = ${userParamPlaceholder}`
+          : `LEFT JOIN (SELECT 0 AS progress_percentage, false AS is_reviewed, NULL::text AS short_note_id) p ON 1=0`;
+
+        const countQuery = `
+          SELECT COUNT(DISTINCT sn.id) 
+          FROM short_notes sn
+          ${joinBookmarks}
+          ${joinProgress}
+          WHERE ${conditions.join(' AND ')}
+        `;
         const countRes = await pool.query(countQuery, params);
         const total = parseInt(countRes.rows[0].count, 10);
 
@@ -488,42 +503,41 @@ export class ShortNotesRepository {
         params.push(limit, offset);
 
         const listQuery = `
-          SELECT * FROM short_notes
+          SELECT
+            sn.id,
+            sn.resource_id,
+            sn.document_id,
+            sn.title,
+            sn.exam,
+            sn.subject,
+            sn.topic,
+            sn.tags,
+            sn.description,
+            sn.year,
+            sn.language,
+            sn.visibility,
+            sn.status,
+            sn.page_count,
+            sn.source_file_url,
+            sn.reviewed_by,
+            sn.reviewed_at,
+            sn.created_at,
+            sn.updated_at,
+            (b.id IS NOT NULL) AS is_bookmarked,
+            COALESCE(p.progress_percentage, 0) AS progress_percentage,
+            COALESCE(p.is_reviewed, false) AS is_reviewed
+          FROM short_notes sn
+          ${joinBookmarks}
+          ${joinProgress}
           WHERE ${conditions.join(' AND ')}
-          ORDER BY created_at DESC
+          ORDER BY sn.created_at DESC
           LIMIT $${pIdx++} OFFSET $${pIdx++}
         `;
 
         const res = await pool.query(listQuery, params);
-        const notes: ShortNote[] = [];
-
-        for (const row of res.rows) {
+        const notes: ShortNote[] = res.rows.map(row => {
           const tags = typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags || [];
-          let isBookmarked = false;
-          let progressPercentage = 0;
-          let isReviewed = false;
-
-          if (options.userId) {
-            const bm = await pool.query(
-              `SELECT 1 FROM short_note_bookmarks WHERE user_id = $1 AND short_note_id = $2`,
-              [options.userId, row.id]
-            );
-            isBookmarked = bm.rows.length > 0;
-
-            const prog = await pool.query(
-              `SELECT progress_percentage, is_reviewed FROM short_note_user_progress WHERE user_id = $1 AND short_note_id = $2`,
-              [options.userId, row.id]
-            );
-            if (prog.rows.length > 0) {
-              progressPercentage = prog.rows[0].progress_percentage || 0;
-              isReviewed = prog.rows[0].is_reviewed || false;
-            }
-          }
-
-          if (options.onlyBookmarked && !isBookmarked) continue;
-          if (options.onlyReviewed && !isReviewed) continue;
-
-          notes.push({
+          return {
             id: row.id,
             resourceId: row.resource_id,
             documentId: row.document_id,
@@ -544,11 +558,11 @@ export class ShortNotesRepository {
             reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null,
             createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
             updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
-            isBookmarked,
-            isReviewed,
-            progressPercentage,
-          });
-        }
+            isBookmarked: Boolean(row.is_bookmarked),
+            isReviewed: Boolean(row.is_reviewed),
+            progressPercentage: Number(row.progress_percentage) || 0,
+          };
+        });
 
         return { notes, total };
       }

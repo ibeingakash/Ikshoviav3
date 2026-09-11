@@ -4,7 +4,7 @@
 -- ====================================================================
 
 -- 1. Add canonical Book & Resource metadata columns to public.resources
-ALTER TABLE public.resources
+ALTER TABLE public.resources 
   ADD COLUMN IF NOT EXISTS edition TEXT,
   ADD COLUMN IF NOT EXISTS publication_year INT,
   ADD COLUMN IF NOT EXISTS publisher TEXT,
@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_resources_file_hash ON public.resources(file_hash
 
 -- 3. Seed/Enrich canonical books with authentic publication metadata
 UPDATE public.resources
-SET
+SET 
   edition = '6th Edition',
   publication_year = 2021,
   publisher = 'McGraw Hill Education',
@@ -37,7 +37,7 @@ SET
 WHERE id = 'res_polity_laxmikanth';
 
 UPDATE public.resources
-SET
+SET 
   edition = 'Revised Edition',
   publication_year = 2020,
   publisher = 'Orient Blackswan',
@@ -49,7 +49,7 @@ SET
 WHERE id = 'res_modern_history_chandra';
 
 UPDATE public.resources
-SET
+SET 
   edition = '14th Edition',
   publication_year = 2022,
   publisher = 'McGraw Hill Education',
@@ -61,7 +61,7 @@ SET
 WHERE id = 'res_economy_ramesh_singh';
 
 UPDATE public.resources
-SET
+SET 
   edition = '8th Edition',
   publication_year = 2021,
   publisher = 'Shankar IAS Academy Publications',
@@ -73,7 +73,7 @@ SET
 WHERE id = 'res_environment_shankar';
 
 UPDATE public.resources
-SET
+SET 
   edition = 'Latest Comprehensive Edition',
   publication_year = 2023,
   publisher = 'Prabhat Prakashan',
@@ -85,7 +85,7 @@ SET
 WHERE id = 'res_bpsc_bihar_special';
 
 UPDATE public.resources
-SET
+SET 
   edition = 'Official Gazette Edition 2025',
   publication_year = 2025,
   publisher = 'Union Public Service Commission',

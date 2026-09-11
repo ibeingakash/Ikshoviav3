@@ -138,14 +138,43 @@ export async function updateLearnerModel(userId: string, client?: PoolClient): P
   const correctQA = parseInt(qAttemptsRes.rows[0]?.correct_count || '0', 10);
   const totalMocks = parseInt(mockAttemptsRes.rows[0]?.mock_count || '0', 10);
   const avgMockAcc = parseFloat(mockAttemptsRes.rows[0]?.avg_accuracy || '0');
-
-  (model as any).totalQuestionsAttempted = totalQA;
-  (model as any).totalAttempts = totalQA;
-  (model as any).accuracyRate = totalQA > 0
+  const totalQuestionsPracticed = totalQA;
+  const accuracyRate = totalQA > 0
     ? Math.round((correctQA / totalQA) * 100)
     : (totalMocks > 0 ? Math.round(avgMockAcc) : 0);
-  (model as any).avgTimePerQuestionSeconds = Math.round(parseFloat(qAttemptsRes.rows[0]?.avg_time || '45'));
-  (model as any).mockTestsCompletedCount = totalMocks;
+
+  // 1.1 Compute distinct topics interacted with / studied by user
+  const topicsRes = await executor.query(`
+    SELECT COUNT(DISTINCT topic_id) as topics_count FROM (
+      SELECT c.topic_id
+      FROM public.question_attempts qa
+      JOIN public.concepts c ON qa.concept_id = c.id
+      WHERE qa.user_id = $1 AND c.topic_id IS NOT NULL
+      UNION
+      SELECT c.topic_id
+      FROM public.concept_mastery cm
+      JOIN public.concepts c ON cm.concept_id = c.id
+      WHERE cm.user_id = $1 AND c.topic_id IS NOT NULL
+    ) t;
+  `, [userId]);
+  const topicsStudied = parseInt(topicsRes.rows[0]?.topics_count || '0', 10);
+
+  model.totalQuestionsAttempted = totalQuestionsPracticed;
+  model.totalAttempts = totalQuestionsPracticed;
+  model.accuracyRate = accuracyRate;
+  model.avgTimePerQuestionSeconds = Math.round(parseFloat(qAttemptsRes.rows[0]?.avg_time || '0'));
+  model.mockTestsCompletedCount = totalMocks;
+  model.topicsStudiedCount = topicsStudied;
+
+  const decorateModel = (m: LearnerModel): LearnerModel => {
+    m.totalQuestionsAttempted = totalQuestionsPracticed;
+    m.totalAttempts = totalQuestionsPracticed;
+    m.accuracyRate = accuracyRate;
+    m.avgTimePerQuestionSeconds = Math.round(parseFloat(qAttemptsRes.rows[0]?.avg_time || '0'));
+    m.mockTestsCompletedCount = totalMocks;
+    m.topicsStudiedCount = topicsStudied;
+    return m;
+  };
 
   // 2. Fetch mistake breakdown
   const mistakesRes = await executor.query(`
@@ -206,14 +235,15 @@ export async function updateLearnerModel(userId: string, client?: PoolClient): P
       }
     }
   }
-  model.currentStreak = Math.max(model.currentStreak || 0, currentStreak);
-  model.highestStreak = Math.max(model.highestStreak || 0, model.currentStreak);
+  model.currentStreak = currentStreak;
+  model.highestStreak = Math.max(model.highestStreak || 0, currentStreak);
   model.activeDaysCount = datesRes.rows.length;
 
   if (userMasteryList.length === 0) {
-    model.overallScore = (model as any).accuracyRate || 0;
+    model.overallScore = accuracyRate;
     model.lastUpdated = new Date().toISOString();
-    return await learnerRepository.saveLearnerModel(model, client);
+    const saved = await learnerRepository.saveLearnerModel(model, client);
+    return decorateModel(saved);
   }
 
   let totalMasterySum = 0;
@@ -284,7 +314,8 @@ export async function updateLearnerModel(userId: string, client?: PoolClient): P
   model.subjectMastery = subjectMasteryMap;
   model.lastUpdated = new Date().toISOString();
 
-  return await learnerRepository.saveLearnerModel(model, client);
+  const saved = await learnerRepository.saveLearnerModel(model, client);
+  return decorateModel(saved);
 }
 
 /**

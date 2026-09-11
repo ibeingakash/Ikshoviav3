@@ -281,7 +281,7 @@ export class PaymentRepository {
 
   async listUserPurchases(userId: string): Promise<UserPurchaseItem[]> {
     const query = `
-      SELECT
+      SELECT 
         p.id as payment_id,
         p.order_id,
         p.course_id,
@@ -384,7 +384,7 @@ export class PaymentRepository {
     const offset = filters?.offset || 0;
 
     const query = `
-      SELECT
+      SELECT 
         p.id,
         p.order_id,
         p.user_id,
@@ -455,7 +455,7 @@ export class PaymentRepository {
     testPaidCount: number;
   }> {
     const res = await pool.query(`
-      SELECT
+      SELECT 
         status,
         environment,
         COUNT(*) as count,
@@ -511,14 +511,14 @@ export class PaymentRepository {
 
   async getCommercialDashboardMetrics(): Promise<CommercialDashboardMetrics> {
     const coursesRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(*) as total_courses,
         COUNT(*) FILTER (WHERE is_active = true) as active_courses
       FROM public.courses;
     `);
 
     const entitlementsRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(DISTINCT user_id) FILTER (WHERE status = 'ACTIVE' AND source = 'PAYMENT' AND environment = 'LIVE' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_paid_users,
         COUNT(*) FILTER (WHERE status = 'ACTIVE' AND environment = 'LIVE' AND starts_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())) as active_entitlements,
         COUNT(*) FILTER (WHERE status = 'ACTIVE' AND environment = 'LIVE' AND starts_at <= NOW() AND expires_at > NOW() AND expires_at <= NOW() + INTERVAL '7 days') as expiring_7d,
@@ -527,7 +527,7 @@ export class PaymentRepository {
     `);
 
     const paymentsRes = await pool.query(`
-      SELECT
+      SELECT 
         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE'), 0) as total_verified_revenue,
         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE' AND created_at >= date_trunc('month', CURRENT_DATE)), 0) as this_month_revenue,
         COALESCE(SUM(amount) FILTER (WHERE status = 'PAID' AND environment = 'LIVE' AND created_at >= NOW() - INTERVAL '30 days'), 0) as last_30d_revenue,
@@ -582,7 +582,7 @@ export class PaymentRepository {
     }
 
     const query = `
-      SELECT
+      SELECT 
         COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE'), 0) as gross_verified_revenue,
         COALESCE(SUM(p.amount) FILTER (WHERE p.status = 'REFUNDED' AND p.environment = 'LIVE'), 0) as refunded_amount,
         COUNT(p.id) FILTER (WHERE p.status = 'PAID' AND p.environment = 'LIVE') as paid_orders_count
@@ -658,7 +658,7 @@ export class PaymentRepository {
     }
 
     const query = `
-      SELECT
+      SELECT 
         c.id as course_id,
         c.name as course_name,
         c.exam as course_exam,

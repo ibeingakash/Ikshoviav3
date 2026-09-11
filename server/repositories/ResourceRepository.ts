@@ -141,13 +141,13 @@ export class ResourceRepository {
     if (filters?.search && filters.search.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(`(
-        r.title ILIKE $${paramIndex} OR
-        r.author ILIKE $${paramIndex} OR
-        r.description ILIKE $${paramIndex} OR
-        r.topic ILIKE $${paramIndex} OR
-        r.subject ILIKE $${paramIndex} OR
-        r.summary ILIKE $${paramIndex} OR
-        r.exam ILIKE $${paramIndex} OR
+        r.title ILIKE $${paramIndex} OR 
+        r.author ILIKE $${paramIndex} OR 
+        r.description ILIKE $${paramIndex} OR 
+        r.topic ILIKE $${paramIndex} OR 
+        r.subject ILIKE $${paramIndex} OR 
+        r.summary ILIKE $${paramIndex} OR 
+        r.exam ILIKE $${paramIndex} OR 
         r.resource_type ILIKE $${paramIndex}
       )`);
       whereValues.push(q);
@@ -292,10 +292,10 @@ export class ResourceRepository {
       if (author && author.trim()) {
         const cleanAuthor = author.trim().toLowerCase();
         const normRes = await pool.query(
-          `SELECT * FROM public.resources
-           WHERE LOWER(TRIM(title)) = $1
-             AND LOWER(TRIM(author)) = $2
-             AND ($3::text IS NULL OR id != $3)
+          `SELECT * FROM public.resources 
+           WHERE LOWER(TRIM(title)) = $1 
+             AND LOWER(TRIM(author)) = $2 
+             AND ($3::text IS NULL OR id != $3) 
            LIMIT 1`,
           [cleanTitle, cleanAuthor, excludeId || null]
         );
@@ -304,9 +304,9 @@ export class ResourceRepository {
         }
       } else {
         const titleRes = await pool.query(
-          `SELECT * FROM public.resources
-           WHERE LOWER(TRIM(title)) = $1
-             AND ($2::text IS NULL OR id != $2)
+          `SELECT * FROM public.resources 
+           WHERE LOWER(TRIM(title)) = $1 
+             AND ($2::text IS NULL OR id != $2) 
            LIMIT 1`,
           [cleanTitle, excludeId || null]
         );
@@ -322,6 +322,47 @@ export class ResourceRepository {
   async create(data: Partial<DbResource>): Promise<DbResource> {
     const id = data.id || `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date();
+
+    // Strictly validate subject_id against public.subjects (No invented IDs, no fake sub_general)
+    let validatedSubjectId = data.subject_id;
+    let validatedSubjectName = data.subject;
+
+    if (validatedSubjectId) {
+      const check = await pool.query('SELECT id, name FROM public.subjects WHERE id = $1', [validatedSubjectId]);
+      if (check.rows.length > 0) {
+        validatedSubjectId = check.rows[0].id;
+        if (!validatedSubjectName || validatedSubjectName === 'General Studies') {
+          validatedSubjectName = check.rows[0].name;
+        }
+      } else {
+        validatedSubjectId = undefined;
+      }
+    }
+
+    if (!validatedSubjectId && validatedSubjectName) {
+      const match = await pool.query(
+        `SELECT id, name FROM public.subjects 
+         WHERE LOWER(name) = LOWER($1) 
+            OR LOWER(code) = LOWER($1) 
+            OR name ILIKE $2 
+         ORDER BY id ASC LIMIT 1`,
+        [validatedSubjectName.trim(), `%${validatedSubjectName.trim()}%`]
+      );
+      if (match.rows.length > 0) {
+        validatedSubjectId = match.rows[0].id;
+        validatedSubjectName = match.rows[0].name;
+      }
+    }
+
+    if (!validatedSubjectId) {
+      const defaultSub = await pool.query('SELECT id, name FROM public.subjects ORDER BY id ASC LIMIT 1');
+      if (defaultSub.rows.length > 0) {
+        validatedSubjectId = defaultSub.rows[0].id;
+        if (!validatedSubjectName) validatedSubjectName = defaultSub.rows[0].name;
+      } else {
+        throw new Error('Subject validation failed: No valid subject exists in public.subjects.');
+      }
+    }
 
     const query = `
       INSERT INTO public.resources (
@@ -357,8 +398,8 @@ export class ResourceRepository {
         : ['NOTE', 'PDF', 'BOOK', 'ARTICLE', 'VIDEO', 'PYQ'].includes(data.resource_type || '')
           ? data.resource_type
           : 'PDF') as any,
-      data.subject || 'General Studies',
-      data.subject_id || 'sub_general',
+      validatedSubjectName || 'Indian Polity & Governance',
+      validatedSubjectId,
       data.topic || '',
       data.concept_id || null,
       data.exam || 'ALL',

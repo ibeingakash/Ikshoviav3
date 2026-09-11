@@ -68,6 +68,8 @@ export const ShortNotesAdminView: React.FC = () => {
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [noteToDelete, setNoteToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,9 +240,15 @@ export const ShortNotesAdminView: React.FC = () => {
     }
   };
 
-  // Delete note
-  const handleDeleteNote = async (noteId: string) => {
-    if (!window.confirm('Delete Short Note? This cannot be undone.')) return;
+  // Delete note flows (in-app modal to avoid iframe prompt blockage)
+  const handleRequestDelete = (noteId: string, title: string) => {
+    setNoteToDelete({ id: noteId, title });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!noteToDelete) return;
+    const noteId = noteToDelete.id;
+    setIsDeleting(true);
     try {
       // Optimistic UI update
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -250,11 +258,15 @@ export const ShortNotesAdminView: React.FC = () => {
       await api.deleteAdminShortNote(noteId);
       setToastMessage('Short Note deleted successfully');
       setTimeout(() => setToastMessage(null), 3500);
+      setNoteToDelete(null);
       fetchNotes();
     } catch (err: any) {
       console.error('Failed to delete note:', err);
-      alert(err.message || 'Failed to delete short note');
+      setToastMessage(`Error: ${err.message || 'Failed to delete short note'}`);
+      setNoteToDelete(null);
       fetchNotes();
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -617,11 +629,13 @@ export const ShortNotesAdminView: React.FC = () => {
                   )}
 
                   <button
-                    onClick={() => handleDeleteNote(selectedNote.id)}
-                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="Delete Note"
+                    id={`btn-delete-editor-note-${selectedNote.id}`}
+                    onClick={() => handleRequestDelete(selectedNote.id, selectedNote.title)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                    title="Delete Short Note"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
@@ -809,11 +823,13 @@ export const ShortNotesAdminView: React.FC = () => {
                               </button>
                             )}
                             <button
-                              onClick={() => handleDeleteNote(note.id)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex items-center"
+                              id={`btn-delete-shortnote-${note.id}`}
+                              onClick={() => handleRequestDelete(note.id, note.title)}
+                              className="px-2.5 py-1.5 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
                               title="Delete Short Note"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Delete</span>
                             </button>
                           </td>
                         </tr>
@@ -824,6 +840,61 @@ export const ShortNotesAdminView: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Dialog (Reliable in iFrames) */}
+      {noteToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-stone-200 max-w-md w-full p-6 shadow-2xl space-y-4 font-sans animate-scaleUp">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-2.5 bg-rose-100 rounded-xl">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-stone-900">Delete Short Note</h3>
+                <p className="text-xs text-stone-500">Action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-700 leading-relaxed">
+              Are you sure you want to delete <strong className="text-stone-900">"{noteToDelete.title}"</strong>?
+              This will permanently remove the short note, its structured revision blocks, user progress, and bookmarks.
+              <span className="block mt-1.5 text-stone-500 text-[11px]">
+                Note: Shared canonical books, PYQs, questions, and Google Drive resources will NOT be touched or affected.
+              </span>
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setNoteToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-stone-700 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="btn-confirm-delete-shortnote"
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Permanently</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

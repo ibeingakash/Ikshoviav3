@@ -211,6 +211,17 @@ export const AdminDashboardView: React.FC = () => {
 
           <div className="space-y-2 pt-2">
             <button
+              onClick={() => setActiveSection('admin-resources')}
+              className="w-full p-2.5 bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200 rounded-xl text-left text-xs font-bold text-stone-900 flex items-center justify-between transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span>Resource Studio (Books & Drive)</span>
+                <span className="px-1.5 py-0.2 text-[9px] bg-amber-200 text-amber-900 rounded font-mono">Upload</span>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-stone-500" />
+            </button>
+
+            <button
               onClick={() => setActiveSection('admin-ocr')}
               className="w-full p-2.5 bg-[#FCFBF9] hover:bg-indigo-50 border border-stone-200 rounded-xl text-left text-xs font-bold text-stone-800 flex items-center justify-between transition-all cursor-pointer"
             >

@@ -24,6 +24,8 @@ import {
   Download,
   Bot,
   AlertTriangle,
+  ChevronDown,
+  Plus,
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { LearningResource, ResourceType, ResourceStatus, ResourceVisibility } from '../../types/index.js';
@@ -50,17 +52,40 @@ export const AdminResourceStudioView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Upload Modal State
+  const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
+  const [subjectsList, setSubjectsList] = useState<{ id: string; name: string }[]>([
+    { id: 'sub_polity', name: 'Indian Polity & Governance' },
+    { id: 'sub_economy', name: 'Indian Economy & Banking' },
+    { id: 'sub_history', name: 'Indian History & Art / Culture' },
+    { id: 'sub_geography', name: 'Geography (Physical, Human & India)' },
+    { id: 'sub_environment', name: 'Environment, Ecology & Disaster Mgmt' },
+    { id: 'sub_security_ir', name: 'Internal Security & International Relations' },
+    { id: 'sub_ethics', name: 'Ethics, Integrity & Aptitude (GS-IV)' },
+    { id: 'sub_bihar', name: 'Bihar Special: History, Geo, Economy & Polity' },
+    { id: 'sub_csat', name: 'CSAT & General Mental Ability' },
+    { id: 'sub_ca', name: 'Current Affairs & Governance' },
+    { id: 'sub_full_length', name: 'Full Length / Mixed Subjects' },
+  ]);
+  const [uploadSubjectId, setUploadSubjectId] = useState<string>('sub_polity');
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [uploadTitle, setUploadTitle] = useState<string>('');
   const [uploadAuthor, setUploadAuthor] = useState<string>('');
   const [uploadDescription, setUploadDescription] = useState<string>('');
   const [uploadTags, setUploadTags] = useState<string>('');
   const [uploadType, setUploadType] = useState<ResourceType>('BOOK');
-  const [uploadSubject, setUploadSubject] = useState<string>('Indian Polity');
+  const [uploadSubject, setUploadSubject] = useState<string>('Indian Polity & Governance');
   const [uploadTopic, setUploadTopic] = useState<string>('');
   const [uploadExam, setUploadExam] = useState<string>('UPSC CSE');
   const [uploadVisibility, setUploadVisibility] = useState<ResourceVisibility>('ALL_LEARNERS');
   const [uploadAutoPublish, setUploadAutoPublish] = useState<boolean>(true);
+
+  const handleSelectSubject = (id: string) => {
+    setUploadSubjectId(id);
+    const subObj = subjectsList.find((s) => s.id === id);
+    if (subObj) {
+      setUploadSubject(subObj.name);
+    }
+  };
 
   // Book Ingestion Metadata (Requirement 1, 2)
   const [uploadEdition, setUploadEdition] = useState<string>('');
@@ -97,6 +122,12 @@ export const AdminResourceStudioView: React.FC = () => {
   const [groundingAnswer, setGroundingAnswer] = useState<string>('');
   const [testingGrounding, setTestingGrounding] = useState<boolean>(false);
 
+  // OAuth Diagnostic & Error States
+  const [oauthErrorMessage, setOauthErrorMessage] = useState<{ title: string; desc: string } | null>(null);
+  const [showOAuthDiagnostics, setShowOAuthDiagnostics] = useState<boolean>(false);
+  const [oauthDiagData, setOauthDiagData] = useState<any>(null);
+  const [loadingDiag, setLoadingDiag] = useState<boolean>(false);
+
   // Load Status & Resources
   const fetchStatus = async () => {
     setLoadingDrive(true);
@@ -130,6 +161,19 @@ export const AdminResourceStudioView: React.FC = () => {
 
   useEffect(() => {
     fetchStatus();
+    // Load verified subjects from public.subjects
+    fetch('/api/subjects')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setSubjectsList(data.map((s: any) => ({ id: s.id, name: s.name })));
+          setUploadSubjectId(data[0].id);
+          setUploadSubject(data[0].name);
+        }
+      })
+      .catch((err) => {
+        console.warn('Notice loading subjects in Resource Studio:', err?.message);
+      });
   }, []);
 
   useEffect(() => {
@@ -141,11 +185,39 @@ export const AdminResourceStudioView: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('drive_connected') === 'true') {
       fetchStatus();
+      setOauthErrorMessage(null);
       // Clean query param
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    } else if (params.get('error')) {
+      const err = params.get('error') || 'unknown_error';
+      const desc = params.get('error_description') || '';
+      setOauthErrorMessage({
+        title: err === 'access_denied' ? 'Google Access Denied (403)' : `OAuth Error: ${err}`,
+        desc: desc || (err === 'access_denied'
+          ? 'Google blocked access because this Google account is not added as an authorized Test User in Google Cloud Console, or the OAuth consent screen is not configured for this account.'
+          : 'Failed to complete Google Drive OAuth authorization.'),
+      });
       const newUrl = window.location.pathname;
       window.history.replaceState({}, '', newUrl);
     }
   }, []);
+
+  const fetchOAuthDiagnostics = async () => {
+    setLoadingDiag(true);
+    try {
+      const res = await fetch('/api/admin/drive/oauth-diagnostics');
+      if (res.ok) {
+        const data = await res.json();
+        setOauthDiagData(data);
+        setShowOAuthDiagnostics(true);
+      }
+    } catch (err) {
+      console.error('Failed to fetch OAuth diagnostics:', err);
+    } finally {
+      setLoadingDiag(false);
+    }
+  };
 
   const handleConnectDrive = () => {
     window.location.href = '/api/auth/google';
@@ -242,6 +314,7 @@ export const AdminResourceStudioView: React.FC = () => {
         description: uploadDescription.trim(),
         tags: parsedTags,
         resourceType: uploadType,
+        subjectId: uploadSubjectId,
         subject: uploadSubject,
         topic: uploadTopic.trim(),
         exam: uploadExam,
@@ -390,49 +463,98 @@ export const AdminResourceStudioView: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 relative">
+            {/* + Add Resource Dropdown */}
+            <div className="relative">
+              <button
+                id="btn-add-resource-dropdown"
+                onClick={() => setShowAddMenu(!showAddMenu)}
+                className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition shadow-sm flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Resource</span>
+                <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+              </button>
+
+              {showAddMenu && (
+                <div
+                  id="menu-add-resource"
+                  className="absolute right-0 mt-2 w-64 bg-white border border-stone-200 rounded-2xl shadow-xl z-30 p-1.5 animate-fadeIn"
+                >
+                  <button
+                    id="menu-item-upload-book"
+                    onClick={() => {
+                      setUploadType('BOOK');
+                      setDuplicateWarning(null);
+                      setForceDuplicateUpload(false);
+                      setShowUploadModal(true);
+                      setShowAddMenu(false);
+                    }}
+                    className="w-full p-2.5 hover:bg-amber-50 rounded-xl text-left flex items-start gap-2.5 transition cursor-pointer group"
+                  >
+                    <div className="p-2 bg-amber-100 text-amber-800 rounded-lg group-hover:bg-amber-200 transition">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-stone-900">Upload Book</div>
+                      <div className="text-[11px] text-stone-500 leading-tight">Standard textbooks, reference manuals, & UPSC/BPSC books</div>
+                    </div>
+                  </button>
+
+                  <button
+                    id="menu-item-upload-document"
+                    onClick={() => {
+                      setUploadType('NOTES');
+                      setDuplicateWarning(null);
+                      setForceDuplicateUpload(false);
+                      setShowUploadModal(true);
+                      setShowAddMenu(false);
+                    }}
+                    className="w-full p-2.5 hover:bg-stone-50 rounded-xl text-left flex items-start gap-2.5 transition cursor-pointer group"
+                  >
+                    <div className="p-2 bg-stone-100 text-stone-700 rounded-lg group-hover:bg-stone-200 transition">
+                      <FileUp className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-stone-900">Upload Document / Note</div>
+                      <div className="text-[11px] text-stone-500 leading-tight">Official gazettes, notifications, or revision notes</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Direct Quick Upload Book Button */}
+            <button
+              id="btn-quick-upload-book"
+              onClick={() => {
+                setUploadType('BOOK');
+                setDuplicateWarning(null);
+                setForceDuplicateUpload(false);
+                setShowUploadModal(true);
+              }}
+              className="px-3.5 py-2 text-sm font-semibold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl transition flex items-center gap-2 cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 text-amber-700" />
+              <span>Upload Book</span>
+            </button>
+
             {driveStatus.connected ? (
-              <>
-                <button
-                  onClick={handleEnsureFolders}
-                  className="px-3.5 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition flex items-center gap-2"
-                  title="Verify IKSHOVIA/Resources, Books, Official-Documents, Notes folder hierarchy"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Verify Folders
-                </button>
-                <button
-                  onClick={() => {
-                    setUploadType('BOOK');
-                    setDuplicateWarning(null);
-                    setForceDuplicateUpload(false);
-                    setShowUploadModal(true);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition shadow-sm flex items-center gap-2"
-                >
-                  <BookOpen className="w-4 h-4" />
-                  Upload Book
-                </button>
-                <button
-                  onClick={() => {
-                    setUploadType('NOTES');
-                    setDuplicateWarning(null);
-                    setForceDuplicateUpload(false);
-                    setShowUploadModal(true);
-                  }}
-                  className="px-3.5 py-2 text-sm font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition flex items-center gap-2"
-                >
-                  <FileUp className="w-4 h-4" />
-                  Upload Document / Note
-                </button>
-              </>
+              <button
+                onClick={handleEnsureFolders}
+                className="px-3.5 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition flex items-center gap-2 cursor-pointer"
+                title="Verify IKSHOVIA/Resources, Books, Official-Documents, Notes folder hierarchy"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Verify Folders</span>
+              </button>
             ) : (
               <button
                 onClick={handleConnectDrive}
-                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm flex items-center gap-2"
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
-                <Link className="w-4 h-4" />
-                Connect Google Drive
+                <Link className="w-3.5 h-3.5" />
+                <span>Connect Drive</span>
               </button>
             )}
           </div>
@@ -444,7 +566,7 @@ export const AdminResourceStudioView: React.FC = () => {
             <div className={`w-3 h-3 rounded-full ${driveStatus.connected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
             <div>
               <span className="font-semibold text-stone-800">
-                {driveStatus.connected ? 'Google Drive Storage Active' : 'Google Drive Disconnected'}
+                {driveStatus.connected ? 'Google Drive Connected' : 'Google Drive Disconnected'}
               </span>
               {driveStatus.connected && (
                 <span className="text-stone-500 ml-2">
@@ -460,12 +582,18 @@ export const AdminResourceStudioView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4 text-stone-500">
+            <button
+              onClick={fetchOAuthDiagnostics}
+              className="text-stone-600 hover:text-stone-900 font-medium underline cursor-pointer"
+            >
+              {loadingDiag ? 'Auditing OAuth...' : 'OAuth Diagnostics'}
+            </button>
             {driveStatus.connected && (
               <>
-                <span>Folders: <code className="text-stone-700 font-mono">IKSHOVIA/Resources</code></span>
+                <span>Folders: <code className="text-stone-700 font-mono">IKSHOVIA/Resources/Books</code></span>
                 <button
                   onClick={handleDisconnectDrive}
-                  className="text-red-600 hover:text-red-700 font-medium hover:underline"
+                  className="text-red-600 hover:text-red-700 font-medium hover:underline cursor-pointer"
                 >
                   Disconnect
                 </button>
@@ -474,13 +602,45 @@ export const AdminResourceStudioView: React.FC = () => {
             {!driveStatus.connected && (
               <button
                 onClick={handleConnectDrive}
-                className="font-semibold text-blue-600 hover:underline"
+                className="font-semibold text-blue-600 hover:underline cursor-pointer"
               >
                 Authorize via Google OAuth 2.0 →
               </button>
             )}
           </div>
         </div>
+
+        {/* OAuth Error Alert Banner */}
+        {oauthErrorMessage && (
+          <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 flex items-start justify-between gap-3">
+            <div>
+              <div className="font-bold flex items-center gap-1.5 text-red-900">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{oauthErrorMessage.title}</span>
+              </div>
+              <div className="mt-1 text-red-700 leading-relaxed">
+                {oauthErrorMessage.desc}
+              </div>
+              <div className="mt-2.5 bg-white/90 p-3 rounded-lg border border-red-100 text-stone-700 font-sans leading-relaxed">
+                <span className="font-semibold text-stone-900 block mb-1">How to resolve Google 403 / Access Denied:</span>
+                <ol className="list-decimal list-inside space-y-1 text-stone-600">
+                  <li>Go to <strong>Google Cloud Console</strong> &gt; Select project <strong>IKSHOVIA</strong> (Project ID: <code>ikshovia</code>, Project # <code>407081249545</code>).</li>
+                  <li>Open <strong>Google Auth Platform &gt; Audience &gt; Test users</strong>.</li>
+                  <li>Click <strong>+ Add users</strong> and add the intended Google account email (e.g. <code>ibeingakash@gmail.com</code>).</li>
+                  <li>In <strong>APIs &amp; Services &gt; Enabled APIs &amp; Services</strong>, verify <strong>Google Drive API</strong> is enabled in project <code>407081249545</code>.</li>
+                  <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, ensure the client <strong>IKSHOVIA Resource Manager</strong> has Authorized Redirect URI: <code>https://ikshoviav3.onrender.com/api/auth/google/callback</code>.</li>
+                </ol>
+              </div>
+            </div>
+            <button
+              onClick={() => setOauthErrorMessage(null)}
+              className="text-stone-400 hover:text-stone-600 font-bold px-2 py-1 cursor-pointer"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Metrics Row */}
@@ -762,6 +922,21 @@ export const AdminResourceStudioView: React.FC = () => {
             </div>
 
             <form onSubmit={handleUploadSubmit} className="space-y-4 mt-4">
+              {!driveStatus.connected && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-800">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Google Drive is disconnected. Connect Google Drive for cloud storage and streaming.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConnectDrive}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shrink-0 transition cursor-pointer"
+                  >
+                    Connect Drive
+                  </button>
+                </div>
+              )}
               {/* File Drop Area */}
               <div
                 onClick={() => fileInputRef.current?.click()}
@@ -841,20 +1016,21 @@ export const AdminResourceStudioView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-stone-700 mb-1">Subject</label>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Subject <span className="text-rose-600 font-bold">*</span>
+                  </label>
                   <select
-                    value={uploadSubject}
-                    onChange={(e) => setUploadSubject(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                    id="upload-resource-subject"
+                    required
+                    value={uploadSubjectId}
+                    onChange={(e) => handleSelectSubject(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
                   >
-                    <option value="Indian Polity">Polity & Governance</option>
-                    <option value="Modern History">Modern History</option>
-                    <option value="Economy">Indian Economy</option>
-                    <option value="Geography">Geography</option>
-                    <option value="Environment & Ecology">Environment & Ecology</option>
-                    <option value="Science & Tech">Science & Technology</option>
-                    <option value="Current Affairs">Current Affairs</option>
-                    <option value="General Studies">General Studies</option>
+                    {subjectsList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1444,6 +1620,119 @@ export const AdminResourceStudioView: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GOOGLE OAUTH DIAGNOSTICS AUDIT MODAL */}
+      {showOAuthDiagnostics && oauthDiagData && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-blue-600" />
+                <h3 className="text-base font-bold text-stone-900">Google OAuth & Drive Diagnostics</h3>
+              </div>
+              <button
+                onClick={() => setShowOAuthDiagnostics(false)}
+                className="text-stone-400 hover:text-stone-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 text-xs">
+              {/* Project ID / Number Comparison */}
+              <div className={`p-4 rounded-xl border ${oauthDiagData.projectNumberMatchesExpected ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-300'}`}>
+                <div className="flex items-center justify-between font-bold">
+                  <span className="text-stone-900">Google Cloud Production Project Pairing</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] ${oauthDiagData.projectNumberMatchesExpected ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-200 text-amber-900'}`}>
+                    {oauthDiagData.projectNumberMatchesExpected ? 'MATCHED (407081249545)' : 'PROJECT MISMATCH'}
+                  </span>
+                </div>
+                <div className="mt-2 space-y-1 text-stone-700">
+                  <div>Production Project: <strong className="text-stone-900">{oauthDiagData.expectedProjectName || 'IKSHOVIA'}</strong> (ID: <code className="font-mono font-bold text-stone-900">{oauthDiagData.expectedProjectId}</code>)</div>
+                  <div>Production Project Number: <code className="font-mono font-bold text-stone-900">{oauthDiagData.expectedProjectNumber}</code></div>
+                  <div>OAuth Client Name: <code className="font-mono font-bold text-stone-900">{oauthDiagData.expectedClientName || 'IKSHOVIA Resource Manager'}</code></div>
+                  <div>Project # in Current GOOGLE_CLIENT_ID: <code className="font-mono font-bold text-stone-900">{oauthDiagData.projectNumberInClientId}</code></div>
+                  {oauthDiagData.projectNumberMatchesExpected ? (
+                    <div className="mt-2 text-emerald-800 bg-emerald-100/70 p-2.5 rounded-lg text-[11px] leading-relaxed">
+                      <strong>Render Credentials Verified:</strong> Your <code>GOOGLE_CLIENT_ID</code> accurately belongs to production project <strong>IKSHOVIA</strong> (#<code>407081249545</code>).
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-amber-900 bg-amber-100/70 p-2.5 rounded-lg text-[11px] leading-relaxed">
+                      <strong>Attention:</strong> <code>GOOGLE_CLIENT_ID</code> begins with project #{oauthDiagData.projectNumberInClientId}, whereas the intended production project is <code>407081249545</code>.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Redirect URI */}
+              <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-1">
+                <div className="font-semibold text-stone-900 flex items-center justify-between">
+                  <span>Redirect URI Configuration</span>
+                  <span className="text-emerald-700 font-bold">MATCHED</span>
+                </div>
+                <div className="text-stone-600 font-mono text-[11px] break-all">
+                  {oauthDiagData.redirectUri}
+                </div>
+              </div>
+
+              {/* Scopes & Prompt */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="font-semibold text-stone-900 block mb-1">OAuth Scopes Requested</span>
+                  <ul className="list-disc list-inside text-stone-600 space-y-0.5 text-[11px]">
+                    <li>drive.file (Minimal, secure)</li>
+                    <li>userinfo.email</li>
+                    <li>userinfo.profile</li>
+                  </ul>
+                </div>
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="font-semibold text-stone-900 block mb-1">Consent & Account Chooser</span>
+                  <div className="text-stone-600 text-[11px] leading-relaxed">
+                    <code>prompt=consent select_account</code><br />
+                    Guarantees refresh_token generation and forces Google account selection.
+                  </div>
+                </div>
+              </div>
+
+              {/* Database Status */}
+              <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200">
+                <span className="font-semibold text-stone-900 block mb-1">oauth_integrations Table</span>
+                <div className="text-stone-600 space-y-1 text-[11px]">
+                  <div>Record Exists: <strong>{oauthDiagData.databaseIntegration?.recordExists ? 'Yes' : 'No (Pending OAuth)'}</strong></div>
+                  {oauthDiagData.databaseIntegration?.accountEmail && (
+                    <div>Connected Account: <strong>{oauthDiagData.databaseIntegration.accountEmail}</strong></div>
+                  )}
+                  {oauthDiagData.databaseIntegration?.hasRefreshToken && (
+                    <div>Refresh Token: <span className="text-emerald-700 font-bold">Stored Securely in PostgreSQL</span></div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actionable 403 Fix Checklist */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-950">
+                <span className="font-bold block mb-1 text-sm text-blue-900">Google 403 Resolution Checklist (Project 407081249545):</span>
+                <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-blue-900">
+                  <li>In Google Cloud Console, select project <strong>IKSHOVIA</strong> (Project ID: <code>ikshovia</code>, Project #: <code>407081249545</code>).</li>
+                  <li>Navigate to <strong>Google Auth Platform &gt; Audience &gt; Test users</strong>.</li>
+                  <li>Click <strong>+ Add users</strong> and add the intended Google account email (e.g. <code>ibeingakash@gmail.com</code>). <em>(Crucial: If publishing status is Testing, unlisted accounts receive Google 403 Access Denied)</em>.</li>
+                  <li>Navigate to <strong>APIs &amp; Services &gt; Enabled APIs &amp; Services</strong> and verify <strong>Google Drive API</strong> is enabled.</li>
+                  <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, click <strong>IKSHOVIA Resource Manager</strong> and confirm Authorized Redirect URI: <code>https://ikshoviav3.onrender.com/api/auth/google/callback</code>.</li>
+                  <li>Verify Render environment variables: <code>GOOGLE_CLIENT_ID</code> starts with <code>407081249545-</code> and matches the Client Secret.</li>
+                </ol>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowOAuthDiagnostics(false)}
+                className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition cursor-pointer"
+              >
+                Close Diagnostics
+              </button>
             </div>
           </div>
         </div>

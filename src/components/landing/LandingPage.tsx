@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   ArrowRight,
@@ -29,6 +29,8 @@ import {
 import { IKLogo } from '../common/IKLogo.js';
 import { IKBrandMark } from '../common/IKBrandMark.js';
 import { Hero3DDashboard } from './Hero3DDashboard.js';
+import { api } from '../../lib/api.js';
+import { Course } from '../../types/index.js';
 
 interface LandingPageProps {
   onOpenAuth: (mode: 'login' | 'register') => void;
@@ -39,6 +41,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
   const [pricingCycle, setPricingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [subscribedEmail, setSubscribedEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getCourseCatalog()
+      .then(data => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setCourses(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] text-[#111426] flex flex-col font-sans-editorial selection:bg-[#35156B] selection:text-amber-300">
@@ -523,136 +540,47 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           
           <div className="text-center max-w-2xl mx-auto space-y-3">
             <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
-              Simple, Transparent Pricing
+              Examination Programs & Transparent Pricing
             </h2>
-            
-            {/* Monthly / Yearly Toggle */}
-            <div className="inline-flex items-center gap-2 p-1 bg-stone-200/80 rounded-full text-xs font-bold">
-              <button
-                onClick={() => setPricingCycle('monthly')}
-                className={`px-4 py-1.5 rounded-full transition-all cursor-pointer ${
-                  pricingCycle === 'monthly' ? 'bg-[#0C1024] text-white shadow-2xs' : 'text-stone-700'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setPricingCycle('yearly')}
-                className={`px-4 py-1.5 rounded-full transition-all cursor-pointer flex items-center gap-1 ${
-                  pricingCycle === 'yearly' ? 'bg-[#0C1024] text-white shadow-2xs' : 'text-stone-700'
-                }`}
-              >
-                <span>Yearly</span>
-                <span className="text-[10px] font-mono bg-amber-500/20 text-amber-800 px-1.5 py-0.5 rounded-full">Save 20%</span>
-              </button>
-            </div>
+            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+              Curated syllabus coverage, official PYQs, full-length simulator tests, and AI tutor guidance.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
             
             {/* FREE TIER */}
-            <div className="p-6 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="text-xs font-mono font-bold text-stone-500 uppercase">FREE</div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold font-serif-editorial text-[#111426]">₹0</span>
-                  <span className="text-xs text-stone-500">/month</span>
-                </div>
-
-                <div className="space-y-2 text-xs text-stone-700 pt-2 border-t border-stone-100">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>AI Assistant (Limited)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Smart Notes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>5 Mock Tests / Month</span>
+            <div className="p-5 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-5 shadow-2xs">
+              <div className="space-y-3">
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-stone-100 text-stone-700 border border-stone-300">
+                  FREE STARTER
+                </span>
+                <div>
+                  <h3 className="text-base font-serif-editorial font-bold text-stone-900">
+                    Free Diagnostic Account
+                  </h3>
+                  <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl font-bold font-serif-editorial text-[#111426]">₹0</span>
+                    <span className="text-xs text-stone-500">/ forever</span>
                   </div>
                 </div>
-              </div>
 
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="w-full py-2.5 rounded-xl border border-stone-300 hover:bg-stone-50 text-stone-800 text-xs font-bold transition-all cursor-pointer"
-              >
-                Get Started
-              </button>
-            </div>
-
-            {/* PRO TIER (POPULAR) */}
-            <div className="p-6 rounded-2xl bg-[#0C1024] text-white border-2 border-amber-400 flex flex-col justify-between space-y-6 shadow-xl relative">
-              <div className="absolute -top-3 right-6 bg-[#C9953C] text-[#0C1024] text-[10px] font-mono font-bold px-3 py-0.5 rounded-full uppercase">
-                MOST POPULAR
-              </div>
-
-              <div className="space-y-4">
-                <div className="text-xs font-mono font-bold text-amber-400 uppercase">PRO</div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold font-serif-editorial text-white">
-                    {pricingCycle === 'monthly' ? '₹399' : '₹319'}
-                  </span>
-                  <span className="text-xs text-stone-400">/month</span>
-                </div>
-
-                <div className="space-y-2 text-xs text-stone-200 pt-2 border-t border-slate-800">
+                <div className="space-y-2 text-xs text-stone-700 pt-3 border-t border-stone-100">
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    <span>AI Assistant (Unlimited)</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>50 Diagnostic PYQ Questions</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    <span>Unlimited Mock Tests</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Daily Mini Quizzes</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    <span>Advanced Analytics</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Daily Editorial Briefs</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    <span>Priority Support</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => onOpenAuth('register')}
-                className="w-full py-2.5 rounded-xl bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer border border-amber-500/30"
-              >
-                Get Started
-              </button>
-            </div>
-
-            {/* PREMIUM TIER */}
-            <div className="p-6 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="text-xs font-mono font-bold text-stone-500 uppercase">PREMIUM</div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold font-serif-editorial text-[#111426]">
-                    {pricingCycle === 'monthly' ? '₹799' : '₹639'}
-                  </span>
-                  <span className="text-xs text-stone-500">/month</span>
-                </div>
-
-                <div className="space-y-2 text-xs text-stone-700 pt-2 border-t border-stone-100">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Everything in Pro</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>1-on-1 Mentorship</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Custom Study Plan</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Early Access to New Features</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>AI Doubt Clarification (Basic)</span>
                   </div>
                 </div>
               </div>
@@ -661,9 +589,191 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 onClick={() => onOpenAuth('register')}
                 className="w-full py-2.5 rounded-xl border border-stone-300 hover:bg-stone-50 text-stone-800 text-xs font-bold transition-all cursor-pointer"
               >
-                Get Started
+                Start Free
               </button>
             </div>
+
+            {/* Canonical Database Courses */}
+            {courses.length > 0 ? (
+              courses.map(course => {
+                const salePrice = course.currentPrice?.salePrice ?? course.pricing?.salePrice ?? 2499;
+                const basePrice = course.currentPrice?.basePrice ?? course.pricing?.basePrice ?? 4999;
+                const isPopular = course.id === 'crs_upsc_prelims_2026' || course.id === 'crs_1788953246819_46zh';
+                const hasDiscount = basePrice > salePrice;
+
+                return (
+                  <div
+                    key={course.id}
+                    className={`p-5 rounded-2xl flex flex-col justify-between space-y-5 transition-all relative ${
+                      isPopular
+                        ? 'bg-[#0C1024] text-white border-2 border-amber-400 shadow-xl'
+                        : 'bg-white text-stone-800 border border-stone-200 shadow-2xs hover:border-amber-400'
+                    }`}
+                  >
+                    {isPopular && (
+                      <div className="absolute -top-3 right-4 bg-[#C9953C] text-[#0C1024] text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        POPULAR
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                          isPopular
+                            ? 'bg-amber-400/20 text-amber-300 border border-amber-400/40'
+                            : 'bg-amber-50 text-amber-900 border border-amber-200'
+                        }`}>
+                          {course.exam}
+                        </span>
+                        <span className={`text-[11px] font-mono ${isPopular ? 'text-stone-400' : 'text-stone-500'}`}>
+                          {course.defaultDurationDays} Days
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className={`text-base font-serif-editorial font-bold line-clamp-2 ${
+                          isPopular ? 'text-white' : 'text-stone-900'
+                        }`}>
+                          {course.name}
+                        </h3>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <span className={`text-3xl font-bold font-serif-editorial ${
+                            isPopular ? 'text-amber-300' : 'text-[#111426]'
+                          }`}>
+                            ₹{salePrice.toLocaleString('en-IN')}
+                          </span>
+                          {hasDiscount && (
+                            <span className={`text-xs line-through ${
+                              isPopular ? 'text-stone-400' : 'text-stone-400'
+                            }`}>
+                              ₹{basePrice.toLocaleString('en-IN')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className={`space-y-2 text-xs pt-3 border-t ${
+                        isPopular ? 'border-slate-800 text-stone-200' : 'border-stone-100 text-stone-700'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <Check className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-amber-400' : 'text-emerald-600'}`} />
+                          <span>Full Examination Test Series</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Check className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-amber-400' : 'text-emerald-600'}`} />
+                          <span>Official PYQs with Explanations</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Check className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-amber-400' : 'text-emerald-600'}`} />
+                          <span>AI Mentor & Doubt Clarification</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Check className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-amber-400' : 'text-emerald-600'}`} />
+                          <span>Detailed Analytics & Mastery Engine</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onOpenAuth('register')}
+                      className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                        isPopular
+                          ? 'bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 border border-amber-500/30'
+                          : 'bg-[#0C1024] hover:bg-[#1E2548] text-amber-300'
+                      }`}
+                    >
+                      Enroll Now
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <>
+                {/* Fallback default courses if catalog still loading */}
+                <div className="p-5 rounded-2xl bg-[#0C1024] text-white border-2 border-amber-400 flex flex-col justify-between space-y-5 shadow-xl relative">
+                  <div className="absolute -top-3 right-4 bg-[#C9953C] text-[#0C1024] text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase">
+                    POPULAR
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold uppercase bg-amber-400/20 text-amber-300 border border-amber-400/40 px-2.5 py-0.5 rounded-full">
+                        UPSC
+                      </span>
+                      <span className="text-[11px] font-mono text-stone-400">365 Days</span>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-serif-editorial font-bold text-white">
+                        UPSC CSE 2026 Prelims
+                      </h3>
+                      <div className="flex items-baseline gap-2 mt-2">
+                        <span className="text-3xl font-bold font-serif-editorial text-amber-300">₹2,499</span>
+                        <span className="text-xs line-through text-stone-400">₹9,999</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs text-stone-200 pt-3 border-t border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Full Length Mocks & Sectionals</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>2014-2024 PYQs with Solutions</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Continuous AI Tutor Support</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onOpenAuth('register')}
+                    className="w-full py-2.5 rounded-xl bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer border border-amber-500/30"
+                  >
+                    Enroll Now
+                  </button>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-5 shadow-2xs">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold uppercase bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-full">
+                        BPSC
+                      </span>
+                      <span className="text-[11px] font-mono text-stone-500">180 Days</span>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-serif-editorial font-bold text-stone-900">
+                        72nd BPSC CCE Prelims Test Series
+                      </h3>
+                      <div className="flex items-baseline gap-2 mt-2">
+                        <span className="text-3xl font-bold font-serif-editorial text-[#111426]">₹249</span>
+                        <span className="text-xs line-through text-stone-400">₹4,999</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs text-stone-700 pt-3 border-t border-stone-100">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Bihar Special & General Studies Mocks</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>60th-70th BPSC PYQ Vault</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Negative Marking & 5-Option Simulator</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onOpenAuth('register')}
+                    className="w-full py-2.5 rounded-xl bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    Enroll Now
+                  </button>
+                </div>
+              </>
+            )}
 
           </div>
 

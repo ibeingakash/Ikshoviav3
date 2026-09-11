@@ -32,7 +32,7 @@ import {
   ShortNotesHierarchyResponse,
 } from '../types/index.js';
 
-export const PRODUCTION_API_URL = 'https://ikshovia.onrender.com';
+export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
 
 /**
  * Detects if the current environment is running inside Capacitor (specifically Android native app).
@@ -76,7 +76,7 @@ export function isCapacitorNative(): boolean {
 /**
  * Resolves the appropriate API base URL dynamically:
  * - If VITE_API_BASE_URL is explicitly set, uses it.
- * - If running inside Capacitor Android native APK, uses production backend https://ikshovia.onrender.com.
+ * - If running inside Capacitor Android native APK, uses production backend https://ikshoviav3.onrender.com.
  * - Otherwise (local development & web production), uses relative URL / same origin.
  */
 export function getApiBaseUrl(): string {
@@ -509,6 +509,30 @@ export const api = {
         nextBestAction: fallbackNBA,
         aiInsight: fallbackInsight,
       };
+    }
+  },
+
+  getLearnerProgress: async (): Promise<Array<{
+    conceptId: string;
+    conceptTitle: string;
+    subjectId: string;
+    subjectName: string;
+    topicName: string;
+    overallMastery: number;
+    accuracy: number;
+    retention: number;
+    attemptsCount: number;
+    lastStudiedAt: string;
+  }>> => {
+    try {
+      const res = await apiFetch('/api/learner/progress', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
     }
   },
 
@@ -1699,6 +1723,7 @@ export const api = {
     description?: string;
     tags?: string[];
     resourceType: string;
+    subjectId?: string;
     subject: string;
     topic?: string;
     exam: string;
@@ -2092,6 +2117,11 @@ export const api = {
   getOcrJobDetails: async (id: string) => {
     const res = await apiFetch(`/api/admin/ocr/import/${id}`, { headers: getAuthHeaders() });
     return parseSafeApiResponse(res, 'OCR Job Details API');
+  },
+
+  getOcrJobStatus: async (id: string) => {
+    const res = await apiFetch(`/api/admin/ocr/jobs/${id}/status`, { headers: getAuthHeaders() });
+    return parseSafeApiResponse(res, 'OCR Job Status API');
   },
 
   updateOcrQuestion: async (id: string, updates: any) => {

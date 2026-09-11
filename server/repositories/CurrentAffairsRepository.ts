@@ -597,10 +597,10 @@ export class CurrentAffairsRepository {
     const query = `
       SELECT * FROM public.current_affairs
       ${whereClause}
-      ORDER BY
-        CASE
-          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1
-          ELSE 2
+      ORDER BY 
+        CASE 
+          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1 
+          ELSE 2 
         END,
         date DESC, relevance_score DESC, created_at DESC;
     `;
@@ -630,7 +630,7 @@ export class CurrentAffairsRepository {
     if (!filters.date && !filters.status) {
       try {
         const resourceRes = await pool.query(`
-          SELECT r.*, d.clean_text, s.name as source_name
+          SELECT r.*, SUBSTRING(d.clean_text FROM 1 FOR 300) AS clean_text_preview, s.name as source_name
           FROM public.data_resources r
           LEFT JOIN public.data_sources s ON r.source_id = s.id
           LEFT JOIN public.data_documents d ON d.resource_id = r.id
@@ -655,7 +655,7 @@ export class CurrentAffairsRepository {
           return {
             id: row.id,
             title: row.title,
-            summary: row.description || (row.clean_text ? row.clean_text.substring(0, 300) : ''),
+            summary: row.description || (row.clean_text_preview ? row.clean_text_preview.trim() : ''),
             whyInNews: row.description || row.title,
             whatHappened: row.description || row.title,
             category: cat,

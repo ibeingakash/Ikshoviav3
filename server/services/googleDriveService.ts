@@ -51,12 +51,29 @@ export class GoogleDriveService {
     if (process.env.GOOGLE_DRIVE_REDIRECT_URI) {
       return process.env.GOOGLE_DRIVE_REDIRECT_URI;
     }
-    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshovia.onrender.com' : 'http://localhost:3000');
+    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshoviav3.onrender.com' : 'http://localhost:3000');
     return `${appUrl.replace(/\/+$/, '')}/api/auth/google/callback`;
+  }
+
+  public isConfigured(): boolean {
+    return !!(this.getClientId() && this.getClientSecret());
+  }
+
+  public getSanitizedRedirectUri(): string {
+    return this.getRedirectUri();
+  }
+
+  public getScopes(): string[] {
+    return [
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ];
   }
 
   /**
    * Generates Google OAuth 2.0 consent URL requesting minimum necessary Drive scope: drive.file
+   * Enforces offline access, explicit consent (for refresh_token), and account chooser.
    */
   public generateAuthUrl(state: string): string {
     const clientId = this.getClientId();
@@ -65,11 +82,7 @@ export class GoogleDriveService {
     }
 
     const redirectUri = this.getRedirectUri();
-    const scopes = [
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile',
-    ].join(' ');
+    const scopes = this.getScopes().join(' ');
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -77,7 +90,8 @@ export class GoogleDriveService {
       response_type: 'code',
       scope: scopes,
       access_type: 'offline',
-      prompt: 'consent', // Force consent screen to guarantee receiving a refresh_token
+      prompt: 'consent select_account', // Force consent screen to guarantee refresh_token AND force account picker to select dedicated account
+      include_granted_scopes: 'true',
       state: state || 'admin_connect',
     });
 
@@ -96,6 +110,8 @@ export class GoogleDriveService {
       throw new Error('GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET is missing from backend configuration.');
     }
 
+    console.log(`[GoogleDriveService] Initiating token exchange. Redirect URI: ${redirectUri}, Code length: ${code.length}`);
+
     // 1. Exchange authorization code
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -110,12 +126,19 @@ export class GoogleDriveService {
     });
 
     if (!tokenRes.ok) {
-      const errBody = await tokenRes.text();
-      console.error('[GoogleDriveService] Token exchange error:', errBody);
-      throw new Error(`Failed to exchange Google OAuth code: ${tokenRes.statusText}`);
+      let safeErrorDetails = `HTTP ${tokenRes.status} ${tokenRes.statusText}`;
+      try {
+        const errJson = await tokenRes.json();
+        safeErrorDetails += ` - Error: ${errJson.error || 'unknown'}, Description: ${errJson.error_description || 'none'}`;
+      } catch {
+        // body wasn't json
+      }
+      console.error('[GoogleDriveService] Token exchange failed:', safeErrorDetails);
+      throw new Error(`Failed to exchange Google OAuth code: ${safeErrorDetails}`);
     }
 
     const tokenData = await tokenRes.json();
+    console.log('[GoogleDriveService] Token exchange status: success');
     const accessToken = tokenData.access_token;
     const refreshToken = tokenData.refresh_token;
     const expiresInSec = tokenData.expires_in || 3600;
@@ -133,8 +156,8 @@ export class GoogleDriveService {
         const userInfo = await userinfoRes.json();
         if (userInfo.email) email = userInfo.email;
       }
-    } catch (uErr) {
-      console.warn('[GoogleDriveService] Could not fetch user profile email:', uErr);
+    } catch (uErr: any) {
+      console.warn('[GoogleDriveService] Could not fetch user profile email:', uErr?.message);
     }
 
     // 3. Upsert integration into Postgres
@@ -164,10 +187,67 @@ export class GoogleDriveService {
       ['integ_google_drive', email, accessToken, finalRefreshToken, expiryDate, tokenType, scopes]
     );
 
+    console.log(`[GoogleDriveService] oauth_integrations record created: yes. Provider: google_drive, Account: ${email}, RefreshToken: ${!!finalRefreshToken}`);
+
     // 4. Ensure dedicated IKSHOVIA folders
     const folders = await this.ensureFolderStructure(accessToken);
 
     return { email, folders };
+  }
+
+  /**
+   * Diagnostic summary for admin audit and troubleshooting
+   */
+  public async getDiagnostics() {
+    const clientId = this.getClientId();
+    const clientSecret = this.getClientSecret();
+    const redirectUri = this.getRedirectUri();
+    const projectNumberInClientId = clientId ? clientId.split('-')[0] : 'NOT_SET';
+    const status = await this.getStatus();
+
+    let dbRecordExists = false;
+    let dbAccountEmail = null;
+    let dbHasRefreshToken = false;
+    let dbUpdatedAt = null;
+
+    try {
+      const dbRes = await pool.query("SELECT account_email, refresh_token, updated_at FROM public.oauth_integrations WHERE provider = 'google_drive'");
+      if (dbRes.rows.length > 0) {
+        dbRecordExists = true;
+        dbAccountEmail = dbRes.rows[0].account_email;
+        dbHasRefreshToken = !!dbRes.rows[0].refresh_token;
+        dbUpdatedAt = dbRes.rows[0].updated_at;
+      }
+    } catch (e: any) {
+      console.warn('[GoogleDriveService] DB diagnostics check error:', e?.message);
+    }
+
+    return {
+      configured: !!(clientId && clientSecret),
+      clientIdConfigured: !!clientId,
+      clientIdPrefix: clientId ? `${clientId.substring(0, 14)}...` : 'NOT_SET',
+      projectNumberInClientId,
+      expectedProjectNumber: '407081249545',
+      expectedProjectId: 'ikshovia',
+      expectedProjectName: 'IKSHOVIA',
+      expectedClientName: 'IKSHOVIA Resource Manager',
+      projectNumberMatchesExpected: projectNumberInClientId === '407081249545',
+      clientSecretConfigured: !!clientSecret,
+      clientSecretLength: clientSecret ? clientSecret.length : 0,
+      redirectUri,
+      expectedRedirectUri: 'https://ikshoviav3.onrender.com/api/auth/google/callback',
+      redirectUriMatchesExpected: redirectUri === 'https://ikshoviav3.onrender.com/api/auth/google/callback',
+      scopes: this.getScopes(),
+      databaseIntegration: {
+        recordExists: dbRecordExists,
+        accountEmail: dbAccountEmail,
+        hasRefreshToken: dbHasRefreshToken,
+        updatedAt: dbUpdatedAt,
+      },
+      driveStatus: status,
+      prompt: 'consent select_account',
+      testUsersGuidance: 'Project IKSHOVIA (ID: ikshovia, Project #: 407081249545) is the correct production project. If OAuth App publishing status is Testing in Google Cloud Console, the dedicated Google account (e.g. ibeingakash@gmail.com) MUST be added under Google Auth Platform -> Audience -> Test Users.',
+    };
   }
 
   /**

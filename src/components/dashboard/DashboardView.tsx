@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   BookOpen,
   Target,
@@ -20,55 +20,97 @@ import {
   Bot,
   Zap,
   FolderArchive,
+  GraduationCap,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../lib/api.js';
 import { StudyGoal } from '../../types/index.js';
 
+interface LearnerProgressItem {
+  conceptId: string;
+  conceptTitle: string;
+  subjectId: string;
+  subjectName: string;
+  topicName: string;
+  overallMastery: number;
+  accuracy: number;
+  retention: number;
+  attemptsCount: number;
+  lastStudiedAt: string;
+}
+
 export const DashboardView: React.FC = () => {
   const { user } = useAuth();
   const {
     learnerModel,
     nextBestAction,
+    entitlements,
     setActiveSection,
     setSelectedConceptId,
+    setSelectedSubjectId,
   } = useLearner();
 
   const [goals, setGoals] = useState<StudyGoal[]>([]);
+  const [progressItems, setProgressItems] = useState<LearnerProgressItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    api.getGoals(user?.id)
-      .catch(() => [])
-      .then((goalsRes) => {
-        if (isMounted) {
-          if (Array.isArray(goalsRes)) setGoals(goalsRes);
-          setLoadingItems(false);
-        }
-      });
+    Promise.all([
+      api.getGoals(user?.id).catch(() => []),
+      api.getLearnerProgress().catch(() => []),
+    ]).then(([goalsRes, progRes]) => {
+      if (isMounted) {
+        if (Array.isArray(goalsRes)) setGoals(goalsRes);
+        if (Array.isArray(progRes)) setProgressItems(progRes);
+        setLoadingItems(false);
+      }
+    });
     return () => {
       isMounted = false;
     };
   }, [user?.id]);
 
-  const streakDays = learnerModel?.currentStreak || 12;
-  const questionsPracticed = learnerModel?.totalQuestionsAttempted || 2364;
-  const accuracyRate = learnerModel?.overallScore || 82;
-  const topicsCount = learnerModel?.masteredConceptsCount ? learnerModel.masteredConceptsCount * 3 + 128 : 128;
-  const testsCount = 42;
+  // Canonical metrics directly from database
+  const streakDays = learnerModel?.currentStreak ?? 0;
+  const questionsPracticed = learnerModel?.totalQuestionsAttempted ?? 0;
+  const accuracyRate = learnerModel?.accuracyRate ?? 0;
+  const topicsCount = learnerModel?.topicsStudiedCount ?? 0;
+  const testsCount = learnerModel?.mockTestsCompletedCount ?? 0;
 
-  const currentDayIndex = 5; // Friday (16th)
-  const weekDays = [
-    { day: 'M', date: 12, active: true },
-    { day: 'T', date: 13, active: true },
-    { day: 'W', date: 14, active: true },
-    { day: 'T', date: 15, active: true },
-    { day: 'F', date: 16, active: true },
-    { day: 'S', date: 17, active: false },
-    { day: 'S', date: 18, active: false },
-  ];
+  const activeEntitlements = entitlements.filter(e => e.status === 'ACTIVE');
+
+  const greeting = (() => {
+    const hr = new Date().getHours();
+    if (hr < 12) return 'Good Morning';
+    if (hr < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  })();
+
+  // Dynamically compute current week's 7 days
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    const currentDayOfWeek = today.getDay(); // 0 is Sun, 1 is Mon...
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+
+    const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return dayLabels.map((day, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const isToday = d.toDateString() === today.toDateString();
+      const isPastOrToday = d <= today;
+      const isActive = streakDays > 0 && isPastOrToday && (today.getDate() - d.getDate() < streakDays);
+      return {
+        day,
+        date: d.getDate(),
+        isToday,
+        active: isActive,
+      };
+    });
+  }, [streakDays]);
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in pb-12 font-sans-editorial text-stone-800">
@@ -82,14 +124,14 @@ export const DashboardView: React.FC = () => {
           {/* Header Greeting */}
           <div className="space-y-1">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif-editorial font-bold text-stone-900 tracking-tight">
-              Good Morning, {user?.name?.split(' ')[0] || 'Akash'}! 👋
+              {greeting}, {user?.name?.split(' ')[0] || 'Learner'}! 👋
             </h1>
             <p className="text-stone-500 text-sm">
               Let's continue your learning journey today.
             </p>
           </div>
 
-          {/* 4 Top Metric Cards */}
+          {/* 4 Top Metric Cards (Direct from Database) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
             
             {/* Metric 1: Topics Studied */}
@@ -102,9 +144,8 @@ export const DashboardView: React.FC = () => {
                 <div className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900 mt-0.5">
                   {topicsCount}
                 </div>
-                <div className="text-[10px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>↑ 12</span>
-                  <span className="text-stone-400 font-normal">this week</span>
+                <div className="text-[10px] font-semibold text-stone-500 mt-1">
+                  {topicsCount > 0 ? `${topicsCount} covered` : 'No topics yet'}
                 </div>
               </div>
             </div>
@@ -119,9 +160,8 @@ export const DashboardView: React.FC = () => {
                 <div className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900 mt-0.5">
                   {questionsPracticed.toLocaleString()}
                 </div>
-                <div className="text-[10px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>↑ 8%</span>
-                  <span className="text-stone-400 font-normal">this week</span>
+                <div className="text-[10px] font-semibold text-stone-500 mt-1">
+                  {questionsPracticed > 0 ? `${questionsPracticed} attempted` : '0 attempted'}
                 </div>
               </div>
             </div>
@@ -136,9 +176,8 @@ export const DashboardView: React.FC = () => {
                 <div className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900 mt-0.5">
                   {testsCount}
                 </div>
-                <div className="text-[10px] font-semibold text-sky-600 mt-1 flex items-center gap-0.5">
-                  <span>↑ 6</span>
-                  <span className="text-stone-400 font-normal">this month</span>
+                <div className="text-[10px] font-semibold text-stone-500 mt-1">
+                  {testsCount > 0 ? `${testsCount} completed` : '0 completed'}
                 </div>
               </div>
             </div>
@@ -153,16 +192,98 @@ export const DashboardView: React.FC = () => {
                 <div className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900 mt-0.5">
                   {accuracyRate}%
                 </div>
-                <div className="text-[10px] font-semibold text-emerald-600 mt-1 flex items-center gap-0.5">
-                  <span>↑ 5%</span>
-                  <span className="text-stone-400 font-normal">this month</span>
+                <div className="text-[10px] font-semibold text-stone-500 mt-1">
+                  {questionsPracticed > 0 ? `Across ${questionsPracticed} questions` : 'No attempts yet'}
                 </div>
               </div>
             </div>
 
           </div>
 
-          {/* AI Tutor Hero Banner (Reference Style) */}
+          {/* MY ENROLLED COURSES SECTION (Direct from Entitlements Table) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-5 h-5 text-amber-800" />
+                <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-stone-900">
+                  My Enrolled Courses
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveSection('learner-purchases')}
+                className="text-xs font-semibold text-stone-600 hover:text-amber-800 transition-colors cursor-pointer"
+              >
+                Invoices & Receipts →
+              </button>
+            </div>
+
+            {activeEntitlements.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeEntitlements.map(ent => {
+                  const formattedExpiry = new Date(ent.expiresAt).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  });
+                  return (
+                    <div
+                      key={ent.id}
+                      className="bg-white border-2 border-amber-300/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all space-y-4 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            {ent.courseExam || 'UPSC / BPSC'}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            ACTIVE
+                          </span>
+                        </div>
+                        <h4 className="text-base font-serif-editorial font-bold text-stone-900">
+                          {ent.courseName}
+                        </h4>
+                        <p className="text-xs text-stone-500 font-sans-editorial">
+                          Valid until: <span className="font-semibold text-stone-700">{formattedExpiry}</span> ({ent.daysRemaining} days remaining)
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
+                        <button
+                          onClick={() => setActiveSection('pyq-practice')}
+                          className="inline-flex items-center gap-2 bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        >
+                          <span>Continue Course</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setActiveSection('mock-tests')}
+                          className="text-xs font-semibold text-stone-600 hover:text-amber-800 transition-colors cursor-pointer"
+                        >
+                          Mock Simulator →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-white border border-[#EAE6DF] rounded-2xl p-6 text-center space-y-3 shadow-2xs">
+                <p className="text-xs text-stone-600 max-w-md mx-auto">
+                  No active course enrollments yet. Unlock full test series, PYQ simulators, and study plans.
+                </p>
+                <button
+                  onClick={() => setActiveSection('courses-catalog')}
+                  className="inline-flex items-center gap-2 bg-stone-900 text-amber-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-all cursor-pointer"
+                >
+                  <span>Explore Course Catalog</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* AI Tutor Hero Banner */}
           <div className="bg-gradient-to-r from-[#FFF7ED] via-[#FFFBF5] to-[#FEF3C7]/60 border border-amber-200/90 rounded-3xl p-6 sm:p-8 shadow-2xs relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-6">
             
             {/* Left Content */}
@@ -188,13 +309,10 @@ export const DashboardView: React.FC = () => {
 
             {/* Right Glowing AI Orb Illustration */}
             <div className="relative w-36 h-36 sm:w-44 sm:h-44 shrink-0 flex items-center justify-center pointer-events-none">
-              {/* Radial glow background */}
               <div className="absolute inset-0 bg-gradient-to-br from-amber-400/30 via-orange-300/20 to-transparent rounded-full blur-2xl animate-pulse" />
-              {/* Orbital Rings */}
               <div className="absolute w-32 h-32 border border-amber-400/40 rounded-full animate-spin" style={{ animationDuration: '24s' }} />
               <div className="absolute w-24 h-24 border border-amber-500/50 rounded-full border-dashed animate-spin" style={{ animationDuration: '18s', animationDirection: 'reverse' }} />
               <div className="absolute w-16 h-16 border border-orange-400/60 rounded-full" />
-              {/* Center Core Glowing Orb */}
               <div className="w-14 h-14 bg-gradient-to-tr from-amber-500 via-amber-300 to-orange-400 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.6)] flex items-center justify-center">
                 <Bot className="w-7 h-7 text-stone-900/90" />
               </div>
@@ -202,7 +320,7 @@ export const DashboardView: React.FC = () => {
 
           </div>
 
-          {/* CONTINUE LEARNING SECTION */}
+          {/* CONTINUE LEARNING SECTION (Direct from User Concept Mastery in DB) */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-stone-900">
@@ -217,115 +335,73 @@ export const DashboardView: React.FC = () => {
               </button>
             </div>
 
-            {/* 3 Topic Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              
-              {/* Topic 1: Fundamental Rights */}
-              <div className="bg-white border border-[#EAE6DF] rounded-2xl p-4 shadow-2xs hover:border-amber-400 hover:shadow-xs transition-all space-y-4 flex flex-col justify-between relative overflow-hidden group">
-                <div className="space-y-2">
-                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200/80">
-                    Polity
-                  </span>
-                  <h4 className="text-sm font-serif-editorial font-bold text-stone-900 group-hover:text-amber-800 transition-colors">
-                    Fundamental Rights
-                  </h4>
-                  <p className="text-[11px] text-stone-500 font-mono">
-                    Article 12–35
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-semibold text-stone-600">
-                      <span>Progress</span>
-                      <span>68%</span>
+            {progressItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {progressItems.map(item => (
+                  <div
+                    key={item.conceptId}
+                    className="bg-white border border-[#EAE6DF] rounded-2xl p-4 shadow-2xs hover:border-amber-400 hover:shadow-xs transition-all space-y-4 flex flex-col justify-between relative overflow-hidden group"
+                  >
+                    <div className="space-y-2">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200/80 truncate max-w-full">
+                        {item.subjectName}
+                      </span>
+                      <h4 className="text-sm font-serif-editorial font-bold text-stone-900 group-hover:text-amber-800 transition-colors line-clamp-2">
+                        {item.conceptTitle}
+                      </h4>
+                      {item.topicName && (
+                        <p className="text-[11px] text-stone-500 font-mono truncate">
+                          {item.topicName}
+                        </p>
+                      )}
                     </div>
-                    <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-amber-500 h-full rounded-full" style={{ width: '68%' }} />
+
+                    <div className="space-y-2.5">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-semibold text-stone-600">
+                          <span>Mastery</span>
+                          <span>{item.overallMastery}%</span>
+                        </div>
+                        <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, Math.max(5, item.overallMastery))}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-stone-500 pt-1 border-t border-stone-100">
+                        <span>Accuracy: <strong className="text-stone-700">{item.accuracy}%</strong></span>
+                        <button
+                          onClick={() => {
+                            setSelectedSubjectId(item.subjectId);
+                            setSelectedConceptId(item.conceptId);
+                            setActiveSection('learn');
+                          }}
+                          className="text-xs font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Review</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  <button
-                    onClick={() => setActiveSection('learn')}
-                    className="text-xs font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Continue</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                ))}
               </div>
-
-              {/* Topic 2: Indian Economy Overview */}
-              <div className="bg-white border border-[#EAE6DF] rounded-2xl p-4 shadow-2xs hover:border-amber-400 hover:shadow-xs transition-all space-y-4 flex flex-col justify-between relative overflow-hidden group">
-                <div className="space-y-2">
-                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-900 border border-emerald-200/80">
-                    Economy
-                  </span>
-                  <h4 className="text-sm font-serif-editorial font-bold text-stone-900 group-hover:text-emerald-800 transition-colors">
-                    Indian Economy Overview
-                  </h4>
-                  <p className="text-[11px] text-stone-500 font-mono">
-                    National Income & Sectors
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-semibold text-stone-600">
-                      <span>Progress</span>
-                      <span>42%</span>
-                    </div>
-                    <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: '42%' }} />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setActiveSection('learn')}
-                    className="text-xs font-semibold text-emerald-800 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Continue</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+            ) : (
+              <div className="bg-white border border-[#EAE6DF] rounded-2xl p-6 text-center space-y-3 shadow-2xs">
+                <p className="text-xs text-stone-600 max-w-md mx-auto">
+                  No topic activity recorded yet. Start practicing questions to build your subject mastery profile.
+                </p>
+                <button
+                  onClick={() => setActiveSection('pyq-practice')}
+                  className="inline-flex items-center gap-2 bg-stone-900 text-amber-300 px-4 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-all cursor-pointer"
+                >
+                  <span>Start Practice Session</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
-
-              {/* Topic 3: Biodiversity & Conservation */}
-              <div className="bg-white border border-[#EAE6DF] rounded-2xl p-4 shadow-2xs hover:border-amber-400 hover:shadow-xs transition-all space-y-4 flex flex-col justify-between relative overflow-hidden group">
-                <div className="space-y-2">
-                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-900 border border-sky-200/80">
-                    Environment
-                  </span>
-                  <h4 className="text-sm font-serif-editorial font-bold text-stone-900 group-hover:text-sky-800 transition-colors">
-                    Biodiversity & Conservation
-                  </h4>
-                  <p className="text-[11px] text-stone-500 font-mono">
-                    Wildlife Protection & Ecology
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] font-semibold text-stone-600">
-                      <span>Progress</span>
-                      <span>25%</span>
-                    </div>
-                    <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-sky-500 h-full rounded-full" style={{ width: '25%' }} />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setActiveSection('learn')}
-                    className="text-xs font-semibold text-sky-800 hover:text-sky-900 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Continue</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-            </div>
+            )}
           </div>
 
           {/* RECOMMENDED FOR YOU SECTION */}
@@ -333,99 +409,128 @@ export const DashboardView: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-stone-900">
-                  Recommended for You
+                  Recommended Next Action
                 </h3>
-                <p className="text-xs text-stone-500">Based on your progress and interests</p>
+                <p className="text-xs text-stone-500">Based on your accuracy and revision schedule</p>
               </div>
               <button
                 onClick={() => setActiveSection('practice')}
                 className="text-xs font-semibold text-amber-800 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
               >
-                <span>View All</span>
+                <span>Practice All</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* 4 Compact Recommendation Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              
-              {/* Rec 1: Official PYQ Practice */}
-              <div
-                onClick={() => setActiveSection('pyq-practice')}
-                className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-900 border border-amber-300 flex items-center justify-center shrink-0">
-                    <FolderArchive className="w-4 h-4 text-amber-800" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-stone-900 truncate">Official PYQ Practice</div>
-                    <div className="text-[10px] text-stone-500 truncate">UPSC & BPSC Archive</div>
-                  </div>
+            {/* Next Best Action Card or Quick Launchers */}
+            {nextBestAction ? (
+              <div className="bg-white border-2 border-amber-300/80 rounded-2xl p-5 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    {nextBestAction.actionType}
+                  </span>
+                  <span className="text-[11px] font-semibold text-stone-500">
+                    ~{nextBestAction.estimatedMinutes} mins
+                  </span>
                 </div>
-                <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5" />
+                <div>
+                  <h4 className="text-base font-serif-editorial font-bold text-stone-900">
+                    {nextBestAction.title}
+                  </h4>
+                  <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                    {nextBestAction.description}
+                  </p>
                 </div>
-              </div>
-
-              {/* Rec 2: Mock Tests & Simulations */}
-              <div
-                onClick={() => setActiveSection('mock-tests')}
-                className="bg-white border border-[#EAE6DF] hover:border-indigo-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 flex items-center justify-center shrink-0">
-                    <ClipboardList className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-stone-900 truncate">Mock Tests & Drills</div>
-                    <div className="text-[10px] text-stone-500 truncate">Full & Sectional Sprints</div>
-                  </div>
-                </div>
-                <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-indigo-50 group-hover:text-indigo-700 flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5" />
+                <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
+                  <button
+                    onClick={() => {
+                      if (nextBestAction.conceptId) setSelectedConceptId(nextBestAction.conceptId);
+                      if (nextBestAction.actionType === 'REVISE') setActiveSection('revision');
+                      else if (nextBestAction.actionType === 'MOCK') setActiveSection('mock-tests');
+                      else setActiveSection('pyq-practice');
+                    }}
+                    className="inline-flex items-center gap-2 bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>Execute Action</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-
-              {/* Rec 3: Science & Tech Notes */}
-              <div
-                onClick={() => setActiveSection('resources')}
-                className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200/80 flex items-center justify-center shrink-0">
-                    <Atom className="w-4 h-4" />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div
+                  onClick={() => setActiveSection('pyq-practice')}
+                  className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center justify-center shrink-0">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">PYQ Practice</div>
+                      <div className="text-[10px] text-stone-500 truncate">Official Questions</div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-stone-900 truncate">Science & Tech Notes</div>
-                    <div className="text-[10px] text-stone-500 truncate">Recently Updated</div>
+                  <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5" />
+
+                <div
+                  onClick={() => setActiveSection('mock-tests')}
+                  className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 border border-sky-200/80 flex items-center justify-center shrink-0">
+                      <Trophy className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">Mock Simulator</div>
+                      <div className="text-[10px] text-stone-500 truncate">Full Length Tests</div>
+                    </div>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setActiveSection('resources')}
+                  className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 border border-purple-200/80 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">Smart Notes</div>
+                      <div className="text-[10px] text-stone-500 truncate">Study Resources</div>
+                    </div>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setActiveSection('current-affairs')}
+                  className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 border border-teal-200/80 flex items-center justify-center shrink-0">
+                      <Landmark className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">Current Affairs</div>
+                      <div className="text-[10px] text-stone-500 truncate">Daily Editorials</div>
+                    </div>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               </div>
-
-              {/* Rec 4: Bihar Special */}
-              <div
-                onClick={() => setActiveSection('resources')}
-                className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-700 border border-teal-200/80 flex items-center justify-center shrink-0">
-                    <Landmark className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-stone-900 truncate">Bihar Special</div>
-                    <div className="text-[10px] text-stone-500 truncate">State Focus</div>
-                  </div>
-                </div>
-                <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </div>
-
-            </div>
+            )}
           </div>
 
         </div>
@@ -442,18 +547,24 @@ export const DashboardView: React.FC = () => {
 
             <div className="flex items-baseline gap-1.5">
               <span className="text-3xl sm:text-4xl font-serif-editorial font-bold text-stone-900">{streakDays}</span>
-              <span className="text-xs font-semibold text-stone-500">days in a row!</span>
+              <span className="text-xs font-semibold text-stone-500">
+                {streakDays === 1 ? 'day active' : 'days in a row'}
+              </span>
             </div>
 
             {/* Days of week circular indicators */}
             <div className="flex items-center justify-between pt-1">
               {weekDays.map((item, idx) => (
                 <div key={idx} className="flex flex-col items-center gap-1.5">
-                  <span className="text-[10px] font-semibold text-stone-400">{item.day}</span>
+                  <span className={`text-[10px] font-semibold ${item.isToday ? 'text-amber-700 font-bold' : 'text-stone-400'}`}>
+                    {item.day}
+                  </span>
                   <div
                     className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-all ${
                       item.active
                         ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : item.isToday
+                        ? 'bg-stone-50 text-stone-700 border border-stone-300'
                         : 'bg-stone-100 text-stone-400'
                     }`}
                   >
@@ -464,76 +575,62 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-stone-500 font-medium pt-1 border-t border-stone-100">
-              Keep going, consistency builds mastery.
+              {streakDays > 0 ? 'Keep going, consistency builds exam mastery.' : 'Study today to initiate your daily streak.'}
             </p>
           </div>
 
-          {/* Card 2: Daily Goals */}
+          {/* Card 2: Daily Goals (Direct from Database) */}
           <div className="bg-white border border-[#EAE6DF] rounded-3xl p-5 shadow-2xs space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-serif-editorial font-bold text-stone-900">Daily Goals</h4>
+              <h4 className="text-sm font-serif-editorial font-bold text-stone-900">Study Goals</h4>
               <button
                 onClick={() => setActiveSection('goals')}
                 className="text-[11px] font-semibold text-amber-800 hover:text-amber-900 cursor-pointer"
               >
-                Edit Goals
+                {goals.length > 0 ? 'Manage Goals' : 'Set Goal'}
               </button>
             </div>
 
-            <div className="space-y-3.5">
-              
-              {/* Goal 1: Study 3 Topics */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="font-semibold text-stone-800">Study 3 Topics</span>
+            {goals.length > 0 ? (
+              <div className="space-y-3.5">
+                {goals.slice(0, 3).map((g) => (
+                  <div key={g.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Target className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span className="font-semibold text-stone-800 truncate">{g.title}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono text-[11px] font-bold text-stone-700">{g.progressPercentage || 0}%</span>
+                        {g.progressPercentage >= 100 && (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-amber-600 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, g.progressPercentage || 0)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-stone-400">
+                      <span>{g.targetExam}</span>
+                      <span>{g.dailyStudyMinutes} min/day</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-bold text-stone-700">3/3</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                  </div>
-                </div>
-                <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }} />
-                </div>
+                ))}
               </div>
-
-              {/* Goal 2: Practice 30 Questions */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="font-semibold text-stone-800">Practice 30 Questions</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-bold text-stone-700">30/30</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                  </div>
-                </div>
-                <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }} />
-                </div>
+            ) : (
+              <div className="py-3 text-center space-y-2">
+                <p className="text-xs text-stone-500">No active study goals set.</p>
+                <button
+                  onClick={() => setActiveSection('goals')}
+                  className="text-xs font-bold text-amber-800 hover:underline cursor-pointer"
+                >
+                  Create your first goal →
+                </button>
               </div>
-
-              {/* Goal 3: Attempt 1 Quiz */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                    <span className="font-semibold text-stone-800">Attempt 1 Quiz</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[11px] font-bold text-stone-700">1/1</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                  </div>
-                </div>
-                <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-600 h-full rounded-full" style={{ width: '100%' }} />
-                </div>
-              </div>
-
-            </div>
+            )}
           </div>
 
           {/* Card 3: Quick Actions */}
@@ -594,4 +691,3 @@ export const DashboardView: React.FC = () => {
     </div>
   );
 };
-

@@ -1039,6 +1039,51 @@ async function startServer() {
     res.json(queue);
   });
 
+  // Canonical Learner Progress Endpoint (real concept mastery from database)
+  app.get('/api/learner/progress', requireAuth, async (req, res) => {
+    const authUser = (req as any).user;
+    const userId = authUser.id;
+    const client = await pool.connect();
+    try {
+      const q = await client.query(`
+        SELECT 
+          cm.concept_id,
+          cm.overall_mastery,
+          cm.accuracy,
+          cm.retention,
+          cm.attempts_count,
+          cm.last_studied_at,
+          c.title as concept_title,
+          c.subject_id,
+          s.name as subject_name,
+          t.name as topic_name
+        FROM public.concept_mastery cm
+        JOIN public.concepts c ON cm.concept_id = c.id
+        LEFT JOIN public.subjects s ON c.subject_id = s.id
+        LEFT JOIN public.topics t ON c.topic_id = t.id
+        WHERE cm.user_id = $1
+        ORDER BY cm.last_studied_at DESC
+        LIMIT 6;
+      `, [userId]);
+      res.json(q.rows.map(r => ({
+        conceptId: r.concept_id,
+        conceptTitle: r.concept_title,
+        subjectId: r.subject_id,
+        subjectName: r.subject_name || 'General Studies',
+        topicName: r.topic_name || '',
+        overallMastery: r.overall_mastery,
+        accuracy: r.accuracy,
+        retention: r.retention,
+        attemptsCount: r.attempts_count,
+        lastStudiedAt: r.last_studied_at,
+      })));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    } finally {
+      client.release();
+    }
+  });
+
   // Knowledge Graph Endpoint
   app.get('/api/graph', requireAuth, async (req, res) => {
     const authUser = (req as any).user;
@@ -1170,9 +1215,45 @@ async function startServer() {
     res.json({ success: true, text: aiResponse });
   });
 
-  app.get('/api/ai/conversations', requireAuth, (req, res) => {
+  app.get('/api/ai/conversations', requireAuth, async (req, res) => {
     const user = (req as any).user;
     const userId = user.id;
+
+    // Attempt to load from PostgreSQL first
+    try {
+      const convRes = await pool.query(
+        `SELECT id, title, created_at, updated_at FROM public.ai_conversations WHERE user_id = $1 ORDER BY updated_at DESC`,
+        [userId]
+      );
+      if (convRes.rows.length > 0) {
+        const convList: ChatConversation[] = [];
+        for (const row of convRes.rows) {
+          const msgRes = await pool.query(
+            `SELECT id, role, text, timestamp FROM public.ai_messages WHERE conversation_id = $1 ORDER BY timestamp ASC`,
+            [row.id]
+          );
+          const messages: ChatMessage[] = msgRes.rows.map(m => ({
+            id: m.id,
+            role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+            text: m.text,
+            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : new Date().toISOString(),
+          }));
+          const c: ChatConversation = {
+            id: row.id,
+            userId,
+            title: row.title,
+            createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+            messages,
+          };
+          db.conversations.set(c.id, c);
+          convList.push(c);
+        }
+        return res.json(convList);
+      }
+    } catch (pgErr: any) {
+      console.warn('[AI Conversations] PG load notice (falling back to memory):', pgErr.message);
+    }
+
     const list = Array.from(db.conversations.values()).filter(c => c.userId === userId);
     if (list.length === 0) {
       const userName = user.name || 'IKSHOVIA User';
@@ -1192,11 +1273,17 @@ async function startServer() {
       };
       db.conversations.set(defaultConv.id, defaultConv);
       list.push(defaultConv);
+
+      // Best-effort write default to PG
+      pool.query(
+        `INSERT INTO public.ai_conversations (id, user_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+        [defaultConv.id, userId, defaultConv.title]
+      ).catch(() => {});
     }
     res.json(list);
   });
 
-  app.post('/api/ai/conversations', requireAuth, (req, res) => {
+  app.post('/api/ai/conversations', requireAuth, async (req, res) => {
     const user = (req as any).user;
     const { title, initialMessage } = req.body;
     const uid = user.id;
@@ -1209,6 +1296,22 @@ async function startServer() {
       messages: initialMessage ? [initialMessage] : [],
     };
     db.conversations.set(id, newConv);
+
+    try {
+      await pool.query(
+        `INSERT INTO public.ai_conversations (id, user_id, title) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+        [id, uid, newConv.title]
+      );
+      if (initialMessage) {
+        await pool.query(
+          `INSERT INTO public.ai_messages (id, conversation_id, user_id, role, text, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [initialMessage.id || `msg_${Date.now()}`, id, uid, initialMessage.role, initialMessage.text]
+        );
+      }
+    } catch (pgErr: any) {
+      console.warn('[AI Conversations] PG conversation create notice:', pgErr.message);
+    }
+
     res.json(newConv);
   });
 
@@ -1246,6 +1349,31 @@ async function startServer() {
     conv.messages.push(aiMsg);
 
     db.conversations.set(id, conv);
+
+    // Persist to PostgreSQL asynchronously without blocking
+    (async () => {
+      try {
+        await pool.query(
+          `INSERT INTO public.ai_conversations (id, user_id, title, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()`,
+          [id, user.id, conv.title]
+        );
+        await pool.query(
+          `INSERT INTO public.ai_messages (id, conversation_id, user_id, role, text, timestamp)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [userMsg.id, id, user.id, userMsg.role, userMsg.text]
+        );
+        await pool.query(
+          `INSERT INTO public.ai_messages (id, conversation_id, user_id, role, text, timestamp)
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [aiMsg.id, id, user.id, aiMsg.role, aiMsg.text]
+        );
+      } catch (err: any) {
+        console.warn('[AI Conversations] Message persistence notice:', err.message);
+      }
+    })();
+
     res.json({ conversation: conv, reply: aiMsg });
   });
 
@@ -1930,12 +2058,13 @@ async function startServer() {
     try {
       const state = (req.query.state as string) || 'admin_drive_auth';
       const authUrl = googleDriveService.generateAuthUrl(state);
+      console.log(`[OAuth Google] Auth route reached. Client configured: ${googleDriveService.isConfigured()}. Redirect URI: ${googleDriveService.getSanitizedRedirectUri()}. Scopes: ${googleDriveService.getScopes().join(', ')}`);
       if (req.headers.accept?.includes('application/json') || req.query.format === 'json') {
         return res.json({ url: authUrl });
       }
       return res.redirect(authUrl);
     } catch (err: any) {
-      console.error('[OAuth Google] Error generating auth URL:', err);
+      console.error('[OAuth Google] Error generating auth URL:', err?.message || err);
       return res.status(500).json({ error: err.message || 'Failed to initialize Google OAuth' });
     }
   });
@@ -1943,10 +2072,12 @@ async function startServer() {
   // Google OAuth 2.0 Callback Endpoint
   app.get('/api/auth/google/callback', async (req, res) => {
     try {
-      const { code, state, error: oauthError } = req.query;
+      const { code, state, error: oauthError, error_description } = req.query;
+      console.log(`[OAuth Google] Callback reached. State: ${state || 'none'}. Code present: ${!!code}. Google error code: ${oauthError || 'none'}. Description: ${error_description || 'none'}`);
+
       if (oauthError) {
-        console.error('[OAuth Google] Callback error from Google:', oauthError);
-        return res.redirect('/?section=admin-resources&error=' + encodeURIComponent(String(oauthError)));
+        console.error(`[OAuth Google] Callback error from Google: ${oauthError} - ${error_description || 'none'}`);
+        return res.redirect(`/?section=admin-resources&error=${encodeURIComponent(String(oauthError))}&error_description=${encodeURIComponent(String(error_description || ''))}`);
       }
 
       if (!code || typeof code !== 'string') {
@@ -1958,8 +2089,8 @@ async function startServer() {
 
       return res.redirect(`/?section=admin-resources&drive_connected=true&email=${encodeURIComponent(email)}`);
     } catch (err: any) {
-      console.error('[OAuth Google] Callback failed:', err);
-      return res.status(500).send(`<h3>Failed to complete Google Drive connection</h3><p>${err.message}</p>`);
+      console.error('[OAuth Google] Callback processing error:', err?.message || err);
+      return res.redirect(`/?section=admin-resources&error=auth_failed&error_description=${encodeURIComponent(err.message || 'Token exchange failed')}`);
     }
   });
 
@@ -1968,6 +2099,16 @@ async function startServer() {
     try {
       const status = await googleDriveService.getStatus();
       return res.json(status);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Google Drive OAuth Diagnostics (Safe audit endpoint)
+  app.get('/api/admin/drive/oauth-diagnostics', requireAdmin, async (req, res) => {
+    try {
+      const diagnostics = await googleDriveService.getDiagnostics();
+      return res.json(diagnostics);
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
@@ -2398,6 +2539,8 @@ async function startServer() {
         description,
         tags,
         resourceType,
+        subjectId,
+        subject_id,
         subject,
         topic,
         exam,
@@ -2446,6 +2589,7 @@ async function startServer() {
         author: author?.trim() || 'IKSHOVIA Faculty',
         description: fullDescription,
         resourceType: resourceType || 'BOOK',
+        subjectId: subjectId || subject_id,
         subject: subject || 'General Studies',
         topic: topic?.trim() || '',
         exam: exam || 'ALL',
@@ -2557,6 +2701,30 @@ async function startServer() {
   app.get('/api/goals', requireAuth, async (req, res) => {
     const authUser = (req as any).user;
     const userId = authUser.id;
+
+    try {
+      const pRes = await pool.query(
+        `SELECT id, user_id, title, target_exam, target_date, daily_study_minutes, subjects, status, progress_percentage, created_at
+         FROM public.goals WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      );
+      if (pRes.rows.length > 0) {
+        return res.json(pRes.rows.map(r => ({
+          id: r.id,
+          userId: r.user_id,
+          title: r.title || (r.target_exam ? `${r.target_exam} Target` : 'Target Goal'),
+          targetExam: r.target_exam || 'UPSC CSE 2026',
+          targetDate: r.target_date ? new Date(r.target_date).toISOString().split('T')[0] : '2026-05-24',
+          dailyStudyMinutes: r.daily_study_minutes || 120,
+          subjects: Array.isArray(r.subjects) ? r.subjects : (typeof r.subjects === 'string' ? JSON.parse(r.subjects) : ['sub_polity', 'sub_economy']),
+          status: r.status || 'ACTIVE',
+          progressPercentage: r.progress_percentage || 0,
+        })));
+      }
+    } catch (pgErr: any) {
+      console.warn('[Goals] PG query notice (falling back to memory):', pgErr.message);
+    }
+
     res.json(Array.from(db.goals.values()).filter(g => g.userId === userId));
   });
 
@@ -2576,6 +2744,25 @@ async function startServer() {
       progressPercentage: 0,
     };
     db.goals.set(goal.id, goal);
+
+    try {
+      await pool.query(
+        `INSERT INTO public.goals (id, user_id, title, target_exam, target_date, daily_study_minutes, subjects, status, progress_percentage)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           title = EXCLUDED.title,
+           target_exam = EXCLUDED.target_exam,
+           target_date = EXCLUDED.target_date,
+           daily_study_minutes = EXCLUDED.daily_study_minutes,
+           subjects = EXCLUDED.subjects,
+           status = EXCLUDED.status,
+           progress_percentage = EXCLUDED.progress_percentage`,
+        [goal.id, uid, goal.title, goal.targetExam, goal.targetDate, goal.dailyStudyMinutes, JSON.stringify(goal.subjects), goal.status, goal.progressPercentage]
+      );
+    } catch (dbErr: any) {
+      console.warn('[Goals] PostgreSQL persistence notice:', dbErr.message);
+    }
+
     res.json(goal);
   });
 
@@ -2614,9 +2801,9 @@ async function startServer() {
          WHERE status IN ('READY', 'PUBLISHED')
            AND visibility NOT IN ('ADMIN_ONLY')
            AND (
-             LOWER(title) LIKE $1
-             OR LOWER(COALESCE(author, '')) LIKE $1
-             OR LOWER(COALESCE(subject, '')) LIKE $1
+             LOWER(title) LIKE $1 
+             OR LOWER(COALESCE(author, '')) LIKE $1 
+             OR LOWER(COALESCE(subject, '')) LIKE $1 
              OR LOWER(COALESCE(description, '')) LIKE $1
              OR LOWER(COALESCE(tags, '')) LIKE $1
            )
@@ -3893,7 +4080,7 @@ async function startServer() {
 
         // Delete test entitlements created by test payments
         const entRes = await client.query(
-          `DELETE FROM public.entitlements
+          `DELETE FROM public.entitlements 
            WHERE environment = 'TEST' OR payment_id IN (SELECT id FROM public.payments WHERE environment = 'TEST')
            RETURNING id;`
         );
@@ -4719,6 +4906,43 @@ async function startServer() {
     try {
       const jobs = await ocrRepository.listJobs();
       res.json(jobs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET lightweight OCR job status (optimized for frequent 2-second UI polling)
+  app.get(['/api/admin/ocr/jobs/:id/status', '/api/admin/ocr/import/:id/status'], requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const job = await ocrRepository.getJobById(id);
+      if (!job) {
+        return res.status(404).json({ error: 'OCR Job not found' });
+      }
+      res.json({
+        id: job.id,
+        jobId: job.id,
+        status: job.status,
+        processedPages: job.processedPages || 0,
+        pageCount: job.pageCount || 1,
+        detectedQuestionsCount: job.detectedQuestionsCount || 0,
+        expectedQuestionCount: job.expectedQuestionCount || 100,
+        approvedCount: job.approvedCount || 0,
+        rejectedCount: job.rejectedCount || 0,
+        errorMessage: job.errorMessage || null,
+        reviewState: {
+          stage: job.reviewState?.stage || job.status,
+          currentPage: job.reviewState?.currentPage || job.processedPages || 0,
+          totalPages: job.reviewState?.totalPages || job.pageCount || 0,
+          pagesCompleted: job.reviewState?.pagesCompleted || job.processedPages || 0,
+          percentage: job.reviewState?.percentage || (job.status === 'COMPLETED' ? 100 : 0),
+          detectedQuestions: job.reviewState?.detectedQuestions || job.detectedQuestionsCount || 0,
+          answerMatches: job.reviewState?.answerMatches || 0,
+          reviewCount: job.reviewState?.reviewCount || 0,
+          errorMessage: job.reviewState?.errorMessage || job.errorMessage,
+          diagnostics: job.reviewState?.diagnostics,
+        },
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

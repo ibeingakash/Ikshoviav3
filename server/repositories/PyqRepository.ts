@@ -248,7 +248,7 @@ export class PyqRepository {
       for (const q of paper.questions) {
         const questionId = `${paper.id}_q${String(q.questionNumber).padStart(3, '0')}`;
         const sourcePage = q.sourcePage || `Official Paper Page ${q.sourcePageNumber || Math.ceil(q.questionNumber / 8)}`;
-
+        
         await pool.query(`
           INSERT INTO public.pyq_questions (
             id, paper_id, question_number, question_text, question_en, question_hi,
@@ -417,10 +417,10 @@ export class PyqRepository {
 
   async recalculatePaperCounts(paperId: string): Promise<void> {
     const res = await pool.query(
-      `SELECT
+      `SELECT 
         COUNT(*) as total_count,
         COUNT(CASE WHEN verification_status = 'OFFICIAL_VERIFIED' THEN 1 END) as verified_count
-       FROM public.pyq_questions
+       FROM public.pyq_questions 
        WHERE paper_id = $1`,
       [paperId]
     );
@@ -435,8 +435,8 @@ export class PyqRepository {
     const verificationStatus = (verifiedCount >= expectedCount && expectedCount > 0) ? 'OFFICIAL_VERIFIED' : 'INCOMPLETE';
 
     await pool.query(
-      `UPDATE public.pyq_papers
-       SET actual_question_count = $1, verified_question_count = $2, verification_status = $3, updated_at = NOW()
+      `UPDATE public.pyq_papers 
+       SET actual_question_count = $1, verified_question_count = $2, verification_status = $3, updated_at = NOW() 
        WHERE id = $4`,
       [totalCount, verifiedCount, verificationStatus, paperId]
     );
@@ -460,16 +460,16 @@ export class PyqRepository {
              COALESCE(q.verified_count, 0) as live_verified_count
       FROM public.pyq_papers p
       LEFT JOIN (
-        SELECT paper_id,
+        SELECT paper_id, 
                COUNT(*) as total_count,
                COUNT(CASE WHEN verification_status = 'OFFICIAL_VERIFIED' THEN 1 END) as verified_count
-        FROM public.pyq_questions
+        FROM public.pyq_questions 
         GROUP BY paper_id
       ) q ON p.id = q.paper_id
       WHERE p.source_type = 'OFFICIAL_COMMISSION'
-      ORDER BY
+      ORDER BY 
         CASE WHEN p.exam = 'UPSC CSE' THEN 1 ELSE 2 END,
-        p.year DESC,
+        p.year DESC, 
         p.paper ASC
     `);
 
@@ -575,13 +575,13 @@ export class PyqRepository {
               COALESCE(q.verified_count, 0) as live_verified_count
        FROM public.pyq_papers p
        LEFT JOIN (
-         SELECT paper_id,
+         SELECT paper_id, 
                 COUNT(*) as total_count,
                 COUNT(CASE WHEN verification_status = 'OFFICIAL_VERIFIED' THEN 1 END) as verified_count
-         FROM public.pyq_questions
+         FROM public.pyq_questions 
          GROUP BY paper_id
        ) q ON p.id = q.paper_id
-       ${whereSql}
+       ${whereSql} 
        ORDER BY p.year DESC, p.exam ASC, p.paper ASC`,
       params
     );
@@ -627,10 +627,10 @@ export class PyqRepository {
              COALESCE(q.verified_count, 0) as live_verified_count
       FROM public.pyq_papers p
       LEFT JOIN (
-        SELECT paper_id,
+        SELECT paper_id, 
                COUNT(*) as total_count,
                COUNT(CASE WHEN verification_status = 'OFFICIAL_VERIFIED' THEN 1 END) as verified_count
-        FROM public.pyq_questions
+        FROM public.pyq_questions 
         GROUP BY paper_id
       ) q ON p.id = q.paper_id
       WHERE p.id = $1
@@ -672,7 +672,7 @@ export class PyqRepository {
 
   async getQuestionsByPaperId(paperId: string): Promise<Question[]> {
     const res = await pool.query(`
-      SELECT
+      SELECT 
         q.*,
         p.exam as paper_exam,
         p.year as paper_year,
@@ -846,7 +846,7 @@ export class PyqRepository {
     const totalCount = parseInt(countRes.rows[0].count, 10);
 
     const dataRes = await pool.query(`
-      SELECT
+      SELECT 
         q.*,
         p.exam as paper_exam,
         p.year as paper_year,
@@ -903,7 +903,7 @@ export class PyqRepository {
 
     const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
     const res = await pool.query(`
-      SELECT
+      SELECT 
         q.*,
         p.exam as paper_exam,
         p.year as paper_year,
@@ -935,16 +935,16 @@ export class PyqRepository {
     questionText: string;
   }[]> {
     const res = await pool.query(`
-      SELECT
-        q1.paper_id as paper1,
+      SELECT 
+        q1.paper_id as paper1, 
         q1.question_number as qnum1,
-        q2.paper_id as paper2,
+        q2.paper_id as paper2, 
         q2.question_number as qnum2,
         q1.question_text as "questionText"
       FROM public.pyq_questions q1
-      JOIN public.pyq_questions q2
-        ON q1.id < q2.id
-        AND q1.paper_id != q2.paper_id
+      JOIN public.pyq_questions q2 
+        ON q1.id < q2.id 
+        AND q1.paper_id != q2.paper_id 
         AND LOWER(TRIM(q1.question_text)) = LOWER(TRIM(q2.question_text))
     `);
     return res.rows;

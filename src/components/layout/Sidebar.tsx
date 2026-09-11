@@ -79,6 +79,7 @@ export const Sidebar: React.FC = () => {
   // Administration Hub Items
   const adminNavItems: NavItem[] = [
     { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+    { id: 'admin-resources', label: 'Resource Studio', icon: FolderArchive, badge: 'Drive', badgeColor: 'bg-blue-100 text-blue-900 border border-blue-300' },
     { id: 'admin-short-notes', label: 'Short Notes Studio', icon: BookOpen, badge: 'OCR' },
     { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
     { id: 'admin-coupons', label: 'Coupons & Offers', icon: Tag, badge: 'Discounts' },
@@ -110,6 +111,7 @@ export const Sidebar: React.FC = () => {
     if (label.includes('Bookmarks') && (activeSection === 'revision' || activeSection === 'bookmarks')) return true;
     if (itemId === 'short-notes' && (activeSection === 'short-notes')) return true;
     if (itemId === 'admin-short-notes' && (activeSection === 'admin-short-notes')) return true;
+    if ((itemId === 'admin-resources' || label.includes('Resource Studio')) && (activeSection === 'admin-resources' || activeSection === 'admin-resource-studio')) return true;
     if (itemId === 'notes' && activeSection === 'notes') return true;
     if (itemId === 'resources' && activeSection === 'resources') return true;
     if (label.includes('Content Import') && (activeSection === 'admin-ocr' || activeSection === 'admin-content-import')) return true;

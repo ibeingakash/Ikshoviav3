@@ -34,6 +34,7 @@ import { MockTestBuilderView } from './components/admin/MockTestBuilderView.js';
 import { ImportPublishLogsView } from './components/admin/ImportPublishLogsView.js';
 import { SubjectsConceptsView } from './components/admin/SubjectsConceptsView.js';
 import { AdminDashboardView } from './components/admin/AdminDashboardView.js';
+import { AdminResourceStudioView } from './components/admin/AdminResourceStudioView.js';
 import { UserManagementView } from './components/admin/UserManagementView.js';
 import { CoursesPricingView } from './components/admin/CoursesPricingView.js';
 import { EntitlementsView } from './components/admin/EntitlementsView.js';
@@ -205,6 +206,9 @@ const MainContent: React.FC = () => {
         return <DownloadAppView onBackToHome={() => setActiveSection('dashboard')} />;
       case 'admin-dashboard':
         return <AdminDashboardView />;
+      case 'admin-resources':
+      case 'admin-resource-studio':
+        return <AdminResourceStudioView />;
       case 'admin-short-notes':
         return <ShortNotesAdminView />;
       case 'admin-questions':

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { LearnerModel, NextBestAction, NotificationItem, AiContextData } from '../types/index.js';
+import { LearnerModel, NextBestAction, NotificationItem, AiContextData, Entitlement } from '../types/index.js';
 import { api } from '../lib/api.js';
 import { useAuth } from './AuthContext.js';
 
@@ -69,6 +69,7 @@ interface LearnerContextType {
   nextBestAction: NextBestAction | null;
   aiInsight: string;
   notifications: NotificationItem[];
+  entitlements: Entitlement[];
   selectedSubjectId: string | null;
   setSelectedSubjectId: (id: string | null) => void;
   selectedConceptId: string | null;
@@ -101,6 +102,7 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [nextBestAction, setNextBestAction] = useState<NextBestAction | null>(null);
   const [aiInsight, setAiInsight] = useState<string>('Analyzing your learning health...');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [entitlements, setEntitlements] = useState<Entitlement[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>('sub_polity');
   const [selectedConceptId, setSelectedConceptId] = useState<string | null>('c_art21');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -113,6 +115,7 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       if (!user) {
         setNotifications([]);
+        setEntitlements([]);
         return;
       }
       const data = await api.getLearnerModel(user.id);
@@ -124,9 +127,13 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const notifs = await api.getNotifications(user.id);
       setNotifications(Array.isArray(notifs) ? notifs : []);
+
+      const ents = await api.getLearnerEntitlements();
+      setEntitlements(Array.isArray(ents) ? ents : []);
     } catch (err) {
       console.error('Failed to load learner data:', err);
       setNotifications([]);
+      setEntitlements([]);
     }
   };
 
@@ -232,6 +239,7 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         nextBestAction,
         aiInsight,
         notifications,
+        entitlements,
         selectedSubjectId,
         setSelectedSubjectId,
         selectedConceptId,

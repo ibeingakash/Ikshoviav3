@@ -20,7 +20,7 @@ interface MapperOptions {
  * ShortNotesStructureMapper
  * Transforms raw OCR text & page boundaries from the Existing Test Paper OCR
  * into structured revision blocks for civil service exam preparation.
- *
+ * 
  * Accurately detects:
  * - Headings (Level 1, 2, 3)
  * - Tables (pipe '|' separated or tabulated columns)

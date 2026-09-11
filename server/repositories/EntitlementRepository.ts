@@ -4,14 +4,14 @@ import { Entitlement, EntitlementSource, EntitlementStatus, PlatformFeatureCode 
 export class EntitlementRepository {
   async getUserEntitlements(userId: string): Promise<Entitlement[]> {
     const query = `
-      SELECT
+      SELECT 
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
-           FROM public.course_features cf
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
+           FROM public.course_features cf 
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
@@ -28,14 +28,14 @@ export class EntitlementRepository {
 
   async listAllEntitlements(filter?: { status?: string; courseId?: string; userId?: string }): Promise<Entitlement[]> {
     let query = `
-      SELECT
+      SELECT 
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
-           FROM public.course_features cf
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
+           FROM public.course_features cf 
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
@@ -66,14 +66,14 @@ export class EntitlementRepository {
 
   async getEntitlementById(id: string): Promise<Entitlement | null> {
     const query = `
-      SELECT
+      SELECT 
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
-           FROM public.course_features cf
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
+           FROM public.course_features cf 
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
@@ -103,7 +103,7 @@ export class EntitlementRepository {
 
     const query = `
       INSERT INTO public.entitlements (
-        id, user_id, course_id, status, source, starts_at, expires_at,
+        id, user_id, course_id, status, source, starts_at, expires_at, 
         granted_by, metadata
       ) VALUES ($1, $2, $3, 'ACTIVE', $4, $5, $6, $7, $8)
       RETURNING *
@@ -146,7 +146,7 @@ export class EntitlementRepository {
 
     const query = `
       UPDATE public.entitlements
-      SET
+      SET 
         expires_at = $2::timestamptz,
         status = 'ACTIVE',
         updated_at = NOW(),
@@ -176,7 +176,7 @@ export class EntitlementRepository {
   async revokeEntitlement(entitlementId: string, revokerId?: string, reason?: string): Promise<Entitlement> {
     const query = `
       UPDATE public.entitlements
-      SET
+      SET 
         status = 'REVOKED',
         updated_at = NOW(),
         metadata = jsonb_set(
@@ -258,7 +258,7 @@ export class EntitlementRepository {
 
     const insertQuery = `
       INSERT INTO public.entitlements (
-        id, user_id, course_id, status, source, starts_at, expires_at,
+        id, user_id, course_id, status, source, starts_at, expires_at, 
         granted_by, payment_id, environment, metadata, created_at, updated_at
       ) VALUES ($1, $2, $3, 'ACTIVE', 'PAYMENT', $4, $5, NULL, $6, $7, $8, NOW(), NOW())
       RETURNING id;
@@ -303,7 +303,7 @@ export class EntitlementRepository {
 
   async checkUserFeatureAccess(userId: string, featureCode: string): Promise<{ hasAccess: boolean; entitlement?: Entitlement }> {
     const query = `
-      SELECT
+      SELECT 
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
         c.name as course_name, c.exam as course_exam

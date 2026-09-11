@@ -4,13 +4,13 @@
 -- ====================================================================
 
 -- 1. Add environment column to payment_orders, payments, and entitlements
-ALTER TABLE public.payment_orders
+ALTER TABLE public.payment_orders 
   ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'LIVE';
 
-ALTER TABLE public.payments
+ALTER TABLE public.payments 
   ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'LIVE';
 
-ALTER TABLE public.entitlements
+ALTER TABLE public.entitlements 
   ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'LIVE';
 
 -- 2. Performance Indexes for Environment Filtering
@@ -20,13 +20,13 @@ CREATE INDEX IF NOT EXISTS idx_entitlements_env_status ON public.entitlements(en
 
 -- 3. Mark existing test records explicitly as TEST mode
 -- Detect test transactions by provider order/payment id pattern or known test orders
-UPDATE public.payment_orders
+UPDATE public.payment_orders 
 SET environment = 'TEST',
     metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{environment}', '"TEST"')
 WHERE id IN ('pord_1788955294613_btix1', 'pord_1788955178008_ln0ef')
    OR provider_order_id LIKE 'order_TZ%';
 
-UPDATE public.payments
+UPDATE public.payments 
 SET environment = 'TEST',
     metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{environment}', '"TEST"')
 WHERE id = 'pay_1788955897311_cjw7f'
@@ -50,7 +50,7 @@ INSERT INTO public.entitlements (
   created_at,
   updated_at
 )
-SELECT
+SELECT 
   'ent_1788955897311_cjw7f_recovered',
   'usr_student',
   'crs_1788953246819_46zh',
@@ -73,8 +73,8 @@ SELECT
   '2026-09-09T12:11:37.278Z'::timestamptz,
   NOW()
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.entitlements
-  WHERE user_id = 'usr_student'
-    AND course_id = 'crs_1788953246819_46zh'
+  SELECT 1 FROM public.entitlements 
+  WHERE user_id = 'usr_student' 
+    AND course_id = 'crs_1788953246819_46zh' 
     AND status = 'ACTIVE'
 );

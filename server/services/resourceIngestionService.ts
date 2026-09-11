@@ -9,6 +9,7 @@ export interface IngestResourceParams {
   author?: string;
   description?: string;
   resourceType: ResourceType;
+  subjectId?: string;
   subject: string;
   topic?: string;
   exam: string;
@@ -117,6 +118,47 @@ export class ResourceIngestionService {
     else if (resourceType === 'OFFICIAL_DOCUMENT') folderCategory = 'OFFICIAL_DOCUMENTS';
     else if (resourceType === 'NOTES') folderCategory = 'NOTES';
 
+    // 1b. Validate & resolve subject_id against public.subjects (Mandatory Foreign Key integrity)
+    let validatedSubjectId = params.subjectId;
+    let validatedSubjectName = subject;
+
+    if (validatedSubjectId) {
+      const subCheck = await pool.query('SELECT id, name FROM public.subjects WHERE id = $1', [validatedSubjectId]);
+      if (subCheck.rows.length > 0) {
+        validatedSubjectId = subCheck.rows[0].id;
+        if (!validatedSubjectName || validatedSubjectName === 'General Studies') {
+          validatedSubjectName = subCheck.rows[0].name;
+        }
+      } else {
+        validatedSubjectId = undefined;
+      }
+    }
+
+    if (!validatedSubjectId && validatedSubjectName) {
+      const match = await pool.query(
+        `SELECT id, name FROM public.subjects 
+         WHERE LOWER(name) = LOWER($1) 
+            OR LOWER(code) = LOWER($1) 
+            OR name ILIKE $2 
+         ORDER BY id ASC LIMIT 1`,
+        [validatedSubjectName.trim(), `%${validatedSubjectName.trim()}%`]
+      );
+      if (match.rows.length > 0) {
+        validatedSubjectId = match.rows[0].id;
+        validatedSubjectName = match.rows[0].name;
+      }
+    }
+
+    if (!validatedSubjectId) {
+      const defaultSub = await pool.query('SELECT id, name FROM public.subjects ORDER BY id ASC LIMIT 1');
+      if (defaultSub.rows.length > 0) {
+        validatedSubjectId = defaultSub.rows[0].id;
+        if (!validatedSubjectName) validatedSubjectName = defaultSub.rows[0].name;
+      } else {
+        throw new Error('Database integrity check failed: No subjects exist in public.subjects.');
+      }
+    }
+
     // 2. Create Initial Record in PostgreSQL
     const resource = await resourceRepository.create({
       title,
@@ -124,7 +166,8 @@ export class ResourceIngestionService {
       description: description || '',
       resource_type: resourceType,
       type: resourceType,
-      subject,
+      subject_id: validatedSubjectId,
+      subject: validatedSubjectName,
       topic: topic || '',
       exam: exam || 'ALL',
       edition: edition || null,
@@ -388,9 +431,9 @@ export class ResourceIngestionService {
 
     // Fetch sample chunks
     const sampleChunksRes = await pool.query(
-      `SELECT id, chunk_index, content, heading, section, metadata_json
-       FROM public.data_chunks
-       WHERE (metadata_json->>'resourceId') = $1
+      `SELECT id, chunk_index, content, heading, section, metadata_json 
+       FROM public.data_chunks 
+       WHERE (metadata_json->>'resourceId') = $1 
        ORDER BY chunk_index ASC LIMIT 3`,
       [resourceId]
     );

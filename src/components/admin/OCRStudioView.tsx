@@ -292,10 +292,11 @@ export const OCRStudioView: React.FC = () => {
 
   const pollJobStatus = async (jobId: string) => {
     try {
-      const res = await api.getOcrJobDetails(jobId);
-      if (!res || !res.job) return;
+      const res = await api.getOcrJobStatus(jobId);
+      if (!res) return;
 
-      const job = res.job;
+      const job = res.job || res;
+      if (!job || !job.status) return;
       const reviewState = job.reviewState || {};
       const stage = reviewState.stage || job.status;
 

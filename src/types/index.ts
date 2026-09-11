@@ -167,6 +167,12 @@ export interface LearnerModel {
   weakConceptsCount: number;
   dueRevisionCount: number;
   lastUpdated: string;
+  totalQuestionsAttempted?: number;
+  totalAttempts?: number;
+  accuracyRate?: number;
+  avgTimePerQuestionSeconds?: number;
+  mockTestsCompletedCount?: number;
+  topicsStudiedCount?: number;
 }
 
 export interface NextBestAction {
@@ -281,12 +287,12 @@ export interface PyqCompletenessValidation {
   status: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
 }
 
-export type QuestionFormatType =
-  | 'SINGLE_CHOICE'
-  | 'MULTIPLE_CHOICE'
-  | 'STATEMENT_BASED'
-  | 'MATCH_FOLLOWING'
-  | 'ASSERTION_REASON'
+export type QuestionFormatType = 
+  | 'SINGLE_CHOICE' 
+  | 'MULTIPLE_CHOICE' 
+  | 'STATEMENT_BASED' 
+  | 'MATCH_FOLLOWING' 
+  | 'ASSERTION_REASON' 
   | 'COMPREHENSION'
   | 'PASSAGE_BASED'
   | 'NUMERICAL_CSAT'
