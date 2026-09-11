@@ -2090,7 +2090,10 @@ async function startServer() {
       return res.redirect(`/?section=admin-resources&drive_connected=true&email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       console.error('[OAuth Google] Callback processing error:', err?.message || err);
-      return res.redirect(`/?section=admin-resources&error=auth_failed&error_description=${encodeURIComponent(err.message || 'Token exchange failed')}`);
+      const isScopeError = err?.message?.includes('Google Drive permission') || err?.message?.includes('drive.file');
+      const isFolderError = err?.message?.includes('folder');
+      const errorCode = isScopeError ? 'drive_scope_missing' : (isFolderError ? 'drive_folder_failed' : 'drive_setup_error');
+      return res.redirect(`/?section=admin-resources&error=${encodeURIComponent(errorCode)}&error_description=${encodeURIComponent(err.message || 'Setup failed')}`);
     }
   });
 

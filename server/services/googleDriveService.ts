@@ -22,6 +22,10 @@ export interface DriveStatusResponse {
   accountEmail?: string;
   folders?: DriveFolderStructure;
   lastSync?: string;
+  hasDriveScope?: boolean;
+  grantedScopes?: string[];
+  rootFolderCreated?: boolean;
+  error?: string;
 }
 
 export class GoogleDriveService {
@@ -99,6 +103,50 @@ export class GoogleDriveService {
   }
 
   /**
+   * Safe parser and logger for Google API error responses.
+   * Logs HTTP status, error reason, message, operation, email, and scopes.
+   * NEVER logs access_token, refresh_token, or client_secret.
+   */
+  private parseGoogleApiError(
+    status: number,
+    statusText: string,
+    rawBody: string,
+    operation: string,
+    accountEmail?: string
+  ): { status: number; reason: string; message: string; operation: string; formattedError: string } {
+    let reason = 'UNKNOWN_ERROR';
+    let message = statusText || 'Unknown Google API error';
+
+    try {
+      const json = JSON.parse(rawBody);
+      if (json.error) {
+        message = json.error.message || message;
+        reason =
+          json.error.errors?.[0]?.reason ||
+          json.error.details?.[0]?.reason ||
+          json.error.status ||
+          reason;
+      }
+    } catch {
+      if (rawBody && rawBody.trim()) {
+        message = rawBody.substring(0, 300);
+      }
+    }
+
+    console.error(
+      `[GoogleDriveService] Drive API failure -> Operation: ${operation}, HTTP: ${status}, Reason: ${reason}, Message: "${message}", Account: ${accountEmail || 'unknown'}`
+    );
+
+    return {
+      status,
+      reason,
+      message,
+      operation,
+      formattedError: `Google Drive API error during ${operation} (HTTP ${status} ${reason}: ${message})`,
+    };
+  }
+
+  /**
    * Exchanges authorization code for OAuth tokens and stores them in Postgres
    */
   public async handleOAuthCallback(code: string): Promise<{ email: string; folders: DriveFolderStructure }> {
@@ -126,15 +174,18 @@ export class GoogleDriveService {
     });
 
     if (!tokenRes.ok) {
-      let safeErrorDetails = `HTTP ${tokenRes.status} ${tokenRes.statusText}`;
+      const status = tokenRes.status;
+      let safeReason = tokenRes.statusText;
+      let safeDesc = 'Token exchange failed';
       try {
         const errJson = await tokenRes.json();
-        safeErrorDetails += ` - Error: ${errJson.error || 'unknown'}, Description: ${errJson.error_description || 'none'}`;
+        safeReason = errJson.error || safeReason;
+        safeDesc = errJson.error_description || safeDesc;
       } catch {
         // body wasn't json
       }
-      console.error('[GoogleDriveService] Token exchange failed:', safeErrorDetails);
-      throw new Error(`Failed to exchange Google OAuth code: ${safeErrorDetails}`);
+      console.error(`[GoogleDriveService] Token exchange failed. HTTP ${status}, Reason: ${safeReason}, Desc: ${safeDesc}`);
+      throw new Error(`Google OAuth token exchange failed (HTTP ${status} ${safeReason}: ${safeDesc})`);
     }
 
     const tokenData = await tokenRes.json();
@@ -143,11 +194,11 @@ export class GoogleDriveService {
     const refreshToken = tokenData.refresh_token;
     const expiresInSec = tokenData.expires_in || 3600;
     const expiryDate = Date.now() + (expiresInSec - 120) * 1000;
-    const scopes = (tokenData.scope || '').split(' ');
+    const scopes: string[] = (tokenData.scope || '').split(' ').filter(Boolean);
     const tokenType = tokenData.token_type || 'Bearer';
 
     // 2. Fetch connected Google account email
-    let email = 'ikshovia.admin@gmail.com';
+    let email = 'ikshovia@gmail.com';
     try {
       const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -160,7 +211,24 @@ export class GoogleDriveService {
       console.warn('[GoogleDriveService] Could not fetch user profile email:', uErr?.message);
     }
 
-    // 3. Upsert integration into Postgres
+    // 3. Verify that Google Drive scopes were granted by user on consent screen
+    const hasDriveScope = scopes.some((s: string) => s.toLowerCase().includes('drive'));
+    console.log(
+      `[GoogleDriveService] Token exchange completed. Account: ${email}, Scopes: [${scopes.join(', ')}], DriveScopeGranted: ${hasDriveScope}, RefreshTokenProvided: ${!!refreshToken}`
+    );
+
+    if (!hasDriveScope) {
+      console.error(
+        `[GoogleDriveService] Drive scope missing from authorization grant for ${email}. Granted scopes: [${scopes.join(', ')}]`
+      );
+      throw new Error(
+        `Google Drive permission was not granted during authorization for ${email}. Granted scopes: [${scopes.join(', ')}]. ` +
+        `On Google's consent screen, please make sure to check the box for "See, edit, create, and delete only the specific Google Drive files you use with this app". ` +
+        `Also verify that Google Drive API is enabled and 'drive.file' scope is added under Data Access in Google Cloud Console project 407081249545.`
+      );
+    }
+
+    // 4. Upsert integration into Postgres
     // If refreshToken is omitted (re-auth without consent prompt), keep existing refreshToken
     let finalRefreshToken = refreshToken;
     if (!finalRefreshToken) {
@@ -187,9 +255,9 @@ export class GoogleDriveService {
       ['integ_google_drive', email, accessToken, finalRefreshToken, expiryDate, tokenType, scopes]
     );
 
-    console.log(`[GoogleDriveService] oauth_integrations record created: yes. Provider: google_drive, Account: ${email}, RefreshToken: ${!!finalRefreshToken}`);
+    console.log(`[GoogleDriveService] oauth_integrations record persisted. Provider: google_drive, Account: ${email}, RefreshToken: ${!!finalRefreshToken}`);
 
-    // 4. Ensure dedicated IKSHOVIA folders
+    // 5. Ensure dedicated IKSHOVIA folders
     const folders = await this.ensureFolderStructure(accessToken);
 
     return { email, folders };
@@ -206,17 +274,74 @@ export class GoogleDriveService {
     const status = await this.getStatus();
 
     let dbRecordExists = false;
-    let dbAccountEmail = null;
+    let dbAccountEmail: string | null = null;
     let dbHasRefreshToken = false;
+    let dbScopes: string[] = [];
+    let dbHasDriveScope = false;
     let dbUpdatedAt = null;
+    let liveDriveApiCheck: {
+      tested: boolean;
+      accessible: boolean;
+      status?: number;
+      reason?: string;
+      message?: string;
+      accountEmail?: string;
+      scopes?: string[];
+    } = { tested: false, accessible: false };
 
     try {
-      const dbRes = await pool.query("SELECT account_email, refresh_token, updated_at FROM public.oauth_integrations WHERE provider = 'google_drive'");
+      const dbRes = await pool.query(
+        "SELECT account_email, refresh_token, scopes, updated_at FROM public.oauth_integrations WHERE provider = 'google_drive'"
+      );
       if (dbRes.rows.length > 0) {
         dbRecordExists = true;
         dbAccountEmail = dbRes.rows[0].account_email;
         dbHasRefreshToken = !!dbRes.rows[0].refresh_token;
         dbUpdatedAt = dbRes.rows[0].updated_at;
+        const rawScopes = dbRes.rows[0].scopes;
+        dbScopes = Array.isArray(rawScopes) ? rawScopes : (typeof rawScopes === 'string' ? rawScopes.split(' ') : []);
+        dbHasDriveScope = dbScopes.some((s: string) => s.toLowerCase().includes('drive'));
+
+        // Perform safe live diagnostic probe against Google Drive API (files.list with pageSize 1)
+        try {
+          const accessToken = await this.getValidAccessToken();
+          const probeRes = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+
+          if (probeRes.ok) {
+            liveDriveApiCheck = {
+              tested: true,
+              accessible: true,
+              status: probeRes.status,
+              reason: 'SUCCESS',
+              message: 'Google Drive API is responding normally with valid access credentials.',
+              accountEmail: dbAccountEmail || undefined,
+              scopes: dbScopes,
+            };
+          } else {
+            const errRaw = await probeRes.text();
+            const parsed = this.parseGoogleApiError(probeRes.status, probeRes.statusText, errRaw, 'DriveFiles.Probe', dbAccountEmail || undefined);
+            liveDriveApiCheck = {
+              tested: true,
+              accessible: false,
+              status: parsed.status,
+              reason: parsed.reason,
+              message: parsed.message,
+              accountEmail: dbAccountEmail || undefined,
+              scopes: dbScopes,
+            };
+          }
+        } catch (probeErr: any) {
+          liveDriveApiCheck = {
+            tested: true,
+            accessible: false,
+            reason: 'TOKEN_OR_NETWORK_ERROR',
+            message: probeErr?.message || 'Failed to test Drive API with current credentials',
+            accountEmail: dbAccountEmail || undefined,
+            scopes: dbScopes,
+          };
+        }
       }
     } catch (e: any) {
       console.warn('[GoogleDriveService] DB diagnostics check error:', e?.message);
@@ -237,16 +362,19 @@ export class GoogleDriveService {
       redirectUri,
       expectedRedirectUri: 'https://ikshoviav3.onrender.com/api/auth/google/callback',
       redirectUriMatchesExpected: redirectUri === 'https://ikshoviav3.onrender.com/api/auth/google/callback',
-      scopes: this.getScopes(),
+      scopesRequested: this.getScopes(),
       databaseIntegration: {
         recordExists: dbRecordExists,
         accountEmail: dbAccountEmail,
         hasRefreshToken: dbHasRefreshToken,
+        grantedScopes: dbScopes,
+        hasDriveScope: dbHasDriveScope,
         updatedAt: dbUpdatedAt,
       },
+      liveDriveApiCheck,
       driveStatus: status,
       prompt: 'consent select_account',
-      testUsersGuidance: 'Project IKSHOVIA (ID: ikshovia, Project #: 407081249545) is the correct production project. If OAuth App publishing status is Testing in Google Cloud Console, the dedicated Google account (e.g. ibeingakash@gmail.com) MUST be added under Google Auth Platform -> Audience -> Test Users.',
+      testUsersGuidance: 'Project IKSHOVIA (ID: ikshovia, Project #: 407081249545) is the correct production project. Ensure the intended Google Drive account (ikshovia@gmail.com) is listed under Google Auth Platform -> Audience -> Test Users, and that "drive.file" scope is approved during OAuth consent.',
     };
   }
 
@@ -255,14 +383,14 @@ export class GoogleDriveService {
    */
   public async getValidAccessToken(): Promise<string> {
     const res = await pool.query(
-      "SELECT access_token, refresh_token, expiry_date FROM public.oauth_integrations WHERE provider = 'google_drive'"
+      "SELECT access_token, refresh_token, expiry_date, account_email FROM public.oauth_integrations WHERE provider = 'google_drive'"
     );
 
     if (res.rows.length === 0) {
       throw new Error('Google Drive integration is not connected. Please connect via Admin Studio.');
     }
 
-    const { access_token, refresh_token, expiry_date } = res.rows[0];
+    const { access_token, refresh_token, expiry_date, account_email } = res.rows[0];
     const now = Date.now();
 
     // If token is still valid for > 3 minutes, return it
@@ -281,7 +409,7 @@ export class GoogleDriveService {
       throw new Error('GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET environment variable is missing.');
     }
 
-    console.log('[GoogleDriveService] Refreshing expired access token...');
+    console.log(`[GoogleDriveService] Refreshing expired access token for account: ${account_email || 'unknown'}...`);
     const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -295,14 +423,27 @@ export class GoogleDriveService {
 
     if (!refreshRes.ok) {
       const errText = await refreshRes.text();
-      console.error('[GoogleDriveService] Refresh token failed:', errText);
-      throw new Error('Failed to refresh Google Drive access token. Please re-authenticate.');
+      const status = refreshRes.status;
+      let reason = 'REFRESH_FAILED';
+      let msg = refreshRes.statusText;
+      try {
+        const json = JSON.parse(errText);
+        reason = json.error || reason;
+        msg = json.error_description || msg;
+      } catch {}
+      console.error(`[GoogleDriveService] Refresh token failed. HTTP ${status}, Reason: ${reason}, Message: "${msg}", Account: ${account_email || 'unknown'}`);
+      throw new Error(`Failed to refresh Google Drive access token (HTTP ${status} ${reason}: ${msg}). Please re-authenticate.`);
     }
 
     const refreshed = await refreshRes.json();
     const newAccessToken = refreshed.access_token;
     const expiresInSec = refreshed.expires_in || 3600;
     const newExpiry = Date.now() + (expiresInSec - 120) * 1000;
+    const refreshedScopes = refreshed.scope ? refreshed.scope.split(' ').filter(Boolean) : null;
+
+    console.log(
+      `[GoogleDriveService] Token refresh successful. Account: ${account_email || 'unknown'}, Expires in: ${expiresInSec}s, Scopes: [${refreshedScopes ? refreshedScopes.join(', ') : 'preserved'}]`
+    );
 
     await pool.query(
       `UPDATE public.oauth_integrations
@@ -320,7 +461,7 @@ export class GoogleDriveService {
   public async getStatus(): Promise<DriveStatusResponse> {
     try {
       const res = await pool.query(
-        "SELECT account_email, expiry_date, folders_json, updated_at FROM public.oauth_integrations WHERE provider = 'google_drive'"
+        "SELECT account_email, expiry_date, folders_json, scopes, root_folder_id, updated_at FROM public.oauth_integrations WHERE provider = 'google_drive'"
       );
 
       if (res.rows.length === 0) {
@@ -328,11 +469,22 @@ export class GoogleDriveService {
       }
 
       const row = res.rows[0];
+      const rawScopes = row.scopes;
+      const scopes: string[] = Array.isArray(rawScopes) ? rawScopes : (typeof rawScopes === 'string' ? rawScopes.split(' ') : []);
+      const hasDriveScope = scopes.some((s: string) => s.toLowerCase().includes('drive'));
+      const hasFolders = !!(row.root_folder_id && row.folders_json);
+
       return {
-        connected: true,
+        connected: hasDriveScope,
         accountEmail: row.account_email || 'Connected Account',
         folders: row.folders_json || undefined,
         lastSync: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
+        hasDriveScope,
+        grantedScopes: scopes,
+        rootFolderCreated: !!row.root_folder_id,
+        error: !hasDriveScope
+          ? "Google Drive scope ('drive.file') is missing from authorization grant. Please click 'Connect Drive' and check the Drive permissions checkbox."
+          : (!hasFolders ? "Google Drive folder structure is pending verification." : undefined),
       };
     } catch {
       return { connected: false };
@@ -401,6 +553,9 @@ export class GoogleDriveService {
       if (data.files && data.files.length > 0) {
         return data.files[0].id;
       }
+    } else {
+      const errRaw = await searchRes.text();
+      this.parseGoogleApiError(searchRes.status, searchRes.statusText, errRaw, `DriveFiles.List[${folderName}]`);
     }
 
     // Create if not found
@@ -422,9 +577,9 @@ export class GoogleDriveService {
     });
 
     if (!createRes.ok) {
-      const errText = await createRes.text();
-      console.error(`[GoogleDriveService] Create folder '${folderName}' failed:`, errText);
-      throw new Error(`Failed to create Google Drive folder '${folderName}'`);
+      const errRaw = await createRes.text();
+      const parsed = this.parseGoogleApiError(createRes.status, createRes.statusText, errRaw, `DriveFiles.Create[${folderName}]`);
+      throw new Error(`Failed to create Google Drive folder '${folderName}' (${parsed.formattedError})`);
     }
 
     const createdData = await createRes.json();
@@ -462,9 +617,9 @@ export class GoogleDriveService {
     });
 
     if (!initRes.ok) {
-      const err = await initRes.text();
-      console.error('[GoogleDriveService] Resumable upload init failed:', err);
-      throw new Error(`Failed to initialize Google Drive resumable upload: ${initRes.statusText}`);
+      const errRaw = await initRes.text();
+      const parsed = this.parseGoogleApiError(initRes.status, initRes.statusText, errRaw, `DriveFiles.ResumableUploadInit[${fileName}]`);
+      throw new Error(`Failed to initialize Google Drive resumable upload: ${parsed.formattedError}`);
     }
 
     const locationUrl = initRes.headers.get('location');
@@ -483,9 +638,9 @@ export class GoogleDriveService {
     });
 
     if (!uploadRes.ok) {
-      const err = await uploadRes.text();
-      console.error('[GoogleDriveService] Resumable payload PUT failed:', err);
-      throw new Error(`Failed to upload file content to Google Drive: ${uploadRes.statusText}`);
+      const errRaw = await uploadRes.text();
+      const parsed = this.parseGoogleApiError(uploadRes.status, uploadRes.statusText, errRaw, `DriveFiles.ResumableUploadChunk[${fileName}]`);
+      throw new Error(`Failed to upload file content to Google Drive: ${parsed.formattedError}`);
     }
 
     const result = await uploadRes.json();

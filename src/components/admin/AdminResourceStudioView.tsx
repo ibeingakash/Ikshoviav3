@@ -192,8 +192,13 @@ export const AdminResourceStudioView: React.FC = () => {
     } else if (params.get('error')) {
       const err = params.get('error') || 'unknown_error';
       const desc = params.get('error_description') || '';
+      let title = `OAuth Error: ${err}`;
+      if (err === 'access_denied') title = 'Google Access Denied (403)';
+      else if (err === 'drive_scope_missing') title = 'Google Drive Permission Missing (Scope Insufficient)';
+      else if (err === 'drive_folder_failed') title = 'Google Drive Folder Creation Failed';
+
       setOauthErrorMessage({
-        title: err === 'access_denied' ? 'Google Access Denied (403)' : `OAuth Error: ${err}`,
+        title,
         desc: desc || (err === 'access_denied'
           ? 'Google blocked access because this Google account is not added as an authorized Test User in Google Cloud Console, or the OAuth consent screen is not configured for this account.'
           : 'Failed to complete Google Drive OAuth authorization.'),
@@ -622,13 +627,14 @@ export const AdminResourceStudioView: React.FC = () => {
                 {oauthErrorMessage.desc}
               </div>
               <div className="mt-2.5 bg-white/90 p-3 rounded-lg border border-red-100 text-stone-700 font-sans leading-relaxed">
-                <span className="font-semibold text-stone-900 block mb-1">How to resolve Google 403 / Access Denied:</span>
+                <span className="font-semibold text-stone-900 block mb-1">How to resolve Google Drive OAuth issues:</span>
                 <ol className="list-decimal list-inside space-y-1 text-stone-600">
                   <li>Go to <strong>Google Cloud Console</strong> &gt; Select project <strong>IKSHOVIA</strong> (Project ID: <code>ikshovia</code>, Project # <code>407081249545</code>).</li>
                   <li>Open <strong>Google Auth Platform &gt; Audience &gt; Test users</strong>.</li>
-                  <li>Click <strong>+ Add users</strong> and add the intended Google account email (e.g. <code>ibeingakash@gmail.com</code>).</li>
+                  <li>Ensure the dedicated account <code>ikshovia@gmail.com</code> (or your intended Google Drive account) is added as a Test User.</li>
                   <li>In <strong>APIs &amp; Services &gt; Enabled APIs &amp; Services</strong>, verify <strong>Google Drive API</strong> is enabled in project <code>407081249545</code>.</li>
-                  <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, ensure the client <strong>IKSHOVIA Resource Manager</strong> has Authorized Redirect URI: <code>https://ikshoviav3.onrender.com/api/auth/google/callback</code>.</li>
+                  <li>Under <strong>OAuth consent screen &gt; Scopes</strong> (or <strong>Data Access</strong>), ensure <code>.../auth/drive.file</code> is added to the project scopes.</li>
+                  <li>When authorising, make sure to <strong>check the checkbox</strong> for <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> on Google's consent screen.</li>
                 </ol>
               </div>
             </div>
@@ -1698,9 +1704,20 @@ export const AdminResourceStudioView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Database Status */}
+              {/* Database Status & Scopes */}
               <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200">
-                <span className="font-semibold text-stone-900 block mb-1">oauth_integrations Table</span>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-stone-900">oauth_integrations Table</span>
+                  {oauthDiagData.databaseIntegration?.hasDriveScope ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      DRIVE SCOPE GRANTED
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                      DRIVE SCOPE MISSING
+                    </span>
+                  )}
+                </div>
                 <div className="text-stone-600 space-y-1 text-[11px]">
                   <div>Record Exists: <strong>{oauthDiagData.databaseIntegration?.recordExists ? 'Yes' : 'No (Pending OAuth)'}</strong></div>
                   {oauthDiagData.databaseIntegration?.accountEmail && (
@@ -1709,19 +1726,49 @@ export const AdminResourceStudioView: React.FC = () => {
                   {oauthDiagData.databaseIntegration?.hasRefreshToken && (
                     <div>Refresh Token: <span className="text-emerald-700 font-bold">Stored Securely in PostgreSQL</span></div>
                   )}
+                  {oauthDiagData.databaseIntegration?.grantedScopes && oauthDiagData.databaseIntegration.grantedScopes.length > 0 && (
+                    <div className="mt-1 pt-1 border-t border-stone-200">
+                      <span className="text-stone-500">Granted Scopes in Token:</span>
+                      <div className="font-mono text-[10px] text-stone-700 mt-0.5 break-all">
+                        {oauthDiagData.databaseIntegration.grantedScopes.join(', ')}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Actionable 403 Fix Checklist */}
+              {/* Live Drive API Probe Check */}
+              {oauthDiagData.liveDriveApiCheck?.tested && (
+                <div className={`p-3.5 rounded-xl border ${oauthDiagData.liveDriveApiCheck.accessible ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-red-50 border-red-200 text-red-950'}`}>
+                  <div className="flex items-center justify-between font-bold mb-1">
+                    <span>Live Google Drive API Response</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${oauthDiagData.liveDriveApiCheck.accessible ? 'bg-emerald-200 text-emerald-900' : 'bg-red-200 text-red-900'}`}>
+                      {oauthDiagData.liveDriveApiCheck.accessible ? 'HTTP 200 OK' : `HTTP ${oauthDiagData.liveDriveApiCheck.status || 'ERROR'}`}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 text-[11px]">
+                    <div>Result: <strong>{oauthDiagData.liveDriveApiCheck.reason || (oauthDiagData.liveDriveApiCheck.accessible ? 'SUCCESS' : 'FAILURE')}</strong></div>
+                    <div>Message: <span>{oauthDiagData.liveDriveApiCheck.message}</span></div>
+                    {!oauthDiagData.liveDriveApiCheck.accessible && (
+                      <div className="mt-1.5 p-2 bg-white/80 rounded border border-red-100 text-[10px] leading-relaxed text-red-900">
+                        <strong>Diagnosis:</strong> The token in <code>oauth_integrations</code> was issued without <code>https://www.googleapis.com/auth/drive.file</code>. To resolve, click <em>Connect Drive</em> / <em>Authorize via Google OAuth 2.0</em> and check the box for <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> on Google's consent screen.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Actionable 403 & Scope Fix Checklist */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-blue-950">
-                <span className="font-bold block mb-1 text-sm text-blue-900">Google 403 Resolution Checklist (Project 407081249545):</span>
+                <span className="font-bold block mb-1 text-sm text-blue-900">Google Cloud Production Checklist (Project 407081249545):</span>
                 <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-blue-900">
                   <li>In Google Cloud Console, select project <strong>IKSHOVIA</strong> (Project ID: <code>ikshovia</code>, Project #: <code>407081249545</code>).</li>
                   <li>Navigate to <strong>Google Auth Platform &gt; Audience &gt; Test users</strong>.</li>
-                  <li>Click <strong>+ Add users</strong> and add the intended Google account email (e.g. <code>ibeingakash@gmail.com</code>). <em>(Crucial: If publishing status is Testing, unlisted accounts receive Google 403 Access Denied)</em>.</li>
+                  <li>Ensure the dedicated account <code>ikshovia@gmail.com</code> is listed as a Test User.</li>
                   <li>Navigate to <strong>APIs &amp; Services &gt; Enabled APIs &amp; Services</strong> and verify <strong>Google Drive API</strong> is enabled.</li>
+                  <li>Under <strong>Google Auth Platform &gt; Data Access</strong> (or <strong>OAuth consent screen &gt; Scopes</strong>), ensure <code>https://www.googleapis.com/auth/drive.file</code> is added.</li>
                   <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, click <strong>IKSHOVIA Resource Manager</strong> and confirm Authorized Redirect URI: <code>https://ikshoviav3.onrender.com/api/auth/google/callback</code>.</li>
-                  <li>Verify Render environment variables: <code>GOOGLE_CLIENT_ID</code> starts with <code>407081249545-</code> and matches the Client Secret.</li>
+                  <li>When logging in via OAuth, <strong>check the checkbox</strong> for <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> to grant Drive access.</li>
                 </ol>
               </div>
             </div>
