@@ -1,6 +1,6 @@
 {
   "name": "IKSHOVIA",
   "description": "AI-First Personal Learning Intelligence Platform - Unlock Human Potential Through Understanding",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

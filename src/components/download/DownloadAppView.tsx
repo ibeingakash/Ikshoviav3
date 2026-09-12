@@ -16,7 +16,8 @@ import {
   ArrowLeft,
   AlertTriangle
 } from 'lucide-react';
-import { IKLogo } from '../common/IKLogo.js';
+import { brandAssets } from '../../branding/brandAssets.js';
+import { BrandLogo } from '../common/BrandLogo.js';
 import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 
@@ -170,9 +171,9 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
       {/* Top Bar */}
       <nav className="sticky top-0 z-40 bg-[#FAF7F0]/95 backdrop-blur-md border-b border-stone-200/80 px-4 sm:px-8 py-3.5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <IKLogo
+          <BrandLogo
+            variant="dashboard"
             onClick={handleReturn}
-            showTagline={false}
             size="md"
           />
 
@@ -245,17 +246,24 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
         <div className="bg-white border border-stone-200/90 rounded-3xl p-6 sm:p-10 shadow-sm space-y-8">
           {/* Top Header & Primary Action Button */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-stone-200/80">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Android App — Available</span>
+            <div className="flex items-start gap-4">
+              <img
+                src={brandAssets.appIcon}
+                alt="IKSHOVIA App Icon"
+                className="w-16 h-16 rounded-2xl shadow-md shrink-0 object-contain"
+              />
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Android App — Available</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
+                  IKSHOVIA Android App
+                </h2>
+                <p className="text-xs text-stone-600 font-sans">
+                  Native Android package (Capacitor 8) • Ready for direct device testing & installation
+                </p>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
-                IKSHOVIA Android App
-              </h2>
-              <p className="text-xs text-stone-600 font-sans">
-                Native Android package (Capacitor 8) • Ready for direct device testing & installation
-              </p>
             </div>
 
             <a

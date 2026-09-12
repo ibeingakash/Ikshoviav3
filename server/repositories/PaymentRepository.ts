@@ -9,7 +9,10 @@ import {
 export interface PaymentOrderRecord {
   id: string;
   userId: string;
-  courseId: string;
+  courseId?: string | null;
+  productType?: 'COURSE' | 'TEST_SERIES';
+  productId?: string | null;
+  testSeriesId?: string | null;
   priceId?: string;
   provider: string;
   providerOrderId?: string;
@@ -26,7 +29,10 @@ export interface PaymentRecord {
   id: string;
   orderId: string;
   userId: string;
-  courseId: string;
+  courseId?: string | null;
+  productType?: 'COURSE' | 'TEST_SERIES';
+  productId?: string | null;
+  testSeriesId?: string | null;
   provider: string;
   providerPaymentId?: string;
   providerOrderId?: string;
@@ -86,7 +92,10 @@ export class PaymentRepository {
   async createOrder(data: {
     id: string;
     userId: string;
-    courseId: string;
+    courseId?: string | null;
+    productType?: 'COURSE' | 'TEST_SERIES';
+    productId?: string | null;
+    testSeriesId?: string | null;
     priceId?: string;
     provider?: string;
     providerOrderId?: string;
@@ -99,21 +108,28 @@ export class PaymentRepository {
     const query = `
       INSERT INTO public.payment_orders (
         id, user_id, course_id, price_id, provider, provider_order_id,
-        amount, currency, status, environment, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        amount, currency, status, environment, metadata,
+        product_type, product_id, test_series_id,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
       RETURNING *;
     `;
 
     const env = data.environment || 'LIVE';
+    const prodType = data.productType || (data.testSeriesId ? 'TEST_SERIES' : 'COURSE');
+    const prodId = data.productId || data.testSeriesId || data.courseId || null;
     const metadata = {
       ...(data.metadata || {}),
       environment: env,
+      productType: prodType,
+      productId: prodId,
+      testSeriesId: data.testSeriesId,
     };
 
     const res = await pool.query(query, [
       data.id,
       data.userId,
-      data.courseId,
+      data.courseId || null,
       data.priceId || null,
       data.provider || 'RAZORPAY',
       data.providerOrderId || null,
@@ -122,6 +138,9 @@ export class PaymentRepository {
       data.status || 'CREATED',
       env,
       JSON.stringify(metadata),
+      prodType,
+      prodId,
+      data.testSeriesId || null,
     ]);
 
     return this.mapOrder(res.rows[0]);
@@ -176,7 +195,10 @@ export class PaymentRepository {
     id: string;
     orderId: string;
     userId: string;
-    courseId: string;
+    courseId?: string | null;
+    productType?: 'COURSE' | 'TEST_SERIES';
+    productId?: string | null;
+    testSeriesId?: string | null;
     provider?: string;
     providerPaymentId?: string;
     providerOrderId?: string;
@@ -191,22 +213,29 @@ export class PaymentRepository {
     const query = `
       INSERT INTO public.payments (
         id, order_id, user_id, course_id, provider, provider_payment_id,
-        provider_order_id, amount, currency, status, environment, method, verified_at, metadata, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+        provider_order_id, amount, currency, status, environment, method, verified_at, metadata,
+        product_type, product_id, test_series_id,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
       RETURNING *;
     `;
 
     const env = data.environment || 'LIVE';
+    const prodType = data.productType || (data.testSeriesId ? 'TEST_SERIES' : 'COURSE');
+    const prodId = data.productId || data.testSeriesId || data.courseId || null;
     const metadata = {
       ...(data.metadata || {}),
       environment: env,
+      productType: prodType,
+      productId: prodId,
+      testSeriesId: data.testSeriesId,
     };
 
     const res = await pool.query(query, [
       data.id,
       data.orderId,
       data.userId,
-      data.courseId,
+      data.courseId || null,
       data.provider || 'RAZORPAY',
       data.providerPaymentId || null,
       data.providerOrderId || null,
@@ -217,6 +246,9 @@ export class PaymentRepository {
       data.method || null,
       data.verifiedAt || null,
       JSON.stringify(metadata),
+      prodType,
+      prodId,
+      data.testSeriesId || null,
     ]);
 
     return this.mapPayment(res.rows[0]);
@@ -737,7 +769,10 @@ export class PaymentRepository {
     return {
       id: row.id,
       userId: row.user_id,
-      courseId: row.course_id,
+      courseId: row.course_id || null,
+      productType: (row.product_type || (row.test_series_id ? 'TEST_SERIES' : 'COURSE')) as any,
+      productId: row.product_id || row.test_series_id || row.course_id || null,
+      testSeriesId: row.test_series_id || null,
       priceId: row.price_id,
       provider: row.provider,
       providerOrderId: row.provider_order_id,
@@ -756,7 +791,10 @@ export class PaymentRepository {
       id: row.id,
       orderId: row.order_id,
       userId: row.user_id,
-      courseId: row.course_id,
+      courseId: row.course_id || null,
+      productType: (row.product_type || (row.test_series_id ? 'TEST_SERIES' : 'COURSE')) as any,
+      productId: row.product_id || row.test_series_id || row.course_id || null,
+      testSeriesId: row.test_series_id || null,
       provider: row.provider,
       providerPaymentId: row.provider_payment_id,
       providerOrderId: row.provider_order_id,

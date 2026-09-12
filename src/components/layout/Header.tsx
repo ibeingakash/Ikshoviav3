@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, Bell, Sparkles, LogOut, ChevronDown, Smartphone } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
-import { IKLogo } from '../common/IKLogo.js';
+import { DashboardLogo } from '../common/BrandLogo.js';
 
 export const Header: React.FC = () => {
   const { user, logout } = useAuth();
@@ -15,13 +15,12 @@ export const Header: React.FC = () => {
     <header id="app-header" className="sticky top-0 z-30 bg-[#FAF8F5]/90 backdrop-blur-md text-stone-900 border-b border-[#EAE6DF] px-3 sm:px-6 py-2.5 shadow-2xs font-sans-editorial">
       <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-3 min-w-0">
         
-        {/* Brand Logo & Wordmark */}
+        {/* Brand Logo & Wordmark (Dashboard variant) */}
         <div className="flex items-center gap-3 shrink-0 min-w-0">
-          <IKLogo
+          <DashboardLogo
             onClick={() => setActiveSection('dashboard')}
-            showTagline={true}
-            taglineText="Unlock Human Potential Through Understanding"
             size="sm"
+            className="hover:opacity-90 transition-opacity"
           />
         </div>
 

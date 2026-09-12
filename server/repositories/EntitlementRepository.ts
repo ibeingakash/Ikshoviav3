@@ -4,20 +4,23 @@ import { Entitlement, EntitlementSource, EntitlementStatus, PlatformFeatureCode 
 export class EntitlementRepository {
   async getUserEntitlements(userId: string): Promise<Entitlement[]> {
     const query = `
-      SELECT 
+      SELECT
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
+        e.product_type, e.product_id, e.test_series_id,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
+        ts.name as test_series_name,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
-           FROM public.course_features cf 
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
+           FROM public.course_features cf
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
       FROM public.entitlements e
       LEFT JOIN public.users u ON e.user_id = u.id
       LEFT JOIN public.courses c ON e.course_id = c.id
+      LEFT JOIN public.test_series ts ON (e.test_series_id = ts.id OR (e.product_type = 'TEST_SERIES' AND e.product_id = ts.id))
       LEFT JOIN public.users gb ON e.granted_by = gb.id
       WHERE e.user_id = $1
       ORDER BY e.created_at DESC
@@ -26,22 +29,25 @@ export class EntitlementRepository {
     return res.rows.map(r => this.mapRowToEntitlement(r));
   }
 
-  async listAllEntitlements(filter?: { status?: string; courseId?: string; userId?: string }): Promise<Entitlement[]> {
+  async listAllEntitlements(filter?: { status?: string; courseId?: string; testSeriesId?: string; userId?: string }): Promise<Entitlement[]> {
     let query = `
-      SELECT 
+      SELECT
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
+        e.product_type, e.product_id, e.test_series_id,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
+        ts.name as test_series_name,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
-           FROM public.course_features cf 
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
+           FROM public.course_features cf
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
       FROM public.entitlements e
       LEFT JOIN public.users u ON e.user_id = u.id
       LEFT JOIN public.courses c ON e.course_id = c.id
+      LEFT JOIN public.test_series ts ON (e.test_series_id = ts.id OR (e.product_type = 'TEST_SERIES' AND e.product_id = ts.id))
       LEFT JOIN public.users gb ON e.granted_by = gb.id
       WHERE 1=1
     `;
@@ -53,6 +59,10 @@ export class EntitlementRepository {
     if (filter?.courseId) {
       params.push(filter.courseId);
       query += ` AND e.course_id = $${params.length}`;
+    }
+    if (filter?.testSeriesId) {
+      params.push(filter.testSeriesId);
+      query += ` AND (e.test_series_id = $${params.length} OR (e.product_type = 'TEST_SERIES' AND e.product_id = $${params.length}))`;
     }
     if (filter?.userId) {
       params.push(filter.userId);
@@ -66,20 +76,23 @@ export class EntitlementRepository {
 
   async getEntitlementById(id: string): Promise<Entitlement | null> {
     const query = `
-      SELECT 
+      SELECT
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
+        e.product_type, e.product_id, e.test_series_id,
         u.name as user_name, u.email as user_email,
         c.name as course_name, c.exam as course_exam,
+        ts.name as test_series_name,
         COALESCE(
-          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code) 
-           FROM public.course_features cf 
+          (SELECT json_agg(cf.feature_code ORDER BY cf.feature_code)
+           FROM public.course_features cf
            WHERE cf.course_id = e.course_id), '[]'::json
         ) as features,
         gb.name as granted_by_name
       FROM public.entitlements e
       LEFT JOIN public.users u ON e.user_id = u.id
       LEFT JOIN public.courses c ON e.course_id = c.id
+      LEFT JOIN public.test_series ts ON (e.test_series_id = ts.id OR (e.product_type = 'TEST_SERIES' AND e.product_id = ts.id))
       LEFT JOIN public.users gb ON e.granted_by = gb.id
       WHERE e.id = $1
     `;
@@ -103,7 +116,7 @@ export class EntitlementRepository {
 
     const query = `
       INSERT INTO public.entitlements (
-        id, user_id, course_id, status, source, starts_at, expires_at, 
+        id, user_id, course_id, status, source, starts_at, expires_at,
         granted_by, metadata
       ) VALUES ($1, $2, $3, 'ACTIVE', $4, $5, $6, $7, $8)
       RETURNING *
@@ -146,7 +159,7 @@ export class EntitlementRepository {
 
     const query = `
       UPDATE public.entitlements
-      SET 
+      SET
         expires_at = $2::timestamptz,
         status = 'ACTIVE',
         updated_at = NOW(),
@@ -176,7 +189,7 @@ export class EntitlementRepository {
   async revokeEntitlement(entitlementId: string, revokerId?: string, reason?: string): Promise<Entitlement> {
     const query = `
       UPDATE public.entitlements
-      SET 
+      SET
         status = 'REVOKED',
         updated_at = NOW(),
         metadata = jsonb_set(
@@ -258,7 +271,7 @@ export class EntitlementRepository {
 
     const insertQuery = `
       INSERT INTO public.entitlements (
-        id, user_id, course_id, status, source, starts_at, expires_at, 
+        id, user_id, course_id, status, source, starts_at, expires_at,
         granted_by, payment_id, environment, metadata, created_at, updated_at
       ) VALUES ($1, $2, $3, 'ACTIVE', 'PAYMENT', $4, $5, NULL, $6, $7, $8, NOW(), NOW())
       RETURNING id;
@@ -288,6 +301,134 @@ export class EntitlementRepository {
     return created!;
   }
 
+  async grantOrExtendTestSeriesEntitlement(
+    userId: string,
+    testSeriesId: string,
+    durationDays: number,
+    paymentId?: string,
+    orderId?: string,
+    amount: number = 0,
+    source: EntitlementSource = 'PAYMENT',
+    environment: 'LIVE' | 'TEST' = 'LIVE',
+    metadata?: Record<string, any>
+  ): Promise<Entitlement> {
+    const existingQuery = `
+      SELECT * FROM public.entitlements
+      WHERE user_id = $1
+        AND (test_series_id = $2 OR (product_type = 'TEST_SERIES' AND (metadata->>'testSeriesId' = $2 OR product_id = $2)))
+        AND status = 'ACTIVE'
+      ORDER BY expires_at DESC NULLS FIRST
+      LIMIT 1;
+    `;
+    const existingRes = await pool.query(existingQuery, [userId, testSeriesId]);
+
+    if (existingRes.rows.length > 0) {
+      const existing = existingRes.rows[0];
+      const now = new Date();
+      const currentExpiry = existing.expires_at ? new Date(existing.expires_at) : now;
+      const baseDate = currentExpiry > now ? currentExpiry : now;
+      const newExpiresAt = new Date(baseDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+      const updateQuery = `
+        UPDATE public.entitlements
+        SET expires_at = $2::timestamptz,
+            payment_id = COALESCE($3, payment_id),
+            environment = $5,
+            updated_at = NOW(),
+            metadata = jsonb_set(
+              COALESCE(metadata, '{}'::jsonb),
+              '{renewals}',
+              (COALESCE(metadata->'renewals', '[]'::jsonb) || $4::jsonb)
+            )
+        WHERE id = $1
+        RETURNING id;
+      `;
+      const renewalRecord = JSON.stringify([{
+        paymentId,
+        orderId,
+        environment,
+        extendedAt: new Date().toISOString(),
+        previousExpiry: existing.expires_at ? new Date(existing.expires_at).toISOString() : null,
+        newExpiry: newExpiresAt.toISOString(),
+      }]);
+      await pool.query(updateQuery, [
+        existing.id,
+        newExpiresAt.toISOString(),
+        paymentId || null,
+        renewalRecord,
+        environment,
+      ]);
+      const updated = await this.getEntitlementById(existing.id);
+      return updated!;
+    }
+
+    const id = `ent_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const startsAt = new Date();
+    const expiresAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+    const insertQuery = `
+      INSERT INTO public.entitlements (
+        id, user_id, course_id, test_series_id, product_type, product_id,
+        status, source, starts_at, expires_at,
+        granted_by, payment_id, environment, metadata, created_at, updated_at
+      ) VALUES ($1, $2, NULL, $3, 'TEST_SERIES', $3, 'ACTIVE', $4, $5, $6, NULL, $7, $8, $9, NOW(), NOW())
+      RETURNING id;
+    `;
+
+    const meta = {
+      testSeriesId,
+      orderId,
+      paymentId,
+      amount,
+      durationDays,
+      environment,
+      isTest: environment === 'TEST',
+      ...metadata,
+    };
+
+    await pool.query(insertQuery, [
+      id,
+      userId,
+      testSeriesId,
+      source,
+      startsAt.toISOString(),
+      expiresAt.toISOString(),
+      paymentId || null,
+      environment,
+      JSON.stringify(meta),
+    ]);
+
+    const created = await this.getEntitlementById(id);
+    return created!;
+  }
+
+  async checkUserTestSeriesAccess(userId: string, testSeriesId: string): Promise<{ hasAccess: boolean; entitlement?: Entitlement }> {
+    const query = `
+      SELECT
+        e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
+        e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
+        e.product_type, e.product_id, e.test_series_id,
+        ts.name as test_series_name
+      FROM public.entitlements e
+      LEFT JOIN public.test_series ts ON (e.test_series_id = ts.id OR (e.product_type = 'TEST_SERIES' AND e.product_id = ts.id))
+      WHERE e.user_id = $1
+        AND (e.test_series_id = $2 OR (e.product_type = 'TEST_SERIES' AND (e.metadata->>'testSeriesId' = $2 OR e.product_id = $2)))
+        AND e.status = 'ACTIVE'
+        AND e.starts_at <= NOW()
+        AND (e.expires_at IS NULL OR e.expires_at > NOW())
+      ORDER BY e.expires_at DESC NULLS FIRST
+      LIMIT 1;
+    `;
+    const res = await pool.query(query, [userId, testSeriesId]);
+    if (res.rows.length === 0) {
+      return { hasAccess: false };
+    }
+    return {
+      hasAccess: true,
+      entitlement: this.mapRowToEntitlement(res.rows[0]),
+    };
+  }
+
   async revokeByPaymentId(paymentId: string, revokerId?: string, reason: string = 'Payment refunded'): Promise<Entitlement | null> {
     const findQuery = `
       SELECT id FROM public.entitlements
@@ -303,7 +444,7 @@ export class EntitlementRepository {
 
   async checkUserFeatureAccess(userId: string, featureCode: string): Promise<{ hasAccess: boolean; entitlement?: Entitlement }> {
     const query = `
-      SELECT 
+      SELECT
         e.id, e.user_id, e.course_id, e.status, e.source, e.starts_at, e.expires_at,
         e.granted_by, e.payment_id, e.metadata, e.created_at, e.updated_at,
         c.name as course_name, c.exam as course_exam
@@ -368,9 +509,13 @@ export class EntitlementRepository {
       userId: row.user_id,
       userName: row.user_name,
       userEmail: row.user_email,
-      courseId: row.course_id,
+      courseId: row.course_id || null,
       courseName: row.course_name,
       courseExam: row.course_exam,
+      productType: (row.product_type || (row.test_series_id ? 'TEST_SERIES' : 'COURSE')) as any,
+      productId: row.product_id || row.test_series_id || row.course_id,
+      testSeriesId: row.test_series_id || null,
+      testSeriesName: row.test_series_name,
       features: Array.isArray(row.features) ? row.features : [],
       status: effectiveStatus,
       source: row.source,

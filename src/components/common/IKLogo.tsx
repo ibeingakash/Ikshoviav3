@@ -1,8 +1,9 @@
 import React from 'react';
-import { IKBrandMark } from './IKBrandMark.js';
+import { BrandLogo } from './BrandLogo.js';
+import { BrandLogoVariant } from '../../branding/brandAssets.js';
 
-interface IKLogoProps {
-  variant?: 'light' | 'dark';
+export interface IKLogoProps {
+  variant?: 'light' | 'dark' | BrandLogoVariant;
   showTagline?: boolean;
   taglineText?: string;
   size?: 'sm' | 'md' | 'lg';
@@ -10,64 +11,39 @@ interface IKLogoProps {
   className?: string;
 }
 
+/**
+ * IKLogo facade component maintaining backwards compatibility while routing
+ * directly to the official IKSHOVIA single source of truth brand assets.
+ */
 export const IKLogo: React.FC<IKLogoProps> = ({
-  variant = 'light', // 'light' background = dark text; 'dark' background = white text
+  variant = 'light',
   showTagline = true,
-  taglineText = "Unlock Human Potential Through Understanding",
   size = 'md',
   onClick,
   className = '',
 }) => {
-  const isDark = variant === 'dark';
+  // Map historical light/dark variant to the official asset mapping:
+  let resolvedVariant: BrandLogoVariant = 'dashboard';
+  if (variant === 'dark') {
+    resolvedVariant = showTagline ? 'primary' : 'horizontal';
+  } else if (variant === 'light') {
+    resolvedVariant = showTagline ? 'login' : 'dashboard';
+  } else {
+    resolvedVariant = variant as BrandLogoVariant;
+  }
 
-  const markSizes = {
-    sm: 'sm' as const,
-    md: 'md' as const,
-    lg: 'lg' as const,
-  };
-
-  const textSizes = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-2xl sm:text-3xl',
-  };
-
-  const taglineSizes = {
-    sm: 'text-[9px]',
-    md: 'text-[10px]',
-    lg: 'text-xs',
+  const sizeMap: Record<string, 'sm' | 'md' | 'lg'> = {
+    sm: 'sm',
+    md: 'md',
+    lg: 'lg',
   };
 
   return (
-    <div
+    <BrandLogo
+      variant={resolvedVariant}
+      size={sizeMap[size] || 'md'}
       onClick={onClick}
-      className={`inline-flex items-center gap-3 select-none ${
-        onClick ? 'cursor-pointer' : ''
-      } ${className}`}
-    >
-      <div className={`p-1 rounded-xl ${isDark ? 'bg-[#17132B]/80 border border-amber-500/30' : 'bg-[#0C1024] border border-amber-500/20'} shadow-xs`}>
-        <IKBrandMark size={markSizes[size]} glow={isDark} />
-      </div>
-
-      <div className="flex flex-col">
-        <span
-          className={`font-serif-editorial font-bold tracking-tight leading-none ${
-            textSizes[size]
-          } ${isDark ? 'text-white' : 'text-[#111426]'}`}
-        >
-          IKSHOVIA
-        </span>
-
-        {showTagline && (
-          <span
-            className={`font-serif-editorial italic font-medium tracking-wide mt-0.5 hidden sm:inline truncate max-w-[280px] ${
-              taglineSizes[size]
-            } ${isDark ? 'text-amber-300/90' : 'text-[#8A6721]'}`}
-          >
-            {taglineText}
-          </span>
-        )}
-      </div>
-    </div>
+      className={className}
+    />
   );
 };

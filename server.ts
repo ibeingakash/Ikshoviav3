@@ -21,12 +21,16 @@ import { entitlementRepository } from './server/repositories/EntitlementReposito
 import { couponRepository } from './server/repositories/CouponRepository.js';
 import { paymentService } from './server/services/payments/PaymentService.js';
 import { paymentRepository } from './server/repositories/PaymentRepository.js';
+import { testSeriesRepository } from './server/repositories/TestSeriesRepository.js';
 import { currentAffairsIngestionManager } from './server/services/CurrentAffairsProvider.js';
 import { currentAffairsAiService } from './server/services/CurrentAffairsAiService.js';
 import { ensureFastApiBridgeStarted, proxyFastApiHealth, proxyFastApiRequest } from './server/services/fastapiBridge.js';
 import { openapiSpec } from './server/openapiSpec.js';
 import pool from './server/db/pool.js';
 import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
+import { liveClassRepository } from './server/repositories/LiveClassRepository.js';
+import { createLiveClassRouter } from './server/routes/liveClassRoutes.js';
+import { setupLiveClassWebSocket } from './server/liveClassSocket.js';
 import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './server/db/syllabusData.js';
 import {
   recordQuestionAttempt,
@@ -372,6 +376,7 @@ async function startServer() {
     try {
       await ensureDatabaseSchema();
       await initDatabase();
+      await liveClassRepository.ensureSchema();
       db.ensureAuthoritativeContent();
       await userRepository.ensureDefaultAccounts(hashPassword);
       await currentAffairsRepository.ensureSeedArticles();
@@ -428,6 +433,9 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', app: 'IKSHOVIA', timestamp: new Date().toISOString() });
   });
+
+  // Mount Live Classroom API Router
+  app.use('/api/live', createLiveClassRouter(requireAuth, requireAdmin));
 
   // OpenAPI Specification endpoint
   app.get('/openapi.json', (req, res) => {
@@ -1193,13 +1201,81 @@ async function startServer() {
     }
   });
 
-  // Admin Mock Test Update (Display Name & Settings)
+  // Admin Mock Test Update (Display Name, Settings, Duration, Marks, Negative Marking)
   app.patch('/api/admin/mock-tests/:id', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const { displayName, title } = req.body;
-      const updated = await mockTestRepository.updateDisplayName(id, displayName || title);
+      const updated = await mockTestRepository.updateMockTest(id, req.body);
       res.json({ success: true, test: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Get Mock Test Questions for Editing
+  app.get('/api/admin/mock-tests/:id/questions', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const questions = await mockTestRepository.getTestQuestions(id);
+      res.json({ success: true, questions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Update Question with Versioning & Audit Trail
+  app.put('/api/admin/mock-tests/:id/questions/:questionId', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { questionId } = req.params;
+      const { reason, ...updates } = req.body;
+      const changedBy = user?.name || user?.email || 'Admin';
+
+      const result = await mockTestRepository.updateQuestionWithAudit(
+        questionId,
+        updates,
+        changedBy,
+        reason || 'Admin published test correction'
+      );
+
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Add Question to Mock Test
+  app.post('/api/admin/mock-tests/:id/questions', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { questionId, orderNum } = req.body;
+      if (!questionId) {
+        return res.status(400).json({ error: 'questionId is required' });
+      }
+      await mockTestRepository.addQuestionToMockTest(id, questionId, orderNum);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Remove Question from Mock Test
+  app.delete('/api/admin/mock-tests/:id/questions/:questionId', requireAuth, async (req, res) => {
+    try {
+      const { id, questionId } = req.params;
+      await mockTestRepository.removeQuestionFromMockTest(id, questionId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin Get Question Revisions (Version History)
+  app.get('/api/admin/questions/:questionId/revisions', requireAuth, async (req, res) => {
+    try {
+      const { questionId } = req.params;
+      const revisions = await mockTestRepository.getQuestionRevisions(questionId);
+      res.json({ success: true, revisions });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1451,7 +1527,48 @@ async function startServer() {
         return res.status(404).json({ error: 'Mock test not found or not published' });
       }
 
-      const attempt = await mockTestRepository.startAttempt(userId, test.id);
+      // Check commercial test series entitlement access control
+      if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+        const seriesCheck = await pool.query(`
+          SELECT ts.id, ts.name, ts.target_exam, ts.sale_price, ts.is_free, tst.is_free_preview
+          FROM public.test_series_tests tst
+          JOIN public.test_series ts ON tst.test_series_id = ts.id
+          WHERE tst.mock_test_id = $1 AND ts.status = 'PUBLISHED';
+        `, [test.id]);
+
+        if (seriesCheck.rows.length > 0) {
+          // If in ANY published series it is marked free preview or the series is free, allow attempt
+          const isFreePreview = seriesCheck.rows.some(r => r.is_free_preview === true || r.is_free === true);
+          if (!isFreePreview) {
+            // Must have active entitlement to at least one of these series
+            let hasEntitlement = false;
+            for (const s of seriesCheck.rows) {
+              const entitled = await testSeriesRepository.checkUserSeriesEntitlement(userId, s.id);
+              if (entitled) {
+                hasEntitlement = true;
+                break;
+              }
+            }
+
+            if (!hasEntitlement) {
+              const primarySeries = seriesCheck.rows[0];
+              return res.status(403).json({
+                error: 'ACCESS_LOCKED',
+                message: `This test is part of "${primarySeries.name}" and requires an active enrollment or purchase to attempt.`,
+                testSeries: {
+                  id: primarySeries.id,
+                  name: primarySeries.name,
+                  targetExam: primarySeries.target_exam,
+                  salePrice: parseFloat(primarySeries.sale_price || '0'),
+                },
+              });
+            }
+          }
+        }
+      }
+
+      const { forceNew } = req.body || {};
+      const attempt = await mockTestRepository.startAttempt(userId, test.id, !!forceNew);
       const questions = await mockTestRepository.getTestQuestions(test.id);
       const answers = await mockTestRepository.getAttemptAnswers(userId, attempt.id);
 
@@ -3508,6 +3625,360 @@ async function startServer() {
   });
 
   // ====================================================================
+  // TEST SERIES MARKETPLACE & ADMIN TEST SERIES STUDIO
+  // ====================================================================
+
+  // Learner: List published test series
+  app.get('/api/test-series', async (req, res) => {
+    try {
+      const { exam, cycle, category, isFree, search, page, limit } = req.query;
+      const user = await getAuthenticatedUser(req).catch(() => null);
+
+      const result = await testSeriesRepository.listTestSeries({
+        status: 'PUBLISHED',
+        exam: exam as string,
+        cycle: cycle as string,
+        category: category as string,
+        isFree: isFree === 'true' ? true : isFree === 'false' ? false : undefined,
+        search: search as string,
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 12,
+        userId: user?.id,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error('[GetTestSeries Error]', err.message);
+      res.status(500).json({ error: err.message || 'Failed to list test series' });
+    }
+  });
+
+  // Learner: Exam summary for test series
+  app.get('/api/test-series/exams/summary', async (req, res) => {
+    try {
+      const summary = await testSeriesRepository.getExamsSummary();
+      res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get exam series summary' });
+    }
+  });
+
+  // Learner: Test series detail by slug or ID with hydrated test items & user attempts
+  app.get('/api/test-series/:slugOrId', async (req, res) => {
+    try {
+      const user = await getAuthenticatedUser(req).catch(() => null);
+      let seriesWithTests = await testSeriesRepository.getTestSeriesById(req.params.slugOrId, user?.id);
+
+      if (!seriesWithTests) {
+        seriesWithTests = await testSeriesRepository.getTestSeriesBySlug(req.params.slugOrId, user?.id);
+      }
+
+      if (!seriesWithTests) {
+        return res.status(404).json({ error: 'Test series not found' });
+      }
+
+      // If user is admin/supervisor, grant full access
+      if (user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN')) {
+        seriesWithTests.isEnrolled = true;
+      }
+
+      res.json(seriesWithTests);
+    } catch (err: any) {
+      console.error('[GetTestSeriesDetail Error]', err.message);
+      res.status(500).json({ error: err.message || 'Failed to get test series details' });
+    }
+  });
+
+  // Learner: Free enrollment
+  app.post('/api/test-series/:id/enroll-free', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const series = await testSeriesRepository.getTestSeriesById(req.params.id);
+
+      if (!series) {
+        return res.status(404).json({ error: 'Test series not found' });
+      }
+
+      if (series.status !== 'PUBLISHED') {
+        return res.status(400).json({ error: 'This test series is not published' });
+      }
+
+      if (!series.isFree && series.salePrice > 0) {
+        return res.status(400).json({ error: 'This is a paid test series. Please complete checkout to enroll.' });
+      }
+
+      const durationDays = series.durationDays || 180;
+      const entitlement = await entitlementRepository.grantOrExtendTestSeriesEntitlement(
+        user.id,
+        series.id,
+        durationDays,
+        undefined,
+        undefined,
+        0,
+        'PROMOTION',
+        'LIVE',
+        { testSeriesName: series.name, freeEnrollment: true }
+      );
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_FREE_ENROLLMENT',
+        'ENTITLEMENT',
+        entitlement.id,
+        { seriesId: series.id, seriesName: series.name },
+        req.ip
+      );
+
+      res.json({ success: true, message: 'Successfully enrolled in test series', entitlement });
+    } catch (err: any) {
+      console.error('[EnrollFree Error]', err.message);
+      res.status(500).json({ error: err.message || 'Failed to enroll in free test series' });
+    }
+  });
+
+  // Admin: List all test series
+  app.get('/api/admin/test-series', requireAdmin, async (req, res) => {
+    try {
+      const { status, targetExam, category, search, page, limit } = req.query;
+      const result = await testSeriesRepository.listTestSeries({
+        status: status as string,
+        exam: targetExam as string,
+        category: category as string,
+        search: search as string,
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch test series for admin' });
+    }
+  });
+
+  // Admin: Create test series
+  app.post('/api/admin/test-series', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const body = req.body || {};
+
+      if (!body.name || !body.targetExam) {
+        return res.status(400).json({ error: 'Name and Target Exam are required' });
+      }
+
+      // Generate clean slug if not given
+      const slug = (body.slug && body.slug.trim())
+        ? body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
+        : `${body.targetExam.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
+
+      const created = await testSeriesRepository.createTestSeries({
+        name: body.name,
+        slug,
+        targetExam: body.targetExam,
+        examCycle: body.examCycle || '2026',
+        category: body.category || 'PRELIMS',
+        description: body.description || '',
+        mrp: parseFloat(body.mrp || '0'),
+        salePrice: parseFloat(body.salePrice || '0'),
+        isFree: body.isFree === true || parseFloat(body.salePrice || '0') === 0,
+        status: body.status || 'DRAFT',
+        durationDays: parseInt(body.durationDays || '180', 10),
+        language: body.language || 'English / Hindi',
+        coverImage: body.coverImageUrl || body.coverImage || undefined,
+        displayOrder: parseInt(body.displayOrder || '0', 10),
+        createdBy: user.id,
+      });
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_CREATED',
+        'TEST_SERIES',
+        created.id,
+        { name: created.name, targetExam: created.targetExam },
+        req.ip
+      );
+
+      res.status(201).json(created);
+    } catch (err: any) {
+      console.error('[CreateTestSeries Error]', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create test series' });
+    }
+  });
+
+  // Admin: Get test series details
+  app.get('/api/admin/test-series/:id', requireAdmin, async (req, res) => {
+    try {
+      const seriesWithTests = await testSeriesRepository.getTestSeriesById(req.params.id);
+      if (!seriesWithTests) {
+        return res.status(404).json({ error: 'Test series not found' });
+      }
+      res.json(seriesWithTests);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch test series' });
+    }
+  });
+
+  // Admin: Update test series
+  app.put('/api/admin/test-series/:id', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const updated = await testSeriesRepository.updateTestSeries(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: 'Test series not found' });
+      }
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_UPDATED',
+        'TEST_SERIES',
+        updated.id,
+        { updates: Object.keys(req.body) },
+        req.ip
+      );
+
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update test series' });
+    }
+  });
+
+  // Admin: Delete test series
+  app.delete('/api/admin/test-series/:id', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const success = await testSeriesRepository.deleteOrArchiveTestSeries(req.params.id, false);
+      if (!success) {
+        return res.status(404).json({ error: 'Test series not found' });
+      }
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_DELETED',
+        'TEST_SERIES',
+        req.params.id,
+        {},
+        req.ip
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to delete test series' });
+    }
+  });
+
+  // Admin: Search available mock tests to link
+  app.get('/api/admin/test-series/:id/available-tests', requireAdmin, async (req, res) => {
+    try {
+      const search = (req.query.search as string) || '';
+      const available = await testSeriesRepository.getAvailableMockTestsForSeries(req.params.id, search);
+      res.json(available);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch available mock tests' });
+    }
+  });
+
+  // Admin: Link mock test to series
+  app.post('/api/admin/test-series/:id/tests', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { mockTestId, isFreePreview, sequenceNumber } = req.body;
+
+      if (!mockTestId) {
+        return res.status(400).json({ error: 'mockTestId is required' });
+      }
+
+      await testSeriesRepository.addTestToSeries(req.params.id, mockTestId, {
+        isFreePreview: isFreePreview === true,
+        sequenceNumber: sequenceNumber ? parseInt(sequenceNumber, 10) : undefined,
+      });
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_TEST_LINKED',
+        'TEST_SERIES',
+        req.params.id,
+        { mockTestId, isFreePreview },
+        req.ip
+      );
+
+      const updatedSeries = await testSeriesRepository.getTestSeriesById(req.params.id);
+      res.status(201).json({ success: true, series: updatedSeries });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to link test to series' });
+    }
+  });
+
+  // Admin: Update test link in series
+  app.put('/api/admin/test-series/:id/tests/:mockTestId', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { isFreePreview, sequenceNumber, status } = req.body;
+
+      await testSeriesRepository.updateTestInSeries(req.params.id, req.params.mockTestId, {
+        isFreePreview,
+        sequenceNumber,
+        status,
+      });
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_TEST_UPDATED',
+        'TEST_SERIES',
+        req.params.id,
+        { mockTestId: req.params.mockTestId, updates: req.body },
+        req.ip
+      );
+
+      const updatedSeries = await testSeriesRepository.getTestSeriesById(req.params.id);
+      res.json({ success: true, series: updatedSeries });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to update test link in series' });
+    }
+  });
+
+  // Admin: Unlink test from series
+  app.delete('/api/admin/test-series/:id/tests/:mockTestId', requireAdmin, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      await testSeriesRepository.removeTestFromSeries(req.params.id, req.params.mockTestId);
+
+      logAudit(
+        user.id,
+        user.role,
+        'TEST_SERIES_TEST_UNLINKED',
+        'TEST_SERIES',
+        req.params.id,
+        { mockTestId: req.params.mockTestId },
+        req.ip
+      );
+
+      const updatedSeries = await testSeriesRepository.getTestSeriesById(req.params.id);
+      res.json({ success: true, series: updatedSeries });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to unlink test from series' });
+    }
+  });
+
+  // Admin: Bulk reorder tests
+  app.put('/api/admin/test-series/:id/tests-reorder', requireAdmin, async (req, res) => {
+    try {
+      const { testIdsInOrder } = req.body;
+      if (!Array.isArray(testIdsInOrder)) {
+        return res.status(400).json({ error: 'testIdsInOrder array is required' });
+      }
+
+      await testSeriesRepository.reorderTestsInSeries(req.params.id, testIdsInOrder);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to reorder tests in series' });
+    }
+  });
+
+  // ====================================================================
   // PRODUCTION PAYMENT ARCHITECTURE (RAZORPAY + VERIFIED ENTITLEMENTS)
   // ====================================================================
 
@@ -3524,36 +3995,93 @@ async function startServer() {
   // 2. Order Creation with Strict Server-Side Price Calculation
   app.post('/api/payments/create-order', requireAuth, async (req, res) => {
     const user = (req as any).user;
-    const { courseId, couponCode } = req.body || {};
+    const { courseId, testSeriesId, couponCode } = req.body || {};
 
-    if (!courseId) {
-      return res.status(400).json({ error: 'courseId is required to create a payment order' });
+    if (!courseId && !testSeriesId) {
+      return res.status(400).json({ error: 'courseId or testSeriesId is required to create a payment order' });
     }
 
     try {
-      // 1. Fetch course from canonical database
-      const course = await courseRepository.getCourseById(courseId);
-      if (!course) {
-        return res.status(404).json({ error: `Course not found with ID: ${courseId}` });
+      let isTestSeries = !!testSeriesId;
+      let course: any = null;
+      let testSeries: any = null;
+      let originalPayableAmount = 0;
+      let currency = 'INR';
+      let productMetadata: any = {};
+      let orderNotes: any = {};
+
+      if (isTestSeries) {
+        // Fetch test series from canonical database
+        testSeries = await testSeriesRepository.getTestSeriesById(testSeriesId);
+        if (!testSeries) {
+          return res.status(404).json({ error: `Test Series not found with ID: ${testSeriesId}` });
+        }
+        if (testSeries.status !== 'PUBLISHED') {
+          return res.status(400).json({ error: 'This Test Series is currently not published for enrollment' });
+        }
+
+        // Strict Price Integrity from canonical DB
+        originalPayableAmount = typeof testSeries.salePrice === 'number' && testSeries.salePrice >= 0
+          ? testSeries.salePrice
+          : testSeries.mrp;
+
+        currency = testSeries.currency || 'INR';
+        productMetadata = {
+          productType: 'TEST_SERIES',
+          testSeriesId: testSeries.id,
+          testSeriesName: testSeries.name,
+          targetExam: testSeries.targetExam,
+          durationDays: testSeries.durationDays,
+          userEmail: user.email,
+        };
+        orderNotes = {
+          product_type: 'TEST_SERIES',
+          test_series_id: testSeries.id,
+          test_series_name: testSeries.name.slice(0, 40),
+          user_id: user.id,
+          user_email: user.email,
+        };
+      } else {
+        // 1. Fetch course from canonical database
+        course = await courseRepository.getCourseById(courseId);
+        if (!course) {
+          return res.status(404).json({ error: `Course not found with ID: ${courseId}` });
+        }
+
+        if (course.isActive === false) {
+          return res.status(400).json({ error: 'This course is currently not available for enrollment' });
+        }
+
+        // 2. Strict Price Integrity: Calculate final payable amount strictly from canonical DB
+        const price = course.currentPrice || course.pricing;
+        if (!price) {
+          return res.status(400).json({ error: 'This course does not have an active pricing record configured' });
+        }
+
+        originalPayableAmount =
+          typeof price.salePrice === 'number' && price.salePrice > 0
+            ? price.salePrice
+            : price.basePrice;
+
+        currency = price.currency || 'INR';
+        productMetadata = {
+          productType: 'COURSE',
+          courseName: course.name,
+          courseExam: course.exam,
+          defaultDurationDays: course.defaultDurationDays,
+          userEmail: user.email,
+        };
+        orderNotes = {
+          product_type: 'COURSE',
+          course_id: course.id,
+          course_name: course.name.slice(0, 40),
+          user_id: user.id,
+          user_email: user.email,
+        };
       }
 
-      if (course.isActive === false) {
-        return res.status(400).json({ error: 'This course is currently not available for enrollment' });
-      }
-
-      // 2. Strict Price Integrity: Calculate final payable amount strictly from canonical DB
-      const price = course.currentPrice || course.pricing;
-      if (!price) {
-        return res.status(400).json({ error: 'This course does not have an active pricing record configured' });
-      }
-
-      const originalPayableAmount =
-        typeof price.salePrice === 'number' && price.salePrice > 0
-          ? price.salePrice
-          : price.basePrice;
-
-      if (typeof originalPayableAmount !== 'number' || originalPayableAmount <= 0) {
-        return res.status(400).json({ error: 'Invalid course price calculation' });
+      if (typeof originalPayableAmount !== 'number' || originalPayableAmount < 0) {
+        return res.status(400).json({ error: 'Invalid product price calculation' });
       }
 
       let payableAmount = originalPayableAmount;
@@ -3563,7 +4091,7 @@ async function startServer() {
       if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
         const validation = await couponRepository.validateCoupon(
           couponCode.trim(),
-          course.id,
+          isTestSeries ? testSeries.id : course.id,
           user.id,
           originalPayableAmount
         );
@@ -3579,7 +4107,103 @@ async function startServer() {
         payableAmount = validation.finalAmount;
       }
 
-      // 3. Verify Payment Gateway Configuration
+      // Handle 100% discount / Zero-Amount Free Enrollments
+      if (payableAmount === 0) {
+        const orderId = `pord_free_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const localOrder = await paymentRepository.createOrder({
+          id: orderId,
+          userId: user.id,
+          courseId: course?.id || null,
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+          productId: isTestSeries ? testSeries.id : course.id,
+          testSeriesId: isTestSeries ? testSeries.id : null,
+          priceId: course?.currentPrice?.id || course?.pricing?.id || undefined,
+          provider: 'PROMOTIONAL',
+          amount: 0,
+          currency,
+          status: 'PAID',
+          environment: 'TEST',
+          metadata: {
+            ...productMetadata,
+            environment: 'TEST',
+            isFreeOrPromotional: true,
+            ...(appliedCoupon ? {
+              couponId: appliedCoupon.id,
+              couponCode: appliedCoupon.code,
+              couponDiscount,
+              originalAmount: originalPayableAmount,
+            } : {}),
+          },
+        });
+
+        if (appliedCoupon) {
+          try {
+            await couponRepository.recordCouponUsage(
+              pool,
+              appliedCoupon.id,
+              user.id,
+              localOrder.id,
+              `PROMO_${orderId}`,
+              couponDiscount,
+              originalPayableAmount,
+              0
+            );
+          } catch (cErr) {
+            console.error('Failed to record promotional coupon usage:', cErr);
+          }
+        }
+
+        const durationDays = isTestSeries ? (testSeries.durationDays || 365) : (course?.defaultDurationDays || 365);
+        const validUntil = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+        if (isTestSeries) {
+          await entitlementRepository.grantOrExtendTestSeriesEntitlement(
+            user.id,
+            testSeries.id,
+            durationDays,
+            `PROMO_${orderId}`,
+            orderId,
+            0,
+            'PROMOTION',
+            'TEST',
+            { notes: `Promotional zero-amount test series enrollment via order ${orderId}` }
+          );
+        } else {
+          await entitlementRepository.grantEntitlement(
+            user.id,
+            course.id,
+            durationDays,
+            'ADMIN_GRANT',
+            undefined,
+            { notes: `Promotional zero-amount enrollment via order ${orderId}` }
+          );
+        }
+
+        logAudit(
+          user.id,
+          user.role,
+          'PAYMENT_ORDER_PROMOTIONAL_COMPLETED',
+          'PAYMENT_ORDER',
+          localOrder.id,
+          {
+            productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+            productId: isTestSeries ? testSeries.id : course.id,
+            amount: 0,
+          }
+        );
+
+        return res.json({
+          success: true,
+          zeroAmount: true,
+          orderId: localOrder.id,
+          paymentId: `PROMO_${localOrder.id}`,
+          expiresAt: validUntil,
+          course: isTestSeries ? null : course,
+          testSeries: isTestSeries ? testSeries : null,
+          message: 'Free enrollment activated successfully!',
+        });
+      }
+
+      // 3. Verify Payment Gateway Configuration for paid amounts
       const gatewayStatus = paymentService.getGatewayStatus();
       if (!gatewayStatus.isConfigured) {
         return res.status(400).json({
@@ -3594,18 +4218,18 @@ async function startServer() {
       const localOrder = await paymentRepository.createOrder({
         id: orderId,
         userId: user.id,
-        courseId: course.id,
-        priceId: price.id,
+        courseId: course?.id || null,
+        productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+        productId: isTestSeries ? testSeries.id : course.id,
+        testSeriesId: isTestSeries ? testSeries.id : null,
+        priceId: course?.currentPrice?.id || course?.pricing?.id || undefined,
         provider: 'RAZORPAY',
         amount: payableAmount,
-        currency: price.currency || 'INR',
+        currency,
         status: 'CREATED',
         environment: orderEnvironment,
         metadata: {
-          courseName: course.name,
-          courseExam: course.exam,
-          defaultDurationDays: course.defaultDurationDays,
-          userEmail: user.email,
+          ...productMetadata,
           environment: orderEnvironment,
           ...(appliedCoupon ? {
             couponId: appliedCoupon.id,
@@ -3620,13 +4244,10 @@ async function startServer() {
       const providerOrder = await paymentService.createOrder({
         orderId: localOrder.id,
         amount: payableAmount,
-        currency: price.currency || 'INR',
+        currency,
         receipt: localOrder.id,
         notes: {
-          course_id: course.id,
-          course_name: course.name.slice(0, 40),
-          user_id: user.id,
-          user_email: user.email,
+          ...orderNotes,
           ...(appliedCoupon ? { coupon_code: appliedCoupon.code } : {}),
         },
         customer: {
@@ -3647,10 +4268,11 @@ async function startServer() {
         'PAYMENT_ORDER',
         localOrder.id,
         {
-          courseId: course.id,
-          courseName: course.name,
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+          productId: isTestSeries ? testSeries.id : course.id,
+          productName: isTestSeries ? testSeries.name : course.name,
           amount: payableAmount,
-          currency: price.currency || 'INR',
+          currency,
           providerOrderId: providerOrder.providerOrderId,
           couponCode: appliedCoupon?.code,
           couponDiscount,
@@ -3664,20 +4286,27 @@ async function startServer() {
         provider: 'RAZORPAY',
         providerOrderId: providerOrder.providerOrderId,
         amount: payableAmount,
-        currency: price.currency || 'INR',
+        currency,
         keyId: providerOrder.keyId,
+        productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
         appliedCoupon: appliedCoupon ? {
           code: appliedCoupon.code,
           discountAmount: couponDiscount,
           originalAmount: originalPayableAmount,
           finalAmount: payableAmount,
         } : null,
-        course: {
+        course: course ? {
           id: course.id,
           name: course.name,
           exam: course.exam,
           defaultDurationDays: course.defaultDurationDays,
-        },
+        } : null,
+        testSeries: testSeries ? {
+          id: testSeries.id,
+          name: testSeries.name,
+          targetExam: testSeries.targetExam,
+          durationDays: testSeries.durationDays,
+        } : null,
       });
     } catch (err: any) {
       console.error('[CreatePaymentOrder Error]', err.message);
@@ -3755,9 +4384,15 @@ async function startServer() {
 
       // 3. Idempotency: Check if this payment is already marked PAID
       const existingPayment = await paymentRepository.getPaymentByProviderPaymentId(providerPaymentId);
+      const isTestSeries = localOrder.productType === 'TEST_SERIES' || !!localOrder.testSeriesId || !!localOrder.metadata?.testSeriesId;
+      const targetSeriesId = localOrder.testSeriesId || localOrder.metadata?.testSeriesId || localOrder.productId;
+
       if (existingPayment && existingPayment.status === 'PAID') {
         const existingEnts = await entitlementRepository.getUserEntitlements(user.id);
-        const activeEnt = existingEnts.find(e => e.courseId === localOrder.courseId && e.status === 'ACTIVE');
+        const activeEnt = existingEnts.find(e =>
+          (isTestSeries ? (e.testSeriesId === targetSeriesId || e.productId === targetSeriesId) : e.courseId === localOrder.courseId) &&
+          e.status === 'ACTIVE'
+        );
 
         return res.json({
           success: true,
@@ -3765,7 +4400,9 @@ async function startServer() {
           paymentId: existingPayment.id,
           orderId: localOrder.id,
           status: 'PAID',
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
           courseId: localOrder.courseId,
+          testSeriesId: isTestSeries ? targetSeriesId : null,
           expiresAt: activeEnt?.expiresAt,
         });
       }
@@ -3783,7 +4420,10 @@ async function startServer() {
           id: paymentId,
           orderId: localOrder.id,
           userId: user.id,
-          courseId: localOrder.courseId,
+          courseId: localOrder.courseId || null,
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+          productId: isTestSeries ? targetSeriesId : localOrder.courseId,
+          testSeriesId: isTestSeries ? targetSeriesId : null,
           provider: 'RAZORPAY',
           providerPaymentId,
           providerOrderId,
@@ -3800,19 +4440,42 @@ async function startServer() {
       // 5. Update order status to PAID
       await paymentRepository.updateOrderStatus(localOrder.id, 'PAID', providerOrderId);
 
-      // 6. Grant or extend course entitlement
-      const course = await courseRepository.getCourseById(localOrder.courseId);
-      const durationDays = course?.defaultDurationDays || 180;
+      // 6. Grant or extend entitlement (Course or Test Series)
+      let entitlement: any;
+      let productName = '';
+      let durationDays = 180;
 
-      const entitlement = await entitlementRepository.grantOrExtendPaymentEntitlement(
-        user.id,
-        localOrder.courseId,
-        durationDays,
-        payment.id,
-        localOrder.id,
-        localOrder.amount,
-        paymentEnvironment
-      );
+      if (isTestSeries && targetSeriesId) {
+        const series = await testSeriesRepository.getTestSeriesById(targetSeriesId);
+        productName = series?.name || 'Test Series';
+        durationDays = series?.durationDays || 180;
+
+        entitlement = await entitlementRepository.grantOrExtendTestSeriesEntitlement(
+          user.id,
+          targetSeriesId,
+          durationDays,
+          payment.id,
+          localOrder.id,
+          localOrder.amount,
+          'PAYMENT',
+          paymentEnvironment,
+          { testSeriesName: series?.name }
+        );
+      } else {
+        const course = await courseRepository.getCourseById(localOrder.courseId);
+        productName = course?.name || 'Course';
+        durationDays = course?.defaultDurationDays || 180;
+
+        entitlement = await entitlementRepository.grantOrExtendPaymentEntitlement(
+          user.id,
+          localOrder.courseId,
+          durationDays,
+          payment.id,
+          localOrder.id,
+          localOrder.amount,
+          paymentEnvironment
+        );
+      }
 
       // 6.5 Record coupon usage if coupon was applied
       if (localOrder.metadata?.couponId) {
@@ -3841,6 +4504,8 @@ async function startServer() {
         payment.id,
         {
           orderId: localOrder.id,
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+          productId: isTestSeries ? targetSeriesId : localOrder.courseId,
           providerPaymentId,
           providerOrderId,
           amount: localOrder.amount,
@@ -3857,8 +4522,9 @@ async function startServer() {
         entitlement.id,
         {
           paymentId: payment.id,
-          courseId: localOrder.courseId,
-          courseName: course?.name,
+          productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
+          productId: isTestSeries ? targetSeriesId : localOrder.courseId,
+          productName,
           durationDays,
           expiresAt: entitlement.expiresAt,
         },
@@ -3870,8 +4536,10 @@ async function startServer() {
         paymentId: payment.id,
         orderId: localOrder.id,
         status: 'PAID',
+        productType: isTestSeries ? 'TEST_SERIES' : 'COURSE',
         courseId: localOrder.courseId,
-        courseName: course?.name,
+        testSeriesId: isTestSeries ? targetSeriesId : null,
+        productName,
         expiresAt: entitlement.expiresAt,
       });
     } catch (err: any) {
@@ -5608,7 +6276,7 @@ async function startServer() {
       id: newAdminId,
       email: email || `admin_${Date.now()}@ikshovia.com`,
       name: name || 'New Platform Admin',
-      role: (role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN') as UserRole,
+      role: (role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN') as ('ADMIN' | 'SUPER_ADMIN'),
       isOnboarded: true,
       passwordHash,
     });
@@ -6009,6 +6677,11 @@ async function startServer() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`IKSHOVIA AI Learning Platform running on http://0.0.0.0:${PORT} [mode: ${isProduction ? 'production' : 'development'}]`);
+    try {
+      setupLiveClassWebSocket(server);
+    } catch (wsErr) {
+      console.warn('[Live WebSocket Mount Warning]', wsErr);
+    }
     try {
       const ocrDiag = ocrEngineV2.checkSystemDependencies();
       if (ocrDiag.ok) {

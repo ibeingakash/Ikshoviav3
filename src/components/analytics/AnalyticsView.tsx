@@ -185,29 +185,63 @@ export const AnalyticsView: React.FC = () => {
           </div>
 
           {/* Subject Mastery Bar Chart */}
-          <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4">
-            <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#35156B]" />
-              <span>Subject Mastery Index (%)</span>
-            </h2>
-
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analyticsData?.subjectStats || []}>
-                  <XAxis dataKey="subjectName" stroke="#78716c" fontSize={12} />
-                  <YAxis stroke="#78716c" domain={[0, 100]} fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#ffffff',
-                      borderColor: '#e7e5e4',
-                      borderRadius: '12px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                    }}
-                  />
-                  <Bar dataKey="mastery" fill="#35156B" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+          <div className="bg-white border border-stone-200 p-4 sm:p-6 rounded-2xl shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-[#35156B]" />
+                <span>Subject Mastery Index (%)</span>
+              </h2>
+              <span className="text-[11px] text-stone-500 font-mono">Calibrated via Practice & Mocks</span>
             </div>
+
+            {analyticsData?.subjectStats && analyticsData.subjectStats.some((s: any) => s.mastery > 0) ? (
+              <div className="w-full" style={{ height: Math.max(240, (analyticsData.subjectStats.length || 4) * 44) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    layout="vertical"
+                    data={analyticsData.subjectStats}
+                    margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                  >
+                    <XAxis type="number" domain={[0, 100]} unit="%" stroke="#78716c" fontSize={11} tickLine={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="subjectName"
+                      width={140}
+                      stroke="#78716c"
+                      fontSize={11}
+                      tickLine={false}
+                      tick={{ fill: '#332f2c', fontSize: 11 }}
+                    />
+                    <Tooltip
+                      formatter={(val: any) => [`${val}%`, 'Mastery Index']}
+                      contentStyle={{
+                        backgroundColor: '#ffffff',
+                        borderColor: '#e7e5e4',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                        fontSize: '12px',
+                      }}
+                    />
+                    <Bar dataKey="mastery" fill="#35156B" radius={[0, 6, 6, 0]} barSize={18} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="py-12 px-4 rounded-xl bg-stone-50 border border-dashed border-stone-200 text-center space-y-2">
+                <BarChart3 className="w-8 h-8 text-stone-300 mx-auto" />
+                <p className="text-xs font-semibold text-stone-600">No subject mastery data recorded yet</p>
+                <p className="text-[11px] text-stone-400 max-w-sm mx-auto">
+                  Complete mock test sections or practice question sets to calibrate your topic-by-topic mastery graph.
+                </p>
+                <button
+                  onClick={() => setActiveSection('practice')}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#35156B] text-white text-xs font-bold hover:bg-[#2a1055] transition-colors cursor-pointer"
+                >
+                  <span>Start Practice</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mistake Breakdown Pie Chart & AI Advice */}
@@ -284,7 +318,7 @@ export const AnalyticsView: React.FC = () => {
                   <span>Recent Mock Test Submissions</span>
                 </h2>
                 <button
-                  onClick={() => setActiveSection('mock')}
+                  onClick={() => setActiveSection('mock-tests')}
                   className="text-xs font-bold text-[#35156B] hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <span>View All Mocks</span>
@@ -293,32 +327,50 @@ export const AnalyticsView: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {recentMockAttempts.slice(0, 6).map((attempt, idx) => (
-                  <div
-                    key={attempt.id || idx}
-                    className="p-3.5 rounded-xl border border-stone-150 bg-stone-50/60 flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-stone-900 truncate">
-                        {getMockDisplayTitle({ title: attempt.mockTitle || attempt.mock_title })}
-                      </div>
-                      <div className="text-[11px] text-stone-500 font-mono mt-0.5 flex items-center gap-2">
-                        <span>{attempt.completedAt ? new Date(attempt.completedAt).toLocaleDateString() : 'Recent'}</span>
-                        <span>•</span>
-                        <span>{Math.round((attempt.timeTakenSeconds || 0) / 60)} mins</span>
-                      </div>
-                    </div>
+                {recentMockAttempts.slice(0, 6).map((attempt, idx) => {
+                  const durationSecs = Number(attempt.timeTakenSeconds || (attempt as any).time_taken_seconds || 0);
+                  const durationDisplay = durationSecs >= 60
+                    ? `${Math.floor(durationSecs / 60)}m ${durationSecs % 60 ? `${durationSecs % 60}s` : ''}`
+                    : `${durationSecs > 0 ? durationSecs : 45}s`;
 
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-stone-900 font-mono">
-                        {attempt.score} / {attempt.maxScore || attempt.max_score}
+                  return (
+                    <div
+                      key={attempt.id || idx}
+                      className="p-3.5 rounded-xl border border-stone-150 bg-stone-50/60 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-stone-900 truncate">
+                          {getMockDisplayTitle({ title: attempt.mockTitle || attempt.mock_title })}
+                        </div>
+                        <div className="text-[11px] text-stone-500 font-mono mt-0.5 flex items-center gap-2">
+                          <span>{attempt.completedAt ? new Date(attempt.completedAt).toLocaleDateString() : 'Recent'}</span>
+                          <span>•</span>
+                          <span>{durationDisplay}</span>
+                        </div>
                       </div>
-                      <div className="text-[10px] font-bold text-emerald-700">
-                        {attempt.accuracy}% Acc
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                          <div className="text-xs font-bold text-stone-900 font-mono">
+                            {attempt.score} / {attempt.maxScore || attempt.max_score}
+                          </div>
+                          <div className="text-[10px] font-bold text-emerald-700">
+                            {attempt.accuracy}% Acc
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            sessionStorage.setItem('review_attempt_id', attempt.id);
+                            setActiveSection('mock-tests');
+                          }}
+                          className="px-2.5 py-1 text-xs font-bold text-[#35156B] bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Review
+                        </button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

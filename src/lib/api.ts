@@ -30,6 +30,9 @@ import {
   CourseSalesAnalytics,
   ShortNote,
   ShortNotesHierarchyResponse,
+  TestSeries,
+  TestSeriesTest,
+  TestSeriesWithTests,
 } from '../types/index.js';
 
 export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
@@ -801,7 +804,17 @@ export const api = {
     return data;
   },
 
-  updateMockTest: async (id: string, updates: { displayName?: string; title?: string }): Promise<{ success: boolean; test: MockTest }> => {
+  updateMockTest: async (id: string, updates: {
+    displayName?: string;
+    title?: string;
+    durationMinutes?: number;
+    totalMarks?: number;
+    negativeMarkingRate?: number;
+    instructions?: string;
+    isPublished?: boolean;
+    type?: 'FULL' | 'SUBJECT' | 'QUICK';
+    subjectIds?: string[];
+  }): Promise<{ success: boolean; test: MockTest }> => {
     const res = await apiFetch(`/api/admin/mock-tests/${id}`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
@@ -810,6 +823,56 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to update mock test');
     return data;
+  },
+
+  getAdminMockTestQuestions: async (mockTestId: string): Promise<Question[]> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${mockTestId}/questions`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch mock test questions');
+    const data = await res.json();
+    return Array.isArray(data.questions) ? data.questions : [];
+  },
+
+  updateAdminQuestion: async (mockTestId: string, questionId: string, updates: any): Promise<{ success: boolean; question: Question; revision?: any }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${mockTestId}/questions/${questionId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update question');
+    return data;
+  },
+
+  addAdminQuestionToMockTest: async (mockTestId: string, questionId: string, orderNum?: number): Promise<{ success: boolean }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${mockTestId}/questions`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ questionId, orderNum }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add question to mock test');
+    return data;
+  },
+
+  removeAdminQuestionFromMockTest: async (mockTestId: string, questionId: string): Promise<{ success: boolean }> => {
+    const res = await apiFetch(`/api/admin/mock-tests/${mockTestId}/questions/${questionId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to remove question from mock test');
+    return data;
+  },
+
+  getMockQuestionRevisions: async (questionId: string): Promise<any[]> => {
+    const res = await apiFetch(`/api/admin/questions/${questionId}/revisions`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.revisions) ? data.revisions : [];
   },
 
   createCustomMockTest: async (params: {
@@ -838,10 +901,11 @@ export const api = {
     };
   },
 
-  startMockAttempt: async (mockTestId: string): Promise<{ attempt: MockAttempt; test: MockTest; questions: Question[]; answers?: any[] }> => {
+  startMockAttempt: async (mockTestId: string, forceNew = false): Promise<{ attempt: MockAttempt; test: MockTest; questions: Question[]; answers?: any[] }> => {
     const res = await apiFetch(`/api/mock-tests/${mockTestId}/start`, {
       method: 'POST',
       headers: getAuthHeaders(),
+      body: JSON.stringify({ forceNew }),
     });
     if (!res.ok) throw new Error('Failed to start mock test attempt');
     const data = await res.json();
@@ -851,6 +915,14 @@ export const api = {
       questions: Array.isArray(data.questions) ? data.questions : [],
       answers: Array.isArray(data.answers) ? data.answers : [],
     };
+  },
+
+  getMockAttempt: async (attemptId: string): Promise<{ success: boolean; attempt: MockAttempt; answers: any[]; test: MockTest; questions: Question[] }> => {
+    const res = await apiFetch(`/api/mock-tests/attempts/${attemptId}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to load mock test attempt');
+    return res.json();
   },
 
   saveMockAnswer: async (attemptId: string, questionId: string, userAnswer: string, timeSpentSeconds?: number, markedForReview?: boolean) => {
@@ -2502,25 +2574,31 @@ export const api = {
     }
   },
 
-  createPaymentOrder: async (courseId: string, couponCode?: string): Promise<{
+  createPaymentOrder: async (courseId?: string, couponCode?: string, testSeriesId?: string): Promise<{
     orderId: string;
     provider: string;
     providerOrderId: string;
     amount: number;
     currency: string;
     keyId?: string;
+    productType?: 'COURSE' | 'TEST_SERIES';
     appliedCoupon?: {
       code: string;
       discountAmount: number;
       originalAmount: number;
       finalAmount: number;
     } | null;
-    course: { id: string; name: string; exam: string; defaultDurationDays: number };
+    course?: { id: string; name: string; exam: string; defaultDurationDays: number } | null;
+    testSeries?: { id: string; name: string; targetExam: string; durationDays: number } | null;
   }> => {
     const res = await apiFetch('/api/payments/create-order', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ courseId, couponCode: couponCode?.trim() || undefined }),
+      body: JSON.stringify({
+        courseId: courseId || undefined,
+        testSeriesId: testSeriesId || undefined,
+        couponCode: couponCode?.trim() || undefined,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -2529,6 +2607,10 @@ export const api = {
       throw err;
     }
     return data;
+  },
+
+  createTestSeriesPaymentOrder: async (testSeriesId: string, couponCode?: string) => {
+    return api.createPaymentOrder(undefined, couponCode, testSeriesId);
   },
 
   verifyPayment: async (params: {
@@ -2541,8 +2623,11 @@ export const api = {
     paymentId: string;
     orderId: string;
     status: string;
-    courseId: string;
+    productType?: string;
+    courseId?: string;
+    testSeriesId?: string;
     courseName?: string;
+    productName?: string;
     expiresAt?: string;
     alreadyVerified?: boolean;
   }> => {
@@ -2935,6 +3020,181 @@ export const api = {
       headers: getAuthHeaders(),
     });
     return parseSafeApiResponse(res, 'Admin Delete Short Note');
+  },
+
+  // --------------------------------------------------------------------------
+  // TEST SERIES MARKETPLACE & ADMIN TEST SERIES STUDIO
+  // --------------------------------------------------------------------------
+
+  getTestSeriesList: async (filters?: {
+    exam?: string;
+    cycle?: string;
+    category?: string;
+    isFree?: boolean;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ series: TestSeries[]; total: number; page: number; totalPages: number }> => {
+    const params = new URLSearchParams();
+    if (filters?.exam && filters.exam !== 'ALL') params.append('exam', filters.exam);
+    if (filters?.cycle && filters.cycle !== 'ALL') params.append('cycle', filters.cycle);
+    if (filters?.category && filters.category !== 'ALL') params.append('category', filters.category);
+    if (typeof filters?.isFree === 'boolean') params.append('isFree', String(filters.isFree));
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.limit) params.append('limit', String(filters.limit));
+
+    const res = await apiFetch(`/api/test-series?${params.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      return { series: [], total: 0, page: 1, totalPages: 1 };
+    }
+    return res.json();
+  },
+
+  getTestSeriesExamsSummary: async (): Promise<{ code: string; name: string; seriesCount: number }[]> => {
+    try {
+      const res = await apiFetch('/api/test-series/exams/summary');
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  getTestSeriesDetail: async (slugOrId: string): Promise<TestSeriesWithTests | null> => {
+    try {
+      const res = await apiFetch(`/api/test-series/${encodeURIComponent(slugOrId)}`, { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  enrollFreeTestSeries: async (id: string): Promise<{ success: boolean; message: string; entitlement: any }> => {
+    const res = await apiFetch(`/api/test-series/${encodeURIComponent(id)}/enroll-free`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to enroll');
+    return data;
+  },
+
+  getAdminTestSeriesList: async (filters?: {
+    status?: string;
+    targetExam?: string;
+    category?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ series: TestSeries[]; total: number; page: number; totalPages: number }> => {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.targetExam && filters.targetExam !== 'ALL') params.append('targetExam', filters.targetExam);
+    if (filters?.category && filters.category !== 'ALL') params.append('category', filters.category);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.limit) params.append('limit', String(filters.limit));
+
+    const res = await apiFetch(`/api/admin/test-series?${params.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) return { series: [], total: 0, page: 1, totalPages: 1 };
+    return res.json();
+  },
+
+  getAdminTestSeriesDetail: async (id: string): Promise<TestSeriesWithTests | null> => {
+    try {
+      const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(id)}`, { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  createAdminTestSeries: async (payload: any): Promise<TestSeries> => {
+    const res = await apiFetch('/api/admin/test-series', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create test series');
+    return data;
+  },
+
+  updateAdminTestSeries: async (id: string, payload: any): Promise<TestSeries> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update test series');
+    return data;
+  },
+
+  deleteAdminTestSeries: async (id: string): Promise<boolean> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return res.ok;
+  },
+
+  getAdminAvailableMockTestsForSeries: async (seriesId: string, search?: string): Promise<any[]> => {
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(seriesId)}/available-tests?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  },
+
+  adminLinkTestToSeries: async (seriesId: string, payload: { mockTestId: string; isFreePreview?: boolean; sequenceNumber?: number }): Promise<any> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(seriesId)}/tests`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to link test to series');
+    return data;
+  },
+
+  adminUpdateTestInSeries: async (seriesId: string, mockTestId: string, payload: { isFreePreview?: boolean; sequenceNumber?: number; status?: string }): Promise<any> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(seriesId)}/tests/${encodeURIComponent(mockTestId)}`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update test in series');
+    return data;
+  },
+
+  adminUnlinkTestFromSeries: async (seriesId: string, mockTestId: string): Promise<any> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(seriesId)}/tests/${encodeURIComponent(mockTestId)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to unlink test from series');
+    return data;
+  },
+
+  adminReorderTestsInSeries: async (seriesId: string, testIdsInOrder: string[]): Promise<boolean> => {
+    const res = await apiFetch(`/api/admin/test-series/${encodeURIComponent(seriesId)}/tests-reorder`, {
+      method: 'PUT',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ testIdsInOrder }),
+    });
+    return res.ok;
   },
 };
 

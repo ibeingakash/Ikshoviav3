@@ -14,6 +14,10 @@ import {
   Settings,
   CheckSquare,
   FileText,
+  Tag,
+  Layers,
+  Receipt,
+  Video,
 } from 'lucide-react';
 import { NavigationSection } from '../context/LearnerContext.js';
 
@@ -38,6 +42,7 @@ export const MORE_MENU_CATEGORIES = [
     title: 'LEARNING HUB',
     items: [
       { id: 'daily-quiz', label: 'Daily Quiz', icon: CheckSquare },
+      { id: 'live-classes', label: 'Live Classes & Faculty', icon: Video, badge: 'Live' },
       { id: 'pyq-practice', label: 'Official PYQ Practice', icon: FolderArchive, badge: 'Official' },
       { id: 'mock-tests', label: 'Mock Tests & Simulations', icon: FileCheck2, badge: 'Simulations' },
       { id: 'practice', label: 'Topic & Subject Practice', icon: BookOpen },
@@ -47,6 +52,14 @@ export const MORE_MENU_CATEGORIES = [
       { id: 'analytics', label: 'Analytics', icon: BarChart3 },
       { id: 'revision', label: 'Bookmarks & Mistakes', icon: Bookmark },
       { id: 'resources', label: 'Resource Library', icon: FolderArchive },
+    ] as NavItemConfig[],
+  },
+  {
+    title: 'STORE & ENROLLMENTS',
+    items: [
+      { id: 'courses-catalog', label: 'Course Catalog & Plans', icon: Tag, badge: 'Plans' },
+      { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs' },
+      { id: 'learner-purchases', label: 'My Purchases & Receipts', icon: Receipt },
     ] as NavItemConfig[],
   },
   {

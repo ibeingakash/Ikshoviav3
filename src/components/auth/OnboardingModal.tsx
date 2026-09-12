@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Brain, CheckCircle2, ArrowRight, Target, Clock, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
-import { IKLogo } from '../common/IKLogo.js';
+import { BrandLogo } from '../common/BrandLogo.js';
 
 export const OnboardingModal: React.FC = () => {
   const { user, saveOnboarding } = useAuth();
@@ -50,9 +50,8 @@ export const OnboardingModal: React.FC = () => {
         {/* Header */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <IKLogo
-              variant="dark"
-              showTagline={false}
+            <BrandLogo
+              variant="horizontal"
               size="sm"
             />
             <div className="text-[10px] uppercase font-mono font-bold text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full bg-[#121027]">

@@ -1,4 +1,5 @@
-export type UserRole = 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+export type UserRole = 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'TEACHER' | 'STUDENT';
+export * from './liveClass.js';
 
 export type QuestionStatus =
   | 'IMPORTED'
@@ -824,9 +825,13 @@ export interface Entitlement {
   userId: string;
   userName?: string;
   userEmail?: string;
-  courseId: string;
+  courseId?: string | null;
   courseName?: string;
   courseExam?: string;
+  productType?: 'COURSE' | 'TEST_SERIES';
+  productId?: string | null;
+  testSeriesId?: string | null;
+  testSeriesName?: string;
   features?: PlatformFeatureCode[];
   status: EntitlementStatus;
   source: EntitlementSource;
@@ -1106,5 +1111,77 @@ export interface ShortNotesHierarchyResponse {
   subjects: ShortNotesSubjectNode[];
   totalNotes: number;
   totalReviewed: number;
+}
+
+// ----------------------------------------------------
+// EXAM-WISE TEST SERIES TYPES
+// ----------------------------------------------------
+export type TestSeriesStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export type TestSeriesVisibility = 'PUBLIC' | 'UNLISTED' | 'PRIVATE';
+export type TestSeriesCategory = 'PRELIMS' | 'MAINS' | 'SECTIONAL' | 'INTEGRATED' | 'ALL';
+
+export interface TestSeries {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  examId?: string | null;
+  examCycle?: string | null;
+  targetExam: string;
+  category: string;
+  language: string;
+  totalTests: number;
+  publishedTestCount: number;
+  totalQuestions: number;
+  mrp: number;
+  salePrice: number;
+  currency: string;
+  isFree: boolean;
+  previewTestCount: number;
+  coverImage?: string | null;
+  status: TestSeriesStatus;
+  visibility: TestSeriesVisibility;
+  displayOrder: number;
+  durationDays: number;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isEnrolled?: boolean;
+}
+
+export interface TestSeriesTest {
+  id: string;
+  testSeriesId: string;
+  mockTestId: string;
+  sequenceNumber: number;
+  isFreePreview: boolean;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  // Hydrated mock test fields
+  mockTest?: {
+    id: string;
+    title: string;
+    displayName?: string;
+    type: string;
+    durationMinutes: number;
+    totalQuestions: number;
+    totalMarks: number;
+    negativeMarkingRate: number;
+    isPublished: boolean;
+    sourceType?: string;
+  };
+  attemptSummary?: {
+    attemptId: string;
+    score: number;
+    maxScore: number;
+    accuracy: number;
+    status: string;
+    completedAt?: string;
+  } | null;
+}
+
+export interface TestSeriesWithTests extends TestSeries {
+  tests: TestSeriesTest[];
 }
 

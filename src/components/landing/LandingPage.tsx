@@ -26,6 +26,7 @@ import {
   Mail,
   Smartphone
 } from 'lucide-react';
+import { BrandLogo, BrandSymbol } from '../common/BrandLogo.js';
 import { IKLogo } from '../common/IKLogo.js';
 import { IKBrandMark } from '../common/IKBrandMark.js';
 import { Hero3DDashboard } from './Hero3DDashboard.js';
@@ -67,11 +68,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           
           {/* Brand Logo & Preferred Symbol */}
-          <IKLogo
-            onClick={() => onOpenAuth('login')}
-            showTagline={true}
-            taglineText="Unlock Human Potential Through Understanding"
+          <BrandLogo
+            variant="login"
             size="md"
+            onClick={() => onOpenAuth('login')}
           />
 
           {/* Navigation Links */}
@@ -819,11 +819,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             
             {/* Column 1: Brand & Tagline */}
             <div className="md:col-span-2 space-y-4">
-              <IKLogo
-                variant="dark"
-                showTagline={true}
-                taglineText="Unlock Human Potential Through Understanding"
-                size="md"
+              <BrandLogo
+                variant="primary"
+                size="lg"
               />
               <p className="text-xs text-stone-400 max-w-sm leading-relaxed">
                 IKSHOVIA is the personal AI learning intelligence platform engineered for serious civil services and competitive exam aspirants.

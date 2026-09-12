@@ -329,7 +329,7 @@ export class MockTestRepository {
 
   async getTestQuestions(testId: string): Promise<Question[]> {
     const test = await this.getTestById(testId);
-    const targetCount = test?.totalQuestions || 10;
+    if (!test) return [];
 
     const res = await pool.query(`
       SELECT q.*, mq.order_num 
@@ -340,12 +340,12 @@ export class MockTestRepository {
     `, [testId]);
 
     const mappedQuestions = res.rows.map(this.mapRowToQuestion);
-    if (mappedQuestions.length >= targetCount || !test) {
-      return mappedQuestions.slice(0, targetCount);
+    if (mappedQuestions.length > 0) {
+      return mappedQuestions;
     }
 
-    // Supplement with questions matching test subjects and test source_type if available
-    const existingIds = mappedQuestions.map(q => q.id);
+    // Fallback only if no questions were pre-linked in mock_questions
+    const targetCount = test.totalQuestions || 10;
     let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
     const queryParams: any[] = [];
 
@@ -359,146 +359,11 @@ export class MockTestRepository {
       questionQuery += ` AND subject_id = ANY($${queryParams.length})`;
     }
 
-    if (existingIds.length > 0) {
-      queryParams.push(existingIds);
-      questionQuery += ` AND id != ALL($${queryParams.length})`;
-    }
-
-    const needed = targetCount - mappedQuestions.length;
-    queryParams.push(needed);
+    queryParams.push(targetCount);
     questionQuery += ` ORDER BY created_at DESC LIMIT $${queryParams.length}`;
 
     const fallbackRes = await pool.query(questionQuery, queryParams);
-    const supplementalQuestions = fallbackRes.rows.map(this.mapRowToQuestion);
-
-    // Link newly found supplemental questions into mock_questions table
-    for (let i = 0; i < supplementalQuestions.length; i++) {
-      const sq = supplementalQuestions[i];
-      const orderNum = mappedQuestions.length + i + 1;
-      await pool.query(`
-        INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
-      `, [testId, sq.id, orderNum]);
-    }
-
-    const allQuestions = [...mappedQuestions, ...supplementalQuestions];
-
-    // If still under targetCount (e.g. 50, 100, 200 questions requested), synthesize verified questions
-    if (allQuestions.length < targetCount) {
-      const remainingNeeded = targetCount - allQuestions.length;
-      const subjects = test.subjectIds?.length ? test.subjectIds : ['sub_polity', 'sub_economy', 'sub_history', 'sub_geography', 'sub_ca'];
-
-      const SYLLABUS_TEMPLATES = [
-        {
-          q: 'Under Article 32 of the Constitution of India, which of the following remedies can be sought directly before the Supreme Court?',
-          opts: ['Writ of Habeas Corpus, Mandamus, Prohibition, Quo-Warranto, Certiorari', 'Injunction against private disputes', 'Advisory opinion on business contracts', 'Appellate review of civil suits directly'],
-          ans: '0',
-          exp: 'Article 32 guarantees the right to constitutional remedies via 5 constitutional prerogative writs.',
-          sub: 'sub_polity',
-        },
-        {
-          q: 'Which of the following bodies in India is responsible for recommending the distribution of net proceeds of taxes between Union and States?',
-          opts: ['Finance Commission', 'NITI Aayog', 'GST Council', 'Inter-State Council'],
-          ans: '0',
-          exp: 'Article 280 mandates the Finance Commission to recommend vertical devolution between Centre and States and horizontal allocation among States.',
-          sub: 'sub_economy',
-        },
-        {
-          q: 'With reference to the Monetary Policy Committee (MPC) in India, consider the following statements: It is a 6-member body constituted under the RBI Act, 1934 to set the policy repo rate.',
-          opts: ['1 only', '2 only', 'Both 1 and 2', 'Neither 1 nor 2'],
-          ans: '0',
-          exp: 'The MPC is a 6-member committee under Section 45ZB of the amended RBI Act 1934.',
-          sub: 'sub_economy',
-        },
-        {
-          q: 'In the Indian freedom struggle, which event led to the immediate suspension of the Non-Cooperation Movement in 1922?',
-          opts: ['Chauri Chaura incident', 'Jallianwala Bagh massacre', 'Kakori conspiracy', 'Rowlatt Act passing'],
-          ans: '0',
-          exp: 'Mahatma Gandhi called off the Non-Cooperation Movement on 12 February 1922 following the violent Chauri Chaura incident in Gorakhpur district.',
-          sub: 'sub_history',
-        },
-        {
-          q: 'Which of the following National Parks / Biosphere Reserves is located at the tri-junction of Kerala, Karnataka, and Tamil Nadu?',
-          opts: ['Nilgiri Biosphere Reserve', 'Agasthyamalai Biosphere Reserve', 'Dehang-Debang Biosphere Reserve', 'Gulf of Mannar'],
-          ans: '0',
-          exp: 'Nilgiri Biosphere Reserve in the Western Ghats encompasses parts of Wayanad (Kerala), Bandipur and Nagarhole (Karnataka), and Mudumalai (Tamil Nadu).',
-          sub: 'sub_geography',
-        },
-        {
-          q: 'Which Article of the Indian Constitution provides for the establishment of an Inter-State Council to inquire into and advise upon disputes between States?',
-          opts: ['Article 263', 'Article 280', 'Article 312', 'Article 356'],
-          ans: '0',
-          exp: 'Article 263 empowers the President to establish an Inter-State Council for resolving Centre-State and Inter-State disputes.',
-          sub: 'sub_polity',
-        },
-        {
-          q: 'With reference to Inflation Targeting in India, the headline Consumer Price Index (CPI) Combined target band established under the Monetary Policy Framework Agreement is:',
-          opts: ['4% with a tolerance band of +/- 2%', '2% with a tolerance band of +/- 1%', '6% fixed target', '5% with a tolerance band of +/- 2%'],
-          ans: '0',
-          exp: 'Section 45ZA of RBI Act 1934 sets the inflation target at 4% with upper tolerance level of 6% and lower tolerance level of 2%.',
-          sub: 'sub_economy',
-        },
-        {
-          q: 'Who was the Governor-General of India during the Revolt of 1857?',
-          opts: ['Lord Canning', 'Lord Dalhousie', 'Lord Curzon', 'Lord Ripon'],
-          ans: '0',
-          exp: 'Lord Canning served as the Governor-General during 1856-1858 and became India’s first Viceroy under the Government of India Act 1858.',
-          sub: 'sub_history',
-        },
-      ];
-
-      for (let i = 0; i < remainingNeeded; i++) {
-        const tpl = SYLLABUS_TEMPLATES[i % SYLLABUS_TEMPLATES.length];
-        const qNum = allQuestions.length + i + 1;
-        const subId = subjects[i % subjects.length] || tpl.sub;
-        const newQId = `q_mock_${testId}_${qNum}`;
-
-        const qText = i >= SYLLABUS_TEMPLATES.length ? `[Variant ${Math.floor(i / SYLLABUS_TEMPLATES.length) + 1}] ${tpl.q}` : tpl.q;
-
-        await pool.query(`
-          INSERT INTO public.questions (
-            id, subject_id, type, question, options, correct_answer, explanation,
-            difficulty, exam_tag, pyq_year, is_pyq, source, verified_status, is_published, created_at
-          ) VALUES (
-            $1, $2, 'MCQ', $3, $4::jsonb, $5, $6,
-            'MEDIUM', 'Mock Test Question', 2025, false, 'IKSHOVIA Verified Exam Engine', 'VERIFIED_MOCK', true, NOW()
-          )
-          ON CONFLICT (id) DO UPDATE SET question = EXCLUDED.question;
-        `, [
-          newQId,
-          subId,
-          qText,
-          JSON.stringify(tpl.opts.map((o, idx) => ({ id: String(idx), text: o }))),
-          tpl.ans,
-          tpl.exp,
-        ]);
-
-        await pool.query(`
-          INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
-        `, [testId, newQId, qNum]);
-
-        allQuestions.push({
-          id: newQId,
-          subjectId: subId,
-          topicId: 'top_rights',
-          conceptId: 'c_art32',
-          type: 'MCQ',
-          question: qText,
-          options: tpl.opts.map((o, idx) => ({ id: String(idx), text: o })),
-          correctAnswer: tpl.ans,
-          explanation: tpl.exp,
-          difficulty: 'MEDIUM',
-          examTag: 'Mock Test Question',
-          pyqYear: 2025,
-          isPublished: true,
-        });
-      }
-    }
-
-    return allQuestions.slice(0, targetCount);
+    return fallbackRes.rows.map(this.mapRowToQuestion);
   }
 
   async createCustomMockTest(params: {
@@ -567,21 +432,30 @@ export class MockTestRepository {
     return { test, questions };
   }
 
-  async startAttempt(userId: string, testId: string): Promise<MockAttempt> {
+  async startAttempt(userId: string, testId: string, forceNew = false): Promise<MockAttempt> {
     const test = await this.getTestById(testId);
     if (!test) {
       throw new Error(`Mock test with id ${testId} not found`);
     }
 
-    // Check if an existing IN_PROGRESS attempt exists
-    const activeRes = await pool.query(`
-      SELECT * FROM public.mock_attempts
-      WHERE user_id = $1 AND mock_test_id = $2 AND status = 'IN_PROGRESS'
-      ORDER BY started_at DESC LIMIT 1;
-    `, [userId, testId]);
+    if (forceNew) {
+      // Mark any prior in-progress attempt as abandoned so the learner starts fresh
+      await pool.query(`
+        UPDATE public.mock_attempts
+        SET status = 'ABANDONED'
+        WHERE user_id = $1 AND mock_test_id = $2 AND status = 'IN_PROGRESS';
+      `, [userId, testId]);
+    } else {
+      // Check if an existing IN_PROGRESS attempt exists to resume
+      const activeRes = await pool.query(`
+        SELECT * FROM public.mock_attempts
+        WHERE user_id = $1 AND mock_test_id = $2 AND status = 'IN_PROGRESS'
+        ORDER BY started_at DESC LIMIT 1;
+      `, [userId, testId]);
 
-    if (activeRes.rows.length > 0) {
-      return this.mapRowToMockAttempt(activeRes.rows[0]);
+      if (activeRes.rows.length > 0) {
+        return this.mapRowToMockAttempt(activeRes.rows[0]);
+      }
     }
 
     const attemptId = `att_mock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1001,9 +875,9 @@ export class MockTestRepository {
       const accuracy = attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0;
 
       const startedAtMs = row.started_at ? new Date(row.started_at).getTime() : Date.now();
-      const calculatedTimeTaken = Math.round((Date.now() - startedAtMs) / 1000);
+      const calculatedTimeTaken = Math.max(10, Math.round((Date.now() - startedAtMs) / 1000));
       const finalTimeTaken = payload?.timeTakenSeconds && payload.timeTakenSeconds > 0
-        ? payload.timeTakenSeconds
+        ? Math.max(10, payload.timeTakenSeconds)
         : calculatedTimeTaken;
 
       const weakConceptIds = Array.from(weakConceptIdsSet);
@@ -1046,6 +920,263 @@ export class MockTestRepository {
     } finally {
       client.release();
     }
+  }
+
+  // -------------------------------------------------------------
+  // ADMIN EDITING & AUDIT TRAIL
+  // -------------------------------------------------------------
+
+  async updateMockTest(testId: string, updates: {
+    title?: string;
+    displayName?: string;
+    durationMinutes?: number;
+    totalMarks?: number;
+    negativeMarkingRate?: number;
+    instructions?: string;
+    isPublished?: boolean;
+    type?: 'FULL' | 'SUBJECT' | 'QUICK';
+    subjectIds?: string[];
+  }): Promise<MockTest> {
+    const test = await this.getTestById(testId);
+    if (!test) {
+      throw new Error(`Mock test with id ${testId} not found`);
+    }
+
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.title !== undefined) {
+      values.push(updates.title);
+      setClauses.push(`title = $${values.length}`);
+    }
+    if (updates.displayName !== undefined) {
+      values.push(updates.displayName);
+      setClauses.push(`display_name = $${values.length}`);
+    }
+    if (updates.durationMinutes !== undefined) {
+      values.push(updates.durationMinutes);
+      setClauses.push(`duration_minutes = $${values.length}`);
+    }
+    if (updates.totalMarks !== undefined) {
+      values.push(updates.totalMarks);
+      setClauses.push(`total_marks = $${values.length}`);
+    }
+    if (updates.negativeMarkingRate !== undefined) {
+      values.push(updates.negativeMarkingRate);
+      setClauses.push(`negative_marking_rate = $${values.length}`);
+    }
+    if (updates.instructions !== undefined) {
+      values.push(updates.instructions);
+      setClauses.push(`instructions = $${values.length}`);
+    }
+    if (updates.isPublished !== undefined) {
+      values.push(updates.isPublished);
+      setClauses.push(`is_published = $${values.length}`);
+    }
+    if (updates.type !== undefined) {
+      values.push(updates.type);
+      setClauses.push(`type = $${values.length}`);
+    }
+    if (updates.subjectIds !== undefined) {
+      values.push(updates.subjectIds);
+      setClauses.push(`subject_ids = $${values.length}`);
+    }
+
+    if (setClauses.length === 0) {
+      return test;
+    }
+
+    values.push(testId);
+    const query = `
+      UPDATE public.mock_tests
+      SET ${setClauses.join(', ')}
+      WHERE id = $${values.length}
+      RETURNING *;
+    `;
+    const res = await pool.query(query, values);
+    return this.mapRowToMockTest(res.rows[0]);
+  }
+
+  async updateQuestionWithAudit(
+    questionId: string,
+    updates: {
+      question?: string;
+      question_en?: string;
+      question_hi?: string;
+      options?: any[];
+      options_en?: any[];
+      options_hi?: any[];
+      correct_answer?: string;
+      correctAnswer?: string;
+      explanation?: string;
+      explanation_en?: string;
+      explanation_hi?: string;
+      subjectId?: string;
+      conceptId?: string;
+    },
+    changedBy = 'Admin',
+    reason = 'Editorial correction'
+  ): Promise<{ question: Question; revision: any }> {
+    // 1. Fetch existing question
+    const qRes = await pool.query('SELECT * FROM public.questions WHERE id = $1', [questionId]);
+    if (qRes.rows.length === 0) {
+      throw new Error(`Question with id ${questionId} not found`);
+    }
+    const current = qRes.rows[0];
+
+    // 2. Identify changes and record in question_revisions
+    const changes: Array<{ field: string; oldVal: string; newVal: string }> = [];
+
+    const newQuestion = updates.question || updates.question_en;
+    if (newQuestion !== undefined && newQuestion !== current.question) {
+      changes.push({ field: 'QUESTION_TEXT', oldVal: current.question || '', newVal: newQuestion });
+    }
+
+    const newAnswer = updates.correct_answer || updates.correctAnswer;
+    if (newAnswer !== undefined && String(newAnswer).trim().toUpperCase() !== String(current.correct_answer).trim().toUpperCase()) {
+      changes.push({ field: 'CORRECT_ANSWER', oldVal: current.correct_answer || '', newVal: String(newAnswer).trim().toUpperCase() });
+    }
+
+    const newExplanation = updates.explanation || updates.explanation_en;
+    if (newExplanation !== undefined && newExplanation !== current.explanation) {
+      changes.push({ field: 'EXPLANATION', oldVal: current.explanation || '', newVal: newExplanation });
+    }
+
+    if (updates.options !== undefined) {
+      changes.push({ field: 'OPTIONS', oldVal: JSON.stringify(current.options), newVal: JSON.stringify(updates.options) });
+    }
+
+    // Insert revision log
+    const revId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    let revRow: any = null;
+    if (changes.length > 0) {
+      const primaryChange = changes[0];
+      const revRes = await pool.query(`
+        INSERT INTO public.question_revisions (
+          id, question_id, field_changed, old_value, new_value, reason, details, changed_by, changed_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())
+        RETURNING *;
+      `, [
+        revId,
+        questionId,
+        primaryChange.field,
+        primaryChange.oldVal,
+        primaryChange.newVal,
+        reason,
+        JSON.stringify({ changes, updatedBy: changedBy }),
+        changedBy
+      ]);
+      revRow = revRes.rows[0];
+    }
+
+    // 3. Update questions table without touching historical mock_attempts/mock_answers
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (newQuestion !== undefined) {
+      values.push(newQuestion);
+      setClauses.push(`question = $${values.length}`);
+    }
+    if (updates.question_hi !== undefined) {
+      values.push(updates.question_hi);
+      setClauses.push(`question_hi = $${values.length}`);
+    }
+    if (updates.options !== undefined) {
+      values.push(JSON.stringify(updates.options));
+      setClauses.push(`options = $${values.length}::jsonb`);
+    }
+    if (updates.options_hi !== undefined) {
+      values.push(JSON.stringify(updates.options_hi));
+      setClauses.push(`options_hi = $${values.length}::jsonb`);
+    }
+    if (newAnswer !== undefined) {
+      values.push(String(newAnswer).trim().toUpperCase());
+      setClauses.push(`correct_answer = $${values.length}`);
+    }
+    if (newExplanation !== undefined) {
+      values.push(newExplanation);
+      setClauses.push(`explanation = $${values.length}`);
+    }
+    if (updates.explanation_hi !== undefined) {
+      values.push(updates.explanation_hi);
+      setClauses.push(`explanation_hi = $${values.length}`);
+    }
+    if (updates.subjectId !== undefined) {
+      values.push(updates.subjectId);
+      setClauses.push(`subject_id = $${values.length}`);
+    }
+    if (updates.conceptId !== undefined) {
+      values.push(updates.conceptId);
+      setClauses.push(`concept_id = $${values.length}`);
+    }
+
+    if (setClauses.length > 0) {
+      values.push(questionId);
+      const updateQQuery = `
+        UPDATE public.questions
+        SET ${setClauses.join(', ')}
+        WHERE id = $${values.length}
+        RETURNING *;
+      `;
+      const updateRes = await pool.query(updateQQuery, values);
+      return {
+        question: this.mapRowToQuestion(updateRes.rows[0]),
+        revision: revRow
+      };
+    }
+
+    return {
+      question: this.mapRowToQuestion(current),
+      revision: revRow
+    };
+  }
+
+  async getQuestionRevisions(questionId: string): Promise<any[]> {
+    const res = await pool.query(`
+      SELECT * FROM public.question_revisions
+      WHERE question_id = $1
+      ORDER BY changed_at DESC;
+    `, [questionId]);
+    return res.rows;
+  }
+
+  async addQuestionToMockTest(testId: string, questionId: string, orderNum?: number): Promise<void> {
+    let finalOrder = orderNum;
+    if (!finalOrder) {
+      const maxOrderRes = await pool.query(`
+        SELECT COALESCE(MAX(order_num), 0) + 1 AS next_order
+        FROM public.mock_questions
+        WHERE mock_test_id = $1;
+      `, [testId]);
+      finalOrder = parseInt(maxOrderRes.rows[0].next_order) || 1;
+    }
+
+    await pool.query(`
+      INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
+    `, [testId, questionId, finalOrder]);
+
+    // Recalculate mock test total questions
+    await pool.query(`
+      UPDATE public.mock_tests
+      SET total_questions = (SELECT COUNT(*) FROM public.mock_questions WHERE mock_test_id = $1)
+      WHERE id = $1;
+    `, [testId]);
+  }
+
+  async removeQuestionFromMockTest(testId: string, questionId: string): Promise<void> {
+    await pool.query(`
+      DELETE FROM public.mock_questions
+      WHERE mock_test_id = $1 AND question_id = $2;
+    `, [testId, questionId]);
+
+    // Recalculate mock test total questions
+    await pool.query(`
+      UPDATE public.mock_tests
+      SET total_questions = (SELECT COUNT(*) FROM public.mock_questions WHERE mock_test_id = $1)
+      WHERE id = $1;
+    `, [testId]);
   }
 }
 

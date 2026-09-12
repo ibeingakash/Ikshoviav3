@@ -63,6 +63,7 @@ export const Sidebar: React.FC = () => {
   // Learning Hub Items
   const learningNavItems: NavItem[] = [
     { id: 'pyq-practice', label: 'Official PYQ Papers', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
+    { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs', badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300' },
     { id: 'mock-tests', label: 'Mock Tests', icon: FileCheck2, badge: 'Simulations', badgeColor: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
     { id: 'practice', label: 'Topic & Subject Practice', icon: BookOpen },
     { id: 'courses-catalog', label: 'Course Catalog & Plans', icon: Tag, badge: 'Courses', badgeColor: 'bg-emerald-100 text-emerald-900 border border-emerald-300' },
@@ -85,6 +86,7 @@ export const Sidebar: React.FC = () => {
     { id: 'admin-coupons', label: 'Coupons & Offers', icon: Tag, badge: 'Discounts' },
     { id: 'admin-users', label: 'User Management', icon: Users, badge: 'Users' },
     { id: 'admin-courses', label: 'Courses & Pricing', icon: Package, badge: 'Catalog' },
+    { id: 'admin-test-series', label: 'Test Series Studio', icon: Layers, badge: 'Packs', badgeColor: 'bg-indigo-100 text-indigo-900 border border-indigo-300' },
     { id: 'admin-entitlements', label: 'Access & Subscriptions', icon: Key, badge: 'Grants' },
     { id: 'admin-payments', label: 'Payments & Revenue', icon: CreditCard, badge: 'Razorpay' },
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: 'Canonical' },

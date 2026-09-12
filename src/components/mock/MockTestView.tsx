@@ -26,7 +26,8 @@ import {
   Bot,
   Flame,
   FolderArchive,
-  Eye
+  Eye,
+  Play
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
@@ -40,7 +41,7 @@ import { ExamExitModal } from '../common/ExamExitModal.js';
 import { WifiOff } from 'lucide-react';
 
 export const MockTestView: React.FC = () => {
-  const { refreshLearnerData, setActiveSection, askTutorWithContext } = useLearner();
+  const { refreshLearnerData, setActiveSection, askTutorWithContext, activeSection } = useLearner();
 
   // Active Category Tab: 'ALL' | 'FULL' | 'SUBJECT' | 'QUICK' | 'HISTORY'
   const [activeCategory, setActiveCategory] = useState<'ALL' | 'FULL' | 'SUBJECT' | 'QUICK' | 'HISTORY'>('ALL');
@@ -73,6 +74,7 @@ export const MockTestView: React.FC = () => {
   const [currentAttemptId, setCurrentAttemptId] = useState<string | null>(null);
   const [submittedResult, setSubmittedResult] = useState<any>(null);
   const [inReviewMode, setInReviewMode] = useState(false);
+  const [reviewOrigin, setReviewOrigin] = useState<'SCORECARD' | 'HISTORY'>('SCORECARD');
   const [displayLanguage, setDisplayLanguage] = useState<'en' | 'hi'>('en');
 
   // Custom Mock Test Generator Modal state
@@ -148,6 +150,12 @@ export const MockTestView: React.FC = () => {
     }
   }, [inTest]);
 
+  useEffect(() => {
+    if (activeSection === 'mock-attempts') {
+      setActiveCategory('HISTORY');
+    }
+  }, [activeSection]);
+
   const loadInitialData = async () => {
     setLoading(true);
     try {
@@ -161,6 +169,12 @@ export const MockTestView: React.FC = () => {
       try {
         const histRes = await api.getMockTestHistory();
         setHistoryAttempts(Array.isArray(histRes) ? histRes : []);
+
+        const reviewAttemptId = sessionStorage.getItem('review_attempt_id');
+        if (reviewAttemptId) {
+          sessionStorage.removeItem('review_attempt_id');
+          await handleReviewHistoricalAttempt({ id: reviewAttemptId } as any);
+        }
       } catch {}
     } catch (e) {
       console.error('Failed to load mock tests:', e);
@@ -169,8 +183,16 @@ export const MockTestView: React.FC = () => {
     }
   };
 
-  // Launch Standard or Custom Mock Test
-  const handleStartStandardTest = async (test: MockTest) => {
+  const formatAttemptDuration = (seconds?: number) => {
+    if (!seconds || seconds <= 0) return '< 1 min';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    return secs > 0 ? `${mins}m ${secs}s` : `${mins} mins`;
+  };
+
+  // Launch Standard or Custom Mock Test (with optional forceNew to retake fresh)
+  const handleStartStandardTest = async (test: MockTest, forceNew = false) => {
     const displayTitle = getMockDisplayTitle(test);
     const isBpsc = displayTitle.toLowerCase().includes('bpsc') || (test.title || '').toLowerCase().includes('bpsc');
     const marksPerCorrect = isBpsc ? 1.0 : 2.0;
@@ -202,18 +224,27 @@ export const MockTestView: React.FC = () => {
       setCurrentQuestionIndex(0);
       setUserAnswers({});
       setMarkedForReview({});
-      const targetEnd = Date.now() + (duration * 60 * 1000);
-      setTestEndTimestamp(targetEnd);
-      setTimeRemainingSeconds(duration * 60);
+      let remainingSec = duration * 60;
+      setTestEndTimestamp(Date.now() + (remainingSec * 1000));
+      setTimeRemainingSeconds(remainingSec);
       setInTest(true);
       setInReviewMode(false);
       setSubmittedResult(null);
 
-      // Attempt to start a tracked session on the backend
+      // Attempt to start or resume a tracked session on the backend
       try {
-        const startRes = await api.startMockAttempt(test.id);
+        const startRes = await api.startMockAttempt(test.id, forceNew);
         if (startRes?.attempt?.id) {
           setCurrentAttemptId(startRes.attempt.id);
+
+          // If resuming an ongoing attempt, calculate remaining time accurately
+          if (!forceNew && startRes.attempt.startedAt) {
+            const elapsed = Math.floor((Date.now() - new Date(startRes.attempt.startedAt).getTime()) / 1000);
+            remainingSec = Math.max(10, (duration * 60) - elapsed);
+            setTimeRemainingSeconds(remainingSec);
+            setTestEndTimestamp(Date.now() + (remainingSec * 1000));
+          }
+
           // Restore previously saved answers if resuming an in-progress attempt
           if (Array.isArray(startRes.answers) && startRes.answers.length > 0) {
             const restoredAnswers: Record<string, string> = {};
@@ -237,6 +268,61 @@ export const MockTestView: React.FC = () => {
       }
     } catch (e) {
       console.error('Error starting test:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Review a submitted attempt without retaking
+  const handleReviewHistoricalAttempt = async (attempt: MockAttempt) => {
+    setLoading(true);
+    try {
+      const res = await api.getMockAttempt(attempt.id);
+      if (res?.success) {
+        const questions = res.questions || [];
+        const answersMap: Record<string, string> = {};
+        if (Array.isArray(res.answers)) {
+          res.answers.forEach((ans: any) => {
+            if (ans.questionId && ans.userAnswer) {
+              answersMap[ans.questionId] = ans.userAnswer;
+            }
+          });
+        }
+
+        let correct = 0;
+        let incorrect = 0;
+        questions.forEach(q => {
+          const userAns = answersMap[q.id];
+          if (userAns !== undefined && userAns !== null && userAns !== '') {
+            const userUpper = String(userAns).trim().toUpperCase();
+            const correctUpper = String(q.correctAnswer).trim().toUpperCase();
+            if (userUpper === correctUpper) {
+              correct++;
+            } else {
+              incorrect++;
+            }
+          }
+        });
+
+        const totalAttempted = correct + incorrect;
+
+        setTestQuestions(questions);
+        setUserAnswers(answersMap);
+        setSubmittedResult({
+          ...res.attempt,
+          totalQuestions: questions.length,
+          totalAttempted,
+          correctCount: correct,
+          incorrectCount: incorrect,
+          unattemptedCount: Math.max(0, questions.length - totalAttempted),
+        });
+        setReviewOrigin('HISTORY');
+        setInReviewMode(true);
+        setInTest(false);
+        setCurrentQuestionIndex(0);
+      }
+    } catch (err) {
+      console.error('Failed to review attempt:', err);
     } finally {
       setLoading(false);
     }
@@ -745,11 +831,17 @@ export const MockTestView: React.FC = () => {
             </div>
 
             <button
-              onClick={() => setInReviewMode(false)}
+              onClick={() => {
+                setInReviewMode(false);
+                if (reviewOrigin === 'HISTORY') {
+                  setSubmittedResult(null);
+                  setActiveCategory('HISTORY');
+                }
+              }}
               className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Back to Scorecard</span>
+              <span>{reviewOrigin === 'HISTORY' ? 'Back to Attempts' : 'Back to Scorecard'}</span>
             </button>
           </div>
         </div>
@@ -883,10 +975,16 @@ export const MockTestView: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setInReviewMode(false)}
+                onClick={() => {
+                  setInReviewMode(false);
+                  if (reviewOrigin === 'HISTORY') {
+                    setSubmittedResult(null);
+                    setActiveCategory('HISTORY');
+                  }
+                }}
                 className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
-                Back to Scorecard
+                {reviewOrigin === 'HISTORY' ? 'Back to Attempts' : 'Back to Scorecard'}
               </button>
             </div>
           </div>
@@ -1019,6 +1117,14 @@ export const MockTestView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveSection('test-series')}
+            className="px-4 py-2 bg-[#35156B] hover:bg-[#250e4d] text-white text-xs font-bold rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Exam Test Series Packs</span>
+          </button>
+
+          <button
             onClick={() => setShowCustomBuilder(true)}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
           >
@@ -1124,28 +1230,117 @@ export const MockTestView: React.FC = () => {
               <p className="text-xs text-stone-400">Launch any full-length mock or rapid sprint above to start building your diagnostic history.</p>
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-stone-200 bg-stone-50 text-stone-500 font-bold uppercase tracking-wider">
-                  <th className="py-3 px-4">Test Title</th>
-                  <th className="py-3 px-4">Score</th>
-                  <th className="py-3 px-4">Accuracy</th>
-                  <th className="py-3 px-4">Time Spent</th>
-                  <th className="py-3 px-4">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {historyAttempts.map(h => (
-                  <tr key={h.id} className="hover:bg-stone-50">
-                    <td className="py-3 px-4 font-bold text-stone-800">{h.mockTitle}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-indigo-700">{h.score} / {h.maxScore}</td>
-                    <td className="py-3 px-4 font-mono text-emerald-700 font-bold">{h.accuracy}%</td>
-                    <td className="py-3 px-4 text-stone-500">{Math.round((h.timeTakenSeconds || 0) / 60)} mins</td>
-                    <td className="py-3 px-4 text-stone-400">{new Date(h.completedAt).toLocaleDateString()}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-stone-200 bg-stone-50 text-stone-500 font-bold uppercase tracking-wider">
+                    <th className="py-3.5 px-4">Test Title & Status</th>
+                    <th className="py-3.5 px-4">Score</th>
+                    <th className="py-3.5 px-4">Accuracy</th>
+                    <th className="py-3.5 px-4">Duration</th>
+                    <th className="py-3.5 px-4">Date</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {historyAttempts.map(h => {
+                    const matchingTest = mockTests.find(t => t.id === h.mockTestId);
+                    const isCompleted = h.status === 'SUBMITTED';
+                    const isInProgress = h.status === 'IN_PROGRESS';
+
+                    return (
+                      <tr key={h.id} className="hover:bg-stone-50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-bold text-stone-800 text-xs sm:text-sm">{h.mockTitle}</span>
+                            <div className="flex items-center gap-2">
+                              {isInProgress && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                  In Progress
+                                </span>
+                              )}
+                              {isCompleted && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  Completed
+                                </span>
+                              )}
+                              {!isCompleted && !isInProgress && (
+                                <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">
+                                  {h.status}
+                                </span>
+                              )}
+                              {matchingTest?.type && (
+                                <span className="text-[10px] font-mono text-stone-400 uppercase">
+                                  {matchingTest.type}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isCompleted ? (
+                            <span className="font-mono font-bold text-indigo-700">
+                              {h.score} <span className="text-stone-400 font-normal">/ {h.maxScore}</span>
+                            </span>
+                          ) : (
+                            <span className="text-stone-400 font-mono">-- / {h.maxScore}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {isCompleted ? (
+                            <span className="font-mono text-emerald-700 font-bold">{h.accuracy}%</span>
+                          ) : (
+                            <span className="text-stone-400 font-mono">--</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-stone-500 font-mono text-xs">
+                          {formatAttemptDuration(h.timeTakenSeconds)}
+                        </td>
+                        <td className="py-3 px-4 text-stone-400">
+                          {new Date(h.completedAt || h.startedAt).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {isInProgress && (
+                              <button
+                                onClick={() => matchingTest && handleStartStandardTest(matchingTest, false)}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer flex items-center gap-1"
+                              >
+                                <Play className="w-3 h-3 fill-current" />
+                                <span>Resume</span>
+                              </button>
+                            )}
+
+                            {isCompleted && (
+                              <button
+                                onClick={() => handleReviewHistoricalAttempt(h)}
+                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Review</span>
+                              </button>
+                            )}
+
+                            {matchingTest && (
+                              <button
+                                onClick={() => handleStartStandardTest(matchingTest, true)}
+                                title="Retake this mock test from the beginning"
+                                className="px-2.5 py-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 border border-stone-200 text-xs font-medium rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span className="hidden sm:inline">Retake</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ) : loading ? (

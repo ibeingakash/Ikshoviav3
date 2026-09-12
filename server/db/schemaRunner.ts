@@ -9,6 +9,7 @@ import { ocrRepository } from '../repositories/OcrRepository.js';
 import { shortNotesRepository } from '../repositories/ShortNotesRepository.js';
 import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
 import { seedCanonicalResources } from './seedResources.js';
+import { runTestSeriesMigration } from './testSeriesMigration.js';
 
 export async function ensureSyllabusSeed(): Promise<void> {
   try {
@@ -94,8 +95,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
   try {
     // 1. Check if core tables already exist
     const checkRes = await pool.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
+      SELECT table_name
+      FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name IN ('users', 'current_affairs', 'questions', 'learner_models', 'mock_tests');
     `);
 
@@ -323,6 +324,29 @@ export async function ensureDatabaseSchema(): Promise<void> {
           ADD CONSTRAINT mock_questions_mock_test_id_question_id_key
           UNIQUE (mock_test_id, question_id);
         END IF;
+
+        -- Cleanup any historical duplicate/ghost rows from mock_questions
+        DELETE FROM public.mock_questions mq
+        WHERE mq.question_id LIKE 'ocr_q_q_%'
+           OR (mq.mock_test_id = 'mock_ocr_1788777685887_b53b84' AND mq.question_id LIKE 'ocr_q_ocr_q_%');
+
+        -- Add unique constraint on (mock_test_id, order_num) to prevent duplicate question positions
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'mock_questions_mock_test_id_order_num_key'
+        ) THEN
+          ALTER TABLE public.mock_questions
+          ADD CONSTRAINT mock_questions_mock_test_id_order_num_key
+          UNIQUE (mock_test_id, order_num);
+        END IF;
+
+        -- Keep mock_tests.total_questions strictly in sync with actual mock_questions count
+        UPDATE public.mock_tests mt
+        SET total_questions = (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id),
+            total_marks = CASE
+              WHEN mt.title ILIKE '%BPSC%' THEN (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id) * 1
+              ELSE (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id) * 2
+            END
+        WHERE EXISTS (SELECT 1 FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id);
       END
       $$;
 
@@ -449,12 +473,13 @@ export async function ensureDatabaseSchema(): Promise<void> {
     await shortNotesRepository.init();
     await ensureContentOriginSeparation();
     await seedCanonicalResources();
+    await runTestSeriesMigration();
 
     // 4. Verify total tables
     const tableRes = await pool.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
       ORDER BY table_name;
     `);
 
@@ -486,8 +511,8 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.pyq_papers
       SET source_type = 'ADMIN_IMPORTED'
-      WHERE id ILIKE '%flt%' 
-         OR id ILIKE '%mock%' 
+      WHERE id ILIKE '%flt%'
+         OR id ILIKE '%mock%'
          OR id ILIKE '%bpsc_2026%'
          OR paper_name ILIKE '%flt%'
          OR paper_name ILIKE '%mock%'
@@ -496,7 +521,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
       UPDATE public.pyq_papers
       SET source_type = 'OFFICIAL_COMMISSION'
-      WHERE id NOT ILIKE '%flt%' 
+      WHERE id NOT ILIKE '%flt%'
         AND id NOT ILIKE '%mock%'
         AND id NOT ILIKE '%bpsc_2026%'
         AND (source_domain IN ('upsc.gov.in', 'bpsc.bihar.gov.in', 'official') OR official_source_url ILIKE '%upsc.gov.in%' OR official_source_url ILIKE '%bpsc.bihar.gov.in%');
@@ -515,7 +540,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.questions
       SET source_type = 'ADMIN_IMPORTED', is_pyq = false
-      WHERE source = 'OCR_VERIFIED_IMPORT' 
+      WHERE source = 'OCR_VERIFIED_IMPORT'
          OR source_job_id IS NOT NULL
          OR exam_tag ILIKE '%FLT%'
          OR paper ILIKE '%FLT%'
@@ -540,7 +565,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 1: BPSC 2026 FLT 2 (149 questions)
     const flt2Questions = await pool.query(`
-      SELECT * FROM public.pyq_questions 
+      SELECT * FROM public.pyq_questions
       WHERE paper_id = 'bpsc_2026_flt_2'
       ORDER BY question_number ASC;
     `);
@@ -612,7 +637,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 2: BPSC 2026 Prelims (146 questions)
     const prelimsQuestions = await pool.query(`
-      SELECT * FROM public.pyq_questions 
+      SELECT * FROM public.pyq_questions
       WHERE paper_id = 'bpsc_2026_bpsc_prelims'
       ORDER BY question_number ASC;
     `);
@@ -699,7 +724,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     for (const job of publishedOcrJobs.rows) {
       const qRes = await pool.query(`
-        SELECT * FROM public.ocr_extracted_questions 
+        SELECT * FROM public.ocr_extracted_questions
         WHERE job_id = $1 AND correct_answer IS NOT NULL AND correct_answer != ''
         ORDER BY question_num ASC;
       `, [job.id]);
@@ -735,44 +760,52 @@ async function ensureContentOriginSeparation(): Promise<void> {
           job.exam === 'BPSC' ? 0.33 : 0.66
         ]);
 
-        for (const eq of qRes.rows) {
-          const qId = `ocr_q_${eq.id}`;
-          await pool.query(`
-            INSERT INTO public.questions (
-              id, question, question_hi, options, options_hi, correct_answer, explanation, explanation_hi,
-              difficulty, subject_id, topic_id, concept_id, exam_tag, pyq_year, is_published,
-              source_type, source
-            ) VALUES (
-              $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8,
-              $9, $10, $11, $12, $13, $14, true,
-              'ADMIN_IMPORTED', 'ADMIN_IMPORTED'
-            )
-            ON CONFLICT (id) DO UPDATE SET
-              question = EXCLUDED.question,
-              correct_answer = EXCLUDED.correct_answer,
-              source_type = 'ADMIN_IMPORTED';
-          `, [
-            qId,
-            eq.question_en || eq.question,
-            eq.question_hi,
-            JSON.stringify(eq.options || []),
-            JSON.stringify(eq.options_hi || []),
-            eq.correct_answer,
-            eq.explanation || 'Verified answer',
-            eq.explanation_hi,
-            eq.difficulty || 'MEDIUM',
-            eq.subject_id || 'sub_polity',
-            eq.topic_id || 'top_rights',
-            eq.concept_id || 'c_art32',
-            job.paper || `${job.exam} Prelims`,
-            job.year || 2026
-          ]);
+        // Check if mock_questions already has mapped questions for this test
+        const existingMq = await pool.query(
+          'SELECT COUNT(*) as count FROM public.mock_questions WHERE mock_test_id = $1',
+          [mockTestId]
+        );
 
-          await pool.query(`
-            INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (mock_test_id, question_id) DO UPDATE SET order_num = $3;
-          `, [mockTestId, qId, eq.question_num || 1]);
+        if (parseInt(existingMq.rows[0]?.count || '0', 10) === 0) {
+          for (const eq of qRes.rows) {
+            const qId = eq.id;
+            await pool.query(`
+              INSERT INTO public.questions (
+                id, question, question_hi, options, options_hi, correct_answer, explanation, explanation_hi,
+                difficulty, subject_id, topic_id, concept_id, exam_tag, pyq_year, is_published,
+                source_type, source
+              ) VALUES (
+                $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8,
+                $9, $10, $11, $12, $13, $14, true,
+                'ADMIN_IMPORTED', 'ADMIN_IMPORTED'
+              )
+              ON CONFLICT (id) DO UPDATE SET
+                question = EXCLUDED.question,
+                correct_answer = EXCLUDED.correct_answer,
+                source_type = 'ADMIN_IMPORTED';
+            `, [
+              qId,
+              eq.question_en || eq.question,
+              eq.question_hi,
+              JSON.stringify(eq.options || []),
+              JSON.stringify(eq.options_hi || []),
+              eq.correct_answer,
+              eq.explanation || 'Verified answer',
+              eq.explanation_hi,
+              eq.difficulty || 'MEDIUM',
+              eq.subject_id || 'sub_polity',
+              eq.topic_id || 'top_rights',
+              eq.concept_id || 'c_art32',
+              job.paper || `${job.exam} Prelims`,
+              job.year || 2026
+            ]);
+
+            await pool.query(`
+              INSERT INTO public.mock_questions (mock_test_id, question_id, order_num)
+              VALUES ($1, $2, $3)
+              ON CONFLICT (mock_test_id, order_num) DO UPDATE SET question_id = $2;
+            `, [mockTestId, qId, eq.question_num || 1]);
+          }
         }
       }
     }

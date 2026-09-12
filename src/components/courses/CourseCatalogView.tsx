@@ -176,7 +176,10 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
   const handleProceedToCheckout = async () => {
     if (!selectedCourse) return;
 
-    if (!gatewayConfig?.isConfigured) {
+    const baseCoursePrice = selectedCourse.currentPrice ? (selectedCourse.currentPrice.salePrice || selectedCourse.currentPrice.basePrice) : 0;
+    const payablePrice = appliedCoupon ? appliedCoupon.finalAmount : baseCoursePrice;
+
+    if (payablePrice > 0 && !gatewayConfig?.isConfigured) {
       setCheckoutError('Payment gateway is not configured. Please contact the administrator.');
       return;
     }
@@ -185,14 +188,27 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
     setCheckoutError(null);
 
     try {
-      // 1. Ensure Razorpay script is loaded
+      // 1. Create Order on backend (Server calculates canonical price with verified coupon discount)
+      const orderData = (await api.createPaymentOrder(selectedCourse.id, appliedCoupon?.code)) as any;
+
+      // If promotional / zero-amount order, access is already activated by backend!
+      if (orderData.zeroAmount || orderData.amount === 0) {
+        setCheckoutSuccessData({
+          paymentId: orderData.paymentId || `PROMO_${orderData.orderId}`,
+          courseName: selectedCourse.name,
+          expiresAt: orderData.expiresAt,
+        });
+        const freshEnts = await api.getLearnerEntitlements();
+        setMyEntitlements(freshEnts);
+        setIsProcessingCheckout(false);
+        return;
+      }
+
+      // 2. Ensure Razorpay script is loaded for paid order
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         throw new Error('Unable to connect to Razorpay secure checkout service. Please check your connection.');
       }
-
-      // 2. Create Order on backend (Server calculates canonical price with verified coupon discount)
-      const orderData = await api.createPaymentOrder(selectedCourse.id, appliedCoupon?.code);
 
       // 3. Configure Razorpay checkout options
       const options = {

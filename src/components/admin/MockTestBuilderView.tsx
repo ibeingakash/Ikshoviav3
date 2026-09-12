@@ -33,6 +33,7 @@ import {
 import { api } from '../../lib/api.js';
 import { MockTest, Question, Subject } from '../../types/index.js';
 import { useLearner } from '../../context/LearnerContext.js';
+import { PublishedTestEditorModal } from './PublishedTestEditorModal.js';
 
 const getDisplayText = (val: any): string => {
   if (val === null || val === undefined) return '';
@@ -86,6 +87,7 @@ export const MockTestBuilderView: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // Test Display Name Editing State
+  const [selectedTestForEdit, setSelectedTestForEdit] = useState<MockTest | null>(null);
   const [editingTestId, setEditingTestId] = useState<string | null>(null);
   const [editingTitleValue, setEditingTitleValue] = useState<string>('');
   const [savingTitle, setSavingTitle] = useState<boolean>(false);
@@ -574,6 +576,15 @@ export const MockTestBuilderView: React.FC = () => {
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTestForEdit(test)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Edit Test & Questions</span>
+                        </button>
+
                         {isArchived ? (
                           <button
                             onClick={() => handleRestore(test.id)}
@@ -1077,6 +1088,17 @@ export const MockTestBuilderView: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {selectedTestForEdit && (
+        <PublishedTestEditorModal
+          test={selectedTestForEdit}
+          onClose={() => setSelectedTestForEdit(null)}
+          onTestUpdated={(updated) => {
+            setAdminTests(prev => prev.map(t => t.id === updated.id ? updated : t));
+            setSelectedTestForEdit(updated);
+          }}
+        />
       )}
     </div>
   );

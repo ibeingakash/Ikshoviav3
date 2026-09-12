@@ -35,6 +35,7 @@ import { ImportPublishLogsView } from './components/admin/ImportPublishLogsView.
 import { SubjectsConceptsView } from './components/admin/SubjectsConceptsView.js';
 import { AdminDashboardView } from './components/admin/AdminDashboardView.js';
 import { AdminResourceStudioView } from './components/admin/AdminResourceStudioView.js';
+import { AdminTestSeriesStudioView } from './components/admin/AdminTestSeriesStudioView.js';
 import { UserManagementView } from './components/admin/UserManagementView.js';
 import { CoursesPricingView } from './components/admin/CoursesPricingView.js';
 import { EntitlementsView } from './components/admin/EntitlementsView.js';
@@ -43,8 +44,10 @@ import { CommercialHubView } from './components/admin/CommercialHubView.js';
 import { CouponsAdminView } from './components/admin/CouponsAdminView.js';
 import { CourseCatalogView } from './components/courses/CourseCatalogView.js';
 import { LearnerPurchasesView } from './components/courses/LearnerPurchasesView.js';
+import { TestSeriesMarketplaceView } from './components/mock/TestSeriesMarketplaceView.js';
 import { NotesSyllabusView } from './components/syllabus/NotesSyllabusView.js';
 import { DownloadAppView } from './components/download/DownloadAppView.js';
+import { LiveClassesHubView } from './components/live/LiveClassesHubView.js';
 import { initCapacitorApp } from './lib/capacitor.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
@@ -176,6 +179,7 @@ const MainContent: React.FC = () => {
       case 'practice-pyq':
         return <PyqPracticeView />;
       case 'mock-tests':
+      case 'mock':
       case 'mock-pyq':
       case 'mock-custom':
       case 'mock-attempts':
@@ -195,6 +199,9 @@ const MainContent: React.FC = () => {
         return <NotesSyllabusView />;
       case 'short-notes':
         return <ShortNotesView />;
+      case 'live-classes':
+      case 'live-classroom':
+        return <LiveClassesHubView />;
       case 'goals':
         return <GoalsView />;
       case 'profile':
@@ -237,12 +244,17 @@ const MainContent: React.FC = () => {
         return <UserManagementView />;
       case 'admin-courses':
         return <CoursesPricingView />;
+      case 'admin-test-series':
+        return <AdminTestSeriesStudioView />;
       case 'admin-entitlements':
         return <EntitlementsView />;
       case 'admin-payments':
         return <AdminPaymentsView />;
       case 'learner-purchases':
         return <LearnerPurchasesView />;
+      case 'test-series':
+      case 'test-series-marketplace':
+        return <TestSeriesMarketplaceView onStartMockTest={(mockTestId) => setActiveSection('mock-tests')} />;
       case 'superadmin-console':
       case 'super-admin':
       case 'super-admin-dashboard':

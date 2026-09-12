@@ -21,6 +21,7 @@ import {
   Zap,
   FolderArchive,
   GraduationCap,
+  Video,
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -487,6 +488,27 @@ export const DashboardView: React.FC = () => {
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-stone-900 truncate">Mock Simulator</div>
                       <div className="text-[10px] text-stone-500 truncate">Full Length Tests</div>
+                    </div>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setActiveSection('live-classes')}
+                  className="bg-white border border-[#EAE6DF] hover:border-amber-400 p-3.5 rounded-2xl shadow-2xs flex items-center justify-between cursor-pointer transition-all hover:shadow-xs group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-700 border border-rose-200/80 flex items-center justify-center shrink-0">
+                      <Video className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate flex items-center gap-1.5">
+                        <span>Live Classes</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">Live Mentorship</div>
                     </div>
                   </div>
                   <div className="w-6 h-6 rounded-full bg-stone-50 text-stone-400 group-hover:bg-amber-50 group-hover:text-amber-700 flex items-center justify-center shrink-0 transition-colors">

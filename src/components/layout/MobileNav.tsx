@@ -13,11 +13,17 @@ import {
   Sparkles,
   History,
   SlidersHorizontal,
+  TrendingUp,
+  Tag,
+  Package,
+  Layers,
+  Key,
+  CreditCard,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { PRIMARY_MOBILE_ITEMS, MORE_MENU_CATEGORIES, NavItemConfig } from '../../config/navigation.js';
-import { IKLogo } from '../common/IKLogo.js';
+import { DashboardLogo } from '../common/BrandLogo.js';
 import { registerBackButtonHandler } from '../../lib/capacitor.js';
 
 export const MobileNav: React.FC = () => {
@@ -42,6 +48,12 @@ export const MobileNav: React.FC = () => {
       title: 'ADMINISTRATION',
       items: [
         { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+        { id: 'admin-courses', label: 'Courses & Pricing', icon: Package, badge: 'Catalog' },
+        { id: 'admin-test-series', label: 'Test Series Studio', icon: Layers, badge: 'Packs' },
+        { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
+        { id: 'admin-coupons', label: 'Coupons & Offers', icon: Tag, badge: 'Discounts' },
+        { id: 'admin-entitlements', label: 'Access & Subscriptions', icon: Key },
+        { id: 'admin-payments', label: 'Payments & Revenue', icon: CreditCard },
         { id: 'admin-questions', label: 'Question Bank', icon: HelpCircle, badge: 'Canonical' },
         { id: 'admin-mock-builder', label: 'Mock Test Builder', icon: FileSpreadsheet },
         { id: 'admin-ocr', label: 'Content Import', icon: FileUp, badge: '4 Modes' },
@@ -128,9 +140,7 @@ export const MobileNav: React.FC = () => {
           <div className="relative w-full max-w-full bg-[#FAF7F0] border-t border-amber-500/30 rounded-t-3xl p-4 sm:p-5 text-[#111426] max-h-[85vh] overflow-y-auto overflow-x-hidden shadow-2xl space-y-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-slide-up">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-              <IKLogo
-                showTagline={true}
-                taglineText="Unlock Human Potential Through Understanding"
+              <DashboardLogo
                 size="sm"
               />
               <button

@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lock, Mail, User, ArrowRight, X, Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../lib/api.js';
-import { IKBrandMark } from '../common/IKBrandMark.js';
-import { IKLogo } from '../common/IKLogo.js';
+import { LoginLogo } from '../common/BrandLogo.js';
 
 interface AuthModalProps {
   isOpen?: boolean;
@@ -78,12 +77,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Brand Header */}
         <div className="space-y-2">
-          <IKLogo
-            variant="dark"
-            showTagline={true}
-            taglineText="Unlock Human Potential Through Understanding"
-            size="md"
-          />
+          <div className="p-2 rounded-2xl bg-white/95 inline-block">
+            <LoginLogo
+              size="md"
+            />
+          </div>
           <p className="text-xs text-stone-300 pt-1">
             {mode === 'login' && 'Enter your credentials to access your personal learning intelligence.'}
             {mode === 'register' && 'Start your personalized learning path today.'}

@@ -69,9 +69,15 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
   const qText = isHindi && question.question_hi ? question.question_hi : (question.question_en || question.question);
   
-  const options: QuestionOption[] = (isHindi && question.options_hi && question.options_hi.length > 0)
+  const rawOptions: QuestionOption[] = (isHindi && question.options_hi && question.options_hi.length > 0)
     ? question.options_hi
     : (question.options_en && question.options_en.length > 0 ? question.options_en : (question.options || []));
+
+  // Enforce BPSC/UPSC standard: options strictly capped at A-E, never show Option F or beyond
+  const options: QuestionOption[] = rawOptions.filter(opt => {
+    const idUpper = String(opt.id).trim().toUpperCase();
+    return ['A', 'B', 'C', 'D', 'E'].includes(idUpper);
+  });
 
   const explanation = isHindi && question.explanation_hi 
     ? question.explanation_hi 

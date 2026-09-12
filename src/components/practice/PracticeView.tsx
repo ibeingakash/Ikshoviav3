@@ -25,6 +25,7 @@ import { QuestionRenderer } from '../common/QuestionRenderer.js';
 import { ExamExitModal } from '../common/ExamExitModal.js';
 import { registerBackButtonHandler } from '../../lib/capacitor.js';
 import confetti from 'canvas-confetti';
+import { BrandLogo } from '../common/BrandLogo.js';
 
 interface QuestionAttemptState {
   selectedOption: string;
@@ -547,7 +548,9 @@ export const PracticeView: React.FC = () => {
           {mainsResult && (
             <div className="p-5 rounded-xl bg-amber-50/80 border border-amber-200 space-y-4">
               <div className="flex items-center justify-between border-b border-amber-200 pb-3">
-                <span className="text-sm font-bold text-amber-900">Evaluation Report</span>
+                <div className="flex items-center gap-3">
+                  <BrandLogo variant="pdf" size="xs" />
+                </div>
                 <span className="text-lg font-black text-amber-900 font-mono">Score: {mainsResult.score || '9.5/15'}</span>
               </div>
 
