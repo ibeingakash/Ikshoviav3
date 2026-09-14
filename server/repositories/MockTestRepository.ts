@@ -1,6 +1,7 @@
 import pool from '../db/pool.js';
 import { MockTest, MockAttempt, Question } from '../../src/types/index.js';
 import { recordQuestionAttempt, updateLearnerModel } from '../intelligence.js';
+import { resolveCanonicalSourceOrigin } from '../utils/provenance.js';
 
 export interface MockAnswerRecord {
   id: string;
@@ -14,12 +15,13 @@ export interface MockAnswerRecord {
 
 export class MockTestRepository {
   private schemaChecked = false;
+  private defaultTestsChecked = false;
 
   async ensureSchema(): Promise<void> {
     if (this.schemaChecked) return;
     try {
       await pool.query(`
-        ALTER TABLE public.mock_tests 
+        ALTER TABLE public.mock_tests
         ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'IKSHOVIA_CREATED',
         ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false,
         ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE,
@@ -32,6 +34,8 @@ export class MockTestRepository {
   }
 
   async ensureDefaultTests(): Promise<void> {
+    if (this.defaultTestsChecked) return;
+    this.defaultTestsChecked = true;
     await this.ensureSchema();
     try {
       const countRes = await pool.query('SELECT COUNT(*) FROM public.mock_tests WHERE is_published = true');
@@ -173,8 +177,6 @@ export class MockTestRepository {
   }
 
   async getPublishedTests(filters?: { testType?: string; sourceType?: string }): Promise<MockTest[]> {
-    await this.ensureDefaultTests();
-
     let whereClauses: string[] = ['is_published = true', '(is_deleted IS NULL OR is_deleted = false)'];
     let params: any[] = [];
     let idx = 1;
@@ -191,16 +193,17 @@ export class MockTestRepository {
 
     const whereSql = `WHERE ${whereClauses.join(' AND ')}`;
     const res = await pool.query(`
-      SELECT * FROM public.mock_tests 
-      ${whereSql} 
+      SELECT id, title, display_name, original_source_name, type, source_type, subject_ids,
+             duration_minutes, total_questions, total_marks, negative_marking_rate,
+             is_published, is_deleted, deleted_at, deleted_by, created_at
+      FROM public.mock_tests
+      ${whereSql}
       ORDER BY created_at DESC;
     `, params);
     return res.rows.map(this.mapRowToMockTest);
   }
 
   async getAllAdminTests(filters?: { testType?: string; sourceType?: string; includeArchived?: boolean }): Promise<MockTest[]> {
-    await this.ensureDefaultTests();
-
     let whereClauses: string[] = [];
     let params: any[] = [];
     let idx = 1;
@@ -221,7 +224,9 @@ export class MockTestRepository {
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
     const query = `
-      SELECT mt.*,
+      SELECT mt.id, mt.title, mt.display_name, mt.original_source_name, mt.type, mt.source_type, mt.subject_ids,
+             mt.duration_minutes, mt.total_questions, mt.total_marks, mt.negative_marking_rate,
+             mt.is_published, mt.is_deleted, mt.deleted_at, mt.deleted_by, mt.created_at,
              COALESCE(att.attempt_count, 0)::integer AS attempt_count,
              COALESCE(mq.question_count, 0)::integer AS actual_question_count
       FROM public.mock_tests mt
@@ -250,8 +255,7 @@ export class MockTestRepository {
   }
 
   async archiveOrDeleteTest(testId: string, actorId: string): Promise<{ success: boolean; testId: string; title: string; attemptsPreserved: number; message: string }> {
-    await this.ensureSchema();
-    const testRes = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [testId]);
+    const testRes = await pool.query('SELECT id, title, source_type FROM public.mock_tests WHERE id = $1', [testId]);
     if (testRes.rows.length === 0) {
       const err: any = new Error(`Mock test with id '${testId}' not found.`);
       err.statusCode = 404;
@@ -296,8 +300,7 @@ export class MockTestRepository {
   }
 
   async restoreTest(testId: string, actorId: string): Promise<{ success: boolean; testId: string; message: string }> {
-    await this.ensureSchema();
-    const testRes = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [testId]);
+    const testRes = await pool.query('SELECT id, title FROM public.mock_tests WHERE id = $1', [testId]);
     if (testRes.rows.length === 0) {
       const err: any = new Error(`Mock test with id '${testId}' not found.`);
       err.statusCode = 404;
@@ -321,8 +324,13 @@ export class MockTestRepository {
   }
 
   async getTestById(id: string): Promise<MockTest | null> {
-    await this.ensureSchema();
-    const res = await pool.query('SELECT * FROM public.mock_tests WHERE id = $1', [id]);
+    const res = await pool.query(`
+      SELECT id, title, display_name, original_source_name, type, source_type, subject_ids,
+             duration_minutes, total_questions, total_marks, negative_marking_rate,
+             is_published, is_deleted, deleted_at, deleted_by, created_at
+      FROM public.mock_tests
+      WHERE id = $1
+    `, [id]);
     if (res.rows.length === 0) return null;
     return this.mapRowToMockTest(res.rows[0]);
   }
@@ -332,7 +340,11 @@ export class MockTestRepository {
     if (!test) return [];
 
     const res = await pool.query(`
-      SELECT q.*, mq.order_num 
+      SELECT q.id, q.subject_id, q.topic_id, q.concept_id, q.type, q.question, q.question_en, q.question_hi,
+             q.options, q.options_en, q.options_hi, q.correct_answer, q.explanation, q.explanation_en, q.explanation_hi,
+             q.available_languages, q.difficulty, q.exam_tag, q.pyq_year, q.exam, q.paper, q.question_number,
+             q.is_pyq, q.source_type, q.source, q.verified_status, q.is_published, q.status, q.question_type,
+             q.statements, q.statements_hi, q.match_data, q.match_data_hi, mq.order_num
       FROM public.mock_questions mq
       JOIN public.questions q ON mq.question_id = q.id
       WHERE mq.mock_test_id = $1
@@ -346,7 +358,15 @@ export class MockTestRepository {
 
     // Fallback only if no questions were pre-linked in mock_questions
     const targetCount = test.totalQuestions || 10;
-    let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
+    let questionQuery = `
+      SELECT id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
+             options, options_en, options_hi, correct_answer, explanation, explanation_en, explanation_hi,
+             available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
+             is_pyq, source_type, source, verified_status, is_published, status, question_type,
+             statements, statements_hi, match_data, match_data_hi
+      FROM public.questions
+      WHERE is_published = true
+    `;
     const queryParams: any[] = [];
 
     if (test.sourceType) {
@@ -379,7 +399,6 @@ export class MockTestRepository {
     sourceType?: 'IKSHOVIA_CREATED' | 'ADMIN_IMPORTED';
     isPublished?: boolean;
   }): Promise<{ test: MockTest; questions: Question[] }> {
-    await this.ensureSchema();
     const {
       title,
       type = 'QUICK',
@@ -474,7 +493,7 @@ export class MockTestRepository {
 
   async getAttempt(userId: string, attemptId: string): Promise<MockAttempt | null> {
     const res = await pool.query(`
-      SELECT * FROM public.mock_attempts 
+      SELECT * FROM public.mock_attempts
       WHERE id = $1 AND user_id = $2;
     `, [attemptId, userId]);
 
@@ -487,7 +506,7 @@ export class MockTestRepository {
     if (!attempt) return [];
 
     const res = await pool.query(`
-      SELECT * FROM public.mock_answers 
+      SELECT * FROM public.mock_answers
       WHERE mock_attempt_id = $1;
     `, [attemptId]);
 
@@ -540,7 +559,10 @@ export class MockTestRepository {
 
   async getUserHistory(userId: string): Promise<MockAttempt[]> {
     const res = await pool.query(`
-      SELECT * FROM public.mock_attempts
+      SELECT id, user_id, mock_test_id, mock_title, score, max_score, accuracy,
+             time_taken_seconds, completed_at, subject_scores, weak_concept_ids,
+             mistake_summary, status, started_at
+      FROM public.mock_attempts
       WHERE user_id = $1
       ORDER BY completed_at DESC, started_at DESC;
     `, [userId]);
@@ -574,13 +596,14 @@ export class MockTestRepository {
   }
 
   async updateDisplayName(testId: string, displayName: string): Promise<MockTest> {
-    await this.ensureSchema();
     const cleanName = displayName ? displayName.trim() : '';
     const res = await pool.query(`
       UPDATE public.mock_tests
       SET display_name = $1, title = COALESCE(NULLIF($1, ''), title)
       WHERE id = $2
-      RETURNING *;
+      RETURNING id, title, display_name, original_source_name, type, source_type, subject_ids,
+                duration_minutes, total_questions, total_marks, negative_marking_rate,
+                is_published, is_deleted, deleted_at, deleted_by, created_at;
     `, [cleanName, testId]);
     if (res.rows.length === 0) {
       throw new Error(`Mock test with id ${testId} not found`);
@@ -749,7 +772,7 @@ export class MockTestRepository {
 
       // Load test questions
       const qRes = await client.query(`
-        SELECT q.*, mq.order_num 
+        SELECT q.*, mq.order_num
         FROM public.mock_questions mq
         JOIN public.questions q ON mq.question_id = q.id
         WHERE mq.mock_test_id = $1
@@ -760,7 +783,15 @@ export class MockTestRepository {
       if (qRes.rows.length > 0) {
         testQuestions = qRes.rows.map(this.mapRowToQuestion);
       } else {
-        let questionQuery = 'SELECT * FROM public.questions WHERE is_published = true';
+        let questionQuery = `
+          SELECT id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
+                 options, options_en, options_hi, correct_answer, explanation, explanation_en, explanation_hi,
+                 available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
+                 is_pyq, source_type, source, verified_status, is_published, status, question_type,
+                 statements, statements_hi, match_data, match_data_hi
+          FROM public.questions
+          WHERE is_published = true
+        `;
         const queryParams: any[] = [];
         if (test.subjectIds && test.subjectIds.length > 0) {
           questionQuery += ' AND subject_id = ANY($1)';
@@ -1017,125 +1048,202 @@ export class MockTestRepository {
     changedBy = 'Admin',
     reason = 'Editorial correction'
   ): Promise<{ question: Question; revision: any }> {
-    // 1. Fetch existing question
-    const qRes = await pool.query('SELECT * FROM public.questions WHERE id = $1', [questionId]);
-    if (qRes.rows.length === 0) {
-      throw new Error(`Question with id ${questionId} not found`);
-    }
-    const current = qRes.rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // 2. Identify changes and record in question_revisions
-    const changes: Array<{ field: string; oldVal: string; newVal: string }> = [];
+      // 1. Fetch existing question with row lock
+      const qRes = await client.query(`
+        SELECT id, subject_id, topic_id, concept_id, type, question, question_en, question_hi,
+               options, options_en, options_hi, correct_answer, explanation, explanation_en, explanation_hi,
+               available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
+               is_pyq, source_type, source, source_job_id, verified_status, is_published, status, question_type,
+               statements, statements_hi, match_data, match_data_hi, corrections_count
+        FROM public.questions
+        WHERE id = $1
+        FOR UPDATE
+      `, [questionId]);
+      if (qRes.rows.length === 0) {
+        throw new Error(`Question with id ${questionId} not found`);
+      }
+      const current = qRes.rows[0];
 
-    const newQuestion = updates.question || updates.question_en;
-    if (newQuestion !== undefined && newQuestion !== current.question) {
-      changes.push({ field: 'QUESTION_TEXT', oldVal: current.question || '', newVal: newQuestion });
-    }
+      // 2. Derive canonical source_origin server-side from canonical provenance
+      const sourceOrigin = resolveCanonicalSourceOrigin(current);
 
-    const newAnswer = updates.correct_answer || updates.correctAnswer;
-    if (newAnswer !== undefined && String(newAnswer).trim().toUpperCase() !== String(current.correct_answer).trim().toUpperCase()) {
-      changes.push({ field: 'CORRECT_ANSWER', oldVal: current.correct_answer || '', newVal: String(newAnswer).trim().toUpperCase() });
-    }
+      // 3. Identify changes and record in question_revisions
+      const changes: Array<{ field: string; oldVal: string; newVal: string }> = [];
 
-    const newExplanation = updates.explanation || updates.explanation_en;
-    if (newExplanation !== undefined && newExplanation !== current.explanation) {
-      changes.push({ field: 'EXPLANATION', oldVal: current.explanation || '', newVal: newExplanation });
-    }
+      const newQuestion = updates.question !== undefined ? updates.question : updates.question_en;
+      if (newQuestion !== undefined && newQuestion !== current.question) {
+        changes.push({ field: 'QUESTION_TEXT', oldVal: current.question || '', newVal: newQuestion });
+      }
 
-    if (updates.options !== undefined) {
-      changes.push({ field: 'OPTIONS', oldVal: JSON.stringify(current.options), newVal: JSON.stringify(updates.options) });
-    }
+      if (updates.question_hi !== undefined && updates.question_hi !== current.question_hi) {
+        changes.push({ field: 'QUESTION_HI', oldVal: current.question_hi || '', newVal: updates.question_hi });
+      }
 
-    // Insert revision log
-    const revId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    let revRow: any = null;
-    if (changes.length > 0) {
-      const primaryChange = changes[0];
-      const revRes = await pool.query(`
-        INSERT INTO public.question_revisions (
-          id, question_id, field_changed, old_value, new_value, reason, details, changed_by, changed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())
-        RETURNING *;
-      `, [
-        revId,
-        questionId,
-        primaryChange.field,
-        primaryChange.oldVal,
-        primaryChange.newVal,
-        reason,
-        JSON.stringify({ changes, updatedBy: changedBy }),
-        changedBy
-      ]);
-      revRow = revRes.rows[0];
-    }
+      const newAnswer = updates.correct_answer !== undefined ? updates.correct_answer : updates.correctAnswer;
+      if (newAnswer !== undefined && String(newAnswer).trim().toUpperCase() !== String(current.correct_answer).trim().toUpperCase()) {
+        changes.push({ field: 'CORRECT_ANSWER', oldVal: current.correct_answer || '', newVal: String(newAnswer).trim().toUpperCase() });
+      }
 
-    // 3. Update questions table without touching historical mock_attempts/mock_answers
-    const setClauses: string[] = [];
-    const values: any[] = [];
+      const newExplanation = updates.explanation !== undefined ? updates.explanation : updates.explanation_en;
+      if (newExplanation !== undefined && newExplanation !== current.explanation) {
+        changes.push({ field: 'EXPLANATION', oldVal: current.explanation || '', newVal: newExplanation });
+      }
 
-    if (newQuestion !== undefined) {
-      values.push(newQuestion);
-      setClauses.push(`question = $${values.length}`);
-    }
-    if (updates.question_hi !== undefined) {
-      values.push(updates.question_hi);
-      setClauses.push(`question_hi = $${values.length}`);
-    }
-    if (updates.options !== undefined) {
-      values.push(JSON.stringify(updates.options));
-      setClauses.push(`options = $${values.length}::jsonb`);
-    }
-    if (updates.options_hi !== undefined) {
-      values.push(JSON.stringify(updates.options_hi));
-      setClauses.push(`options_hi = $${values.length}::jsonb`);
-    }
-    if (newAnswer !== undefined) {
-      values.push(String(newAnswer).trim().toUpperCase());
-      setClauses.push(`correct_answer = $${values.length}`);
-    }
-    if (newExplanation !== undefined) {
-      values.push(newExplanation);
-      setClauses.push(`explanation = $${values.length}`);
-    }
-    if (updates.explanation_hi !== undefined) {
-      values.push(updates.explanation_hi);
-      setClauses.push(`explanation_hi = $${values.length}`);
-    }
-    if (updates.subjectId !== undefined) {
-      values.push(updates.subjectId);
-      setClauses.push(`subject_id = $${values.length}`);
-    }
-    if (updates.conceptId !== undefined) {
-      values.push(updates.conceptId);
-      setClauses.push(`concept_id = $${values.length}`);
-    }
+      if (updates.explanation_hi !== undefined && updates.explanation_hi !== current.explanation_hi) {
+        changes.push({ field: 'EXPLANATION_HI', oldVal: current.explanation_hi || '', newVal: updates.explanation_hi });
+      }
 
-    if (setClauses.length > 0) {
-      values.push(questionId);
-      const updateQQuery = `
-        UPDATE public.questions
-        SET ${setClauses.join(', ')}
-        WHERE id = $${values.length}
-        RETURNING *;
-      `;
-      const updateRes = await pool.query(updateQQuery, values);
+      if (updates.options !== undefined && JSON.stringify(updates.options) !== JSON.stringify(current.options)) {
+        changes.push({ field: 'OPTIONS', oldVal: JSON.stringify(current.options), newVal: JSON.stringify(updates.options) });
+      }
+
+      if (updates.options_hi !== undefined && JSON.stringify(updates.options_hi) !== JSON.stringify(current.options_hi)) {
+        changes.push({ field: 'OPTIONS_HI', oldVal: JSON.stringify(current.options_hi), newVal: JSON.stringify(updates.options_hi) });
+      }
+
+      if (updates.subjectId !== undefined && updates.subjectId !== current.subject_id) {
+        changes.push({ field: 'SUBJECT_ID', oldVal: current.subject_id || '', newVal: updates.subjectId });
+      }
+
+      if (updates.conceptId !== undefined && updates.conceptId !== current.concept_id) {
+        changes.push({ field: 'CONCEPT_ID', oldVal: current.concept_id || '', newVal: updates.conceptId });
+      }
+
+      // 4. Insert revision log if changes exist
+      let revRow: any = null;
+      if (changes.length > 0) {
+        const revCountRes = await client.query(
+          'SELECT COALESCE(MAX(revision_num), 0) as max_rev FROM public.question_revisions WHERE question_id = $1',
+          [questionId]
+        );
+        const nextRevNum = Math.max(
+          Number(revCountRes.rows[0]?.max_rev || 0),
+          Number(current.corrections_count || 0)
+        ) + 1;
+
+        const revId = `rev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const primaryChange = changes[0];
+
+        const revRes = await client.query(`
+          INSERT INTO public.question_revisions (
+            id, question_id, job_id, revision_num, source_origin, field_changed,
+            old_value, new_value, reason, details, changed_by, changed_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10::jsonb, $11, NOW()
+          )
+          RETURNING *;
+        `, [
+          revId,
+          questionId,
+          current.source_job_id || null,
+          nextRevNum,
+          sourceOrigin,
+          primaryChange.field,
+          primaryChange.oldVal,
+          primaryChange.newVal,
+          reason,
+          JSON.stringify({ changes, updatedBy: changedBy, sourceOrigin }),
+          changedBy
+        ]);
+        revRow = revRes.rows[0];
+      }
+
+      // 5. Update questions table without touching historical mock_attempts/mock_answers
+      const setClauses: string[] = [];
+      const values: any[] = [];
+
+      if (newQuestion !== undefined) {
+        values.push(newQuestion);
+        setClauses.push(`question = $${values.length}`);
+      }
+      if (updates.question_en !== undefined || newQuestion !== undefined) {
+        values.push(newQuestion || updates.question_en);
+        setClauses.push(`question_en = $${values.length}`);
+      }
+      if (updates.question_hi !== undefined) {
+        values.push(updates.question_hi);
+        setClauses.push(`question_hi = $${values.length}`);
+      }
+      if (updates.options !== undefined) {
+        values.push(JSON.stringify(updates.options));
+        setClauses.push(`options = $${values.length}::jsonb`);
+      }
+      if (updates.options_en !== undefined || updates.options !== undefined) {
+        values.push(JSON.stringify(updates.options_en || updates.options));
+        setClauses.push(`options_en = $${values.length}::jsonb`);
+      }
+      if (updates.options_hi !== undefined) {
+        values.push(JSON.stringify(updates.options_hi));
+        setClauses.push(`options_hi = $${values.length}::jsonb`);
+      }
+      if (newAnswer !== undefined) {
+        values.push(String(newAnswer).trim().toUpperCase());
+        setClauses.push(`correct_answer = $${values.length}`);
+      }
+      if (newExplanation !== undefined) {
+        values.push(newExplanation);
+        setClauses.push(`explanation = $${values.length}`);
+      }
+      if (updates.explanation_en !== undefined || newExplanation !== undefined) {
+        values.push(newExplanation || updates.explanation_en);
+        setClauses.push(`explanation_en = $${values.length}`);
+      }
+      if (updates.explanation_hi !== undefined) {
+        values.push(updates.explanation_hi);
+        setClauses.push(`explanation_hi = $${values.length}`);
+      }
+      if (updates.subjectId !== undefined) {
+        values.push(updates.subjectId);
+        setClauses.push(`subject_id = $${values.length}`);
+      }
+      if (updates.conceptId !== undefined) {
+        values.push(updates.conceptId);
+        setClauses.push(`concept_id = $${values.length}`);
+      }
+
+      let updatedQuestionRow = current;
+
+      if (setClauses.length > 0) {
+        setClauses.push(`last_corrected_at = NOW()`);
+        values.push(changedBy);
+        setClauses.push(`last_corrected_by = $${values.length}`);
+        setClauses.push(`corrections_count = COALESCE(corrections_count, 0) + 1`);
+
+        values.push(questionId);
+        const updateQQuery = `
+          UPDATE public.questions
+          SET ${setClauses.join(', ')}
+          WHERE id = $${values.length}
+          RETURNING *;
+        `;
+        const updateRes = await client.query(updateQQuery, values);
+        updatedQuestionRow = updateRes.rows[0];
+      }
+
+      await client.query('COMMIT');
+
       return {
-        question: this.mapRowToQuestion(updateRes.rows[0]),
+        question: this.mapRowToQuestion(updatedQuestionRow),
         revision: revRow
       };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    return {
-      question: this.mapRowToQuestion(current),
-      revision: revRow
-    };
   }
 
   async getQuestionRevisions(questionId: string): Promise<any[]> {
     const res = await pool.query(`
       SELECT * FROM public.question_revisions
       WHERE question_id = $1
-      ORDER BY changed_at DESC;
+      ORDER BY revision_num DESC, changed_at DESC;
     `, [questionId]);
     return res.rows;
   }

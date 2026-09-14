@@ -47,6 +47,22 @@ export interface DbResource {
   updated_at: Date | string;
 }
 
+const RESOURCE_BASE_COLUMNS = `
+  id, title, author, description, summary, resource_type, type, subject, subject_id,
+  topic, concept_id, exam, exam_tag, edition, publication_year, publisher, language,
+  isbn, license_status, cover_image_url, tags, source_attribution, storage_provider,
+  file_hash, drive_file_id, drive_folder_id, file_name, file_size, mime_type,
+  page_count, status, visibility, uploaded_by, url, read_time_minutes, created_at, updated_at
+`;
+
+const RESOURCE_ALIAS_COLUMNS = `
+  r.id, r.title, r.author, r.description, r.summary, r.resource_type, r.type, r.subject, r.subject_id,
+  r.topic, r.concept_id, r.exam, r.exam_tag, r.edition, r.publication_year, r.publisher, r.language,
+  r.isbn, r.license_status, r.cover_image_url, r.tags, r.source_attribution, r.storage_provider,
+  r.file_hash, r.drive_file_id, r.drive_folder_id, r.file_name, r.file_size, r.mime_type,
+  r.page_count, r.status, r.visibility, r.uploaded_by, r.url, r.read_time_minutes, r.created_at, r.updated_at
+`;
+
 export class ResourceRepository {
   private static instance: ResourceRepository;
 
@@ -141,13 +157,13 @@ export class ResourceRepository {
     if (filters?.search && filters.search.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(`(
-        r.title ILIKE $${paramIndex} OR 
-        r.author ILIKE $${paramIndex} OR 
-        r.description ILIKE $${paramIndex} OR 
-        r.topic ILIKE $${paramIndex} OR 
-        r.subject ILIKE $${paramIndex} OR 
-        r.summary ILIKE $${paramIndex} OR 
-        r.exam ILIKE $${paramIndex} OR 
+        r.title ILIKE $${paramIndex} OR
+        r.author ILIKE $${paramIndex} OR
+        r.description ILIKE $${paramIndex} OR
+        r.topic ILIKE $${paramIndex} OR
+        r.subject ILIKE $${paramIndex} OR
+        r.summary ILIKE $${paramIndex} OR
+        r.exam ILIKE $${paramIndex} OR
         r.resource_type ILIKE $${paramIndex}
       )`);
       whereValues.push(q);
@@ -174,7 +190,7 @@ export class ResourceRepository {
     const queryValues = [...whereValues];
     let queryParamIndex = paramIndex;
 
-    let selectFields = 'r.*, 1 AS last_page, 0 AS progress_percentage, false AS is_bookmarked';
+    let selectFields = `${RESOURCE_ALIAS_COLUMNS}, 1 AS last_page, 0 AS progress_percentage, false AS is_bookmarked`;
     let joins = '';
 
     if (filters?.userId) {
@@ -184,7 +200,7 @@ export class ResourceRepository {
       queryValues.push(filters.userId);
 
       selectFields = `
-        r.*,
+        ${RESOURCE_ALIAS_COLUMNS},
         COALESCE(p.last_page, 1) AS last_page,
         COALESCE(p.progress_percentage, 0) AS progress_percentage,
         (b.id IS NOT NULL) AS is_bookmarked
@@ -239,7 +255,7 @@ export class ResourceRepository {
   async findById(id: string, userId?: string): Promise<DbResource | null> {
     if (userId) {
       const res = await pool.query(
-        `SELECT r.*,
+        `SELECT ${RESOURCE_ALIAS_COLUMNS},
           COALESCE(p.last_page, 1) AS last_page,
           COALESCE(p.progress_percentage, 0) AS progress_percentage,
           (b.id IS NOT NULL) AS is_bookmarked
@@ -253,7 +269,7 @@ export class ResourceRepository {
       return this.mapRowToResource(res.rows[0]);
     }
 
-    const res = await pool.query('SELECT * FROM public.resources WHERE id = $1', [id]);
+    const res = await pool.query(`SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE id = $1`, [id]);
     if (res.rows.length === 0) return null;
     return this.mapRowToResource(res.rows[0]);
   }
@@ -269,7 +285,7 @@ export class ResourceRepository {
 
     if (fileHash) {
       const hashRes = await pool.query(
-        'SELECT * FROM public.resources WHERE file_hash = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1',
+        `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE file_hash = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1`,
         [fileHash, excludeId || null]
       );
       if (hashRes.rows.length > 0) {
@@ -279,7 +295,7 @@ export class ResourceRepository {
 
     if (driveFileId) {
       const driveRes = await pool.query(
-        'SELECT * FROM public.resources WHERE drive_file_id = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1',
+        `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE drive_file_id = $1 AND ($2::text IS NULL OR id != $2) LIMIT 1`,
         [driveFileId, excludeId || null]
       );
       if (driveRes.rows.length > 0) {
@@ -292,10 +308,10 @@ export class ResourceRepository {
       if (author && author.trim()) {
         const cleanAuthor = author.trim().toLowerCase();
         const normRes = await pool.query(
-          `SELECT * FROM public.resources 
-           WHERE LOWER(TRIM(title)) = $1 
-             AND LOWER(TRIM(author)) = $2 
-             AND ($3::text IS NULL OR id != $3) 
+          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources
+           WHERE LOWER(TRIM(title)) = $1
+             AND LOWER(TRIM(author)) = $2
+             AND ($3::text IS NULL OR id != $3)
            LIMIT 1`,
           [cleanTitle, cleanAuthor, excludeId || null]
         );
@@ -304,9 +320,9 @@ export class ResourceRepository {
         }
       } else {
         const titleRes = await pool.query(
-          `SELECT * FROM public.resources 
-           WHERE LOWER(TRIM(title)) = $1 
-             AND ($2::text IS NULL OR id != $2) 
+          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources
+           WHERE LOWER(TRIM(title)) = $1
+             AND ($2::text IS NULL OR id != $2)
            LIMIT 1`,
           [cleanTitle, excludeId || null]
         );
@@ -341,10 +357,10 @@ export class ResourceRepository {
 
     if (!validatedSubjectId && validatedSubjectName) {
       const match = await pool.query(
-        `SELECT id, name FROM public.subjects 
-         WHERE LOWER(name) = LOWER($1) 
-            OR LOWER(code) = LOWER($1) 
-            OR name ILIKE $2 
+        `SELECT id, name FROM public.subjects
+         WHERE LOWER(name) = LOWER($1)
+            OR LOWER(code) = LOWER($1)
+            OR name ILIKE $2
          ORDER BY id ASC LIMIT 1`,
         [validatedSubjectName.trim(), `%${validatedSubjectName.trim()}%`]
       );

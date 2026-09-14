@@ -45,6 +45,7 @@ import {
 import { VideoMeetingProvider } from '../../lib/video/VideoMeetingProvider.js';
 import { createVideoMeetingProvider } from '../../lib/video/JitsiVideoProvider.js';
 import { liveClassService } from '../../services/liveClassService.js';
+import { getApiBaseUrl } from '../../lib/api.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { LiveAttendanceModal } from './LiveAttendanceModal.js';
 import { BrandLogo } from '../common/BrandLogo.js';
@@ -208,8 +209,16 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   // Connect WebSocket for real-time interactivity
   const connectWebSocket = () => {
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/live/ws`;
+      let wsUrl: string;
+      const baseUrl = getApiBaseUrl();
+      if (baseUrl) {
+        const wsProto = baseUrl.startsWith('https:') ? 'wss:' : 'ws:';
+        const host = baseUrl.replace(/^https?:\/\//, '');
+        wsUrl = `${wsProto}//${host}/api/live/ws`;
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${protocol}//${window.location.host}/api/live/ws`;
+      }
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 

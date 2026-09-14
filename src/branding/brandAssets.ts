@@ -34,7 +34,7 @@ export type BrandLogoVariant =
 /**
  * Helper to get the canonical asset URL for any variant.
  */
-export function getBrandAssetUrl(variant: BrandLogoVariant): string {
+export function getBrandAssetUrl(variant: BrandLogoVariant | string): string {
   switch (variant) {
     case 'primary':
       return brandAssets.primaryLogo;

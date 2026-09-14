@@ -81,7 +81,9 @@ export class LearnerResourceRepository {
    */
   public async getProgress(userId: string, resourceId: string): Promise<LearnerReadingProgress | null> {
     const res = await pool.query(
-      `SELECT * FROM public.learner_resource_progress WHERE user_id = $1 AND resource_id = $2`,
+      `SELECT id, user_id, resource_id, last_page, total_pages, progress_percentage, created_at, updated_at
+       FROM public.learner_resource_progress
+       WHERE user_id = $1 AND resource_id = $2`,
       [userId, resourceId]
     );
     return res.rows[0] || null;
@@ -92,18 +94,21 @@ export class LearnerResourceRepository {
    */
   public async getContinueReading(userId: string, limit: number = 6): Promise<any[]> {
     const res = await pool.query(
-      `SELECT 
+      `SELECT
         p.id AS progress_id,
         p.last_page,
         p.total_pages,
         p.progress_percentage,
         p.updated_at AS last_read_at,
-        r.*,
+        r.id, r.title, r.author, r.description, r.summary, r.resource_type, r.type, r.subject, r.subject_id,
+        r.topic, r.concept_id, r.exam, r.exam_tag, r.cover_image_url, r.tags, r.storage_provider,
+        r.file_name, r.file_size, r.mime_type, r.page_count, r.status, r.visibility, r.url,
+        r.read_time_minutes, r.created_at, r.updated_at,
         (b.id IS NOT NULL) AS is_bookmarked
       FROM public.learner_resource_progress p
       JOIN public.resources r ON p.resource_id = r.id
       LEFT JOIN public.learner_resource_bookmarks b ON b.user_id = p.user_id AND b.resource_id = p.resource_id
-      WHERE p.user_id = $1 
+      WHERE p.user_id = $1
         AND r.status IN ('READY', 'PUBLISHED')
         AND r.visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
       ORDER BY p.updated_at DESC
@@ -176,18 +181,21 @@ export class LearnerResourceRepository {
     const total = parseInt(countRes.rows[0]?.count || '0', 10);
 
     const res = await pool.query(
-      `SELECT 
+      `SELECT
         b.id AS bookmark_id,
         b.notes,
         b.created_at AS bookmarked_at,
-        r.*,
+        r.id, r.title, r.author, r.description, r.summary, r.resource_type, r.type, r.subject, r.subject_id,
+        r.topic, r.concept_id, r.exam, r.exam_tag, r.cover_image_url, r.tags, r.storage_provider,
+        r.file_name, r.file_size, r.mime_type, r.page_count, r.status, r.visibility, r.url,
+        r.read_time_minutes, r.created_at, r.updated_at,
         COALESCE(p.last_page, 1) AS last_page,
         COALESCE(p.progress_percentage, 0) AS progress_percentage,
         true AS is_bookmarked
       FROM public.learner_resource_bookmarks b
       JOIN public.resources r ON b.resource_id = r.id
       LEFT JOIN public.learner_resource_progress p ON p.user_id = b.user_id AND p.resource_id = b.resource_id
-      WHERE b.user_id = $1 
+      WHERE b.user_id = $1
         AND r.status IN ('READY', 'PUBLISHED')
         AND r.visibility NOT IN ('ADMIN_ONLY')
       ORDER BY b.created_at DESC
@@ -204,31 +212,31 @@ export class LearnerResourceRepository {
   public async getFilterMeta(): Promise<ResourceFilterMeta> {
     try {
       const subjectsRes = await pool.query(
-        `SELECT DISTINCT subject FROM public.resources 
+        `SELECT DISTINCT subject FROM public.resources
          WHERE subject IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY subject ASC`
       );
 
       const topicsRes = await pool.query(
-        `SELECT DISTINCT topic FROM public.resources 
+        `SELECT DISTINCT topic FROM public.resources
          WHERE topic IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY topic ASC`
       );
 
       const typesRes = await pool.query(
-        `SELECT DISTINCT resource_type FROM public.resources 
-         WHERE resource_type IS NOT NULL 
+        `SELECT DISTINCT resource_type FROM public.resources
+         WHERE resource_type IS NOT NULL
            AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
-           AND status IN ('READY', 'PUBLISHED') 
+           AND status IN ('READY', 'PUBLISHED')
            AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY resource_type ASC`
       );
 
       const examsRes = await pool.query(
-        `SELECT DISTINCT exam FROM public.resources 
-         WHERE exam IS NOT NULL 
+        `SELECT DISTINCT exam FROM public.resources
+         WHERE exam IS NOT NULL
            AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
-           AND status IN ('READY', 'PUBLISHED') 
+           AND status IN ('READY', 'PUBLISHED')
            AND visibility NOT IN ('ADMIN_ONLY')
          ORDER BY exam ASC`
       );

@@ -119,6 +119,17 @@ export interface CurrentAffairSourceRecord {
   lastError?: string;
 }
 
+const CA_BASE_COLUMNS = `
+  id, title, summary, why_in_news, what_happened, background, category,
+  subtopic, source, source_url, source_domain, source_type, date, article_type,
+  editorial_source, editorial_analysis, topic_cluster_id, topic_cluster_title,
+  related_editorial_ids, related_current_affair_ids, related_pyq_ids, secondary_source,
+  key_facts, why_it_matters, implications, is_bihar_special, is_editorial,
+  related_subject, prelims_relevance, mains_relevance, exam_relevance, bihar_relevance,
+  keywords, gs_paper, prelims_pointers, mains_dimensions, related_concept_ids,
+  source_provenance, verification_status, quality_status, created_at, updated_at
+`;
+
 export class CurrentAffairsRepository {
   mapRowToRecord(row: any): CurrentAffairRecord {
     let keyFacts: string[] = [];
@@ -463,7 +474,7 @@ export class CurrentAffairsRepository {
   }
 
   async getArticleById(id: string): Promise<CurrentAffairRecord | null> {
-    const res = await pool.query(`SELECT * FROM public.current_affairs WHERE id = $1;`, [id]);
+    const res = await pool.query(`SELECT ${CA_BASE_COLUMNS}, raw_content FROM public.current_affairs WHERE id = $1;`, [id]);
     if (res.rows[0]) return this.mapRowToRecord(res.rows[0]);
 
     if (id.startsWith('res_')) {
@@ -521,14 +532,14 @@ export class CurrentAffairsRepository {
   async findDuplicateByUrlOrTitle(sourceUrl?: string, title?: string, date?: string): Promise<CurrentAffairRecord | null> {
     if (sourceUrl) {
       const resUrl = await pool.query(
-        `SELECT * FROM public.current_affairs WHERE LOWER(TRIM(source_url)) = LOWER(TRIM($1)) LIMIT 1;`,
+        `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE LOWER(TRIM(source_url)) = LOWER(TRIM($1)) LIMIT 1;`,
         [sourceUrl]
       );
       if (resUrl.rows[0]) return this.mapRowToRecord(resUrl.rows[0]);
     }
     if (title && date) {
       const resTitle = await pool.query(
-        `SELECT * FROM public.current_affairs WHERE LOWER(TRIM(title)) = LOWER(TRIM($1)) AND date = $2 LIMIT 1;`,
+        `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE LOWER(TRIM(title)) = LOWER(TRIM($1)) AND date = $2 LIMIT 1;`,
         [title, date]
       );
       if (resTitle.rows[0]) return this.mapRowToRecord(resTitle.rows[0]);
@@ -595,12 +606,12 @@ export class CurrentAffairsRepository {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const query = `
-      SELECT * FROM public.current_affairs
+      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
       ${whereClause}
-      ORDER BY 
-        CASE 
-          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1 
-          ELSE 2 
+      ORDER BY
+        CASE
+          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1
+          ELSE 2
         END,
         date DESC, relevance_score DESC, created_at DESC;
     `;
@@ -1013,7 +1024,7 @@ export class CurrentAffairsRepository {
     const offset = filter.offset !== undefined ? filter.offset : (page - 1) * limit;
 
     const query = `
-      SELECT * FROM public.current_affairs
+      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, relevance_score DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1102,7 +1113,7 @@ export class CurrentAffairsRepository {
     const offset = (page - 1) * limit;
 
     const query = `
-      SELECT * FROM public.current_affairs
+      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1197,7 +1208,7 @@ export class CurrentAffairsRepository {
     const offset = (page - 1) * limit;
 
     const query = `
-      SELECT * FROM public.current_affairs
+      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1322,7 +1333,9 @@ export class CurrentAffairsRepository {
 
   async listIngestionRuns(limit = 20): Promise<any[]> {
     const query = `
-      SELECT * FROM public.data_ingestion_runs
+      SELECT id, run_type, trigger_type, source_id, started_at, completed_at, status,
+             items_discovered, items_ingested, items_rejected, items_duplicate, error_message
+      FROM public.data_ingestion_runs
       ORDER BY started_at DESC
       LIMIT $1;
     `;
@@ -1382,14 +1395,21 @@ export class CurrentAffairsRepository {
   }
 
   async getSourceFreshnessList(): Promise<any[]> {
-    const query = `SELECT * FROM public.source_freshness ORDER BY updated_at DESC;`;
+    const query = `
+      SELECT source_identifier, display_name, source_type, is_active,
+             latest_discovered_article, latest_published_article, latest_article_date,
+             last_attempted_run, last_successful_run, failure_count, freshness_status,
+             last_error, created_at, updated_at
+      FROM public.source_freshness
+      ORDER BY updated_at DESC;
+    `;
     const res = await pool.query(query);
     return res.rows;
   }
 
   async getTopicClusterDetails(clusterId: string): Promise<any | null> {
     const res = await pool.query(
-      `SELECT * FROM public.current_affairs WHERE topic_cluster_id = $1 ORDER BY date DESC;`,
+      `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE topic_cluster_id = $1 ORDER BY date DESC;`,
       [clusterId]
     );
     if (res.rows.length === 0) return null;
@@ -1533,7 +1553,7 @@ export class CurrentAffairsRepository {
     }
 
     const query = `
-      SELECT * FROM public.current_affairs
+      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, relevance_score DESC, created_at DESC
       ${limitClause};
@@ -1585,7 +1605,15 @@ export class CurrentAffairsRepository {
 
   async getUserRevisions(userId: string): Promise<CurrentAffairRecord[]> {
     const query = `
-      SELECT ca.* FROM public.current_affairs ca
+      SELECT ca.id, ca.title, ca.summary, ca.why_in_news, ca.what_happened, ca.background, ca.category,
+             ca.subtopic, ca.source, ca.source_url, ca.source_domain, ca.source_type, ca.date, ca.article_type,
+             ca.editorial_source, ca.editorial_analysis, ca.topic_cluster_id, ca.topic_cluster_title,
+             ca.related_editorial_ids, ca.related_current_affair_ids, ca.related_pyq_ids, ca.secondary_source,
+             ca.key_facts, ca.why_it_matters, ca.implications, ca.is_bihar_special, ca.is_editorial,
+             ca.related_subject, ca.prelims_relevance, ca.mains_relevance, ca.exam_relevance, ca.bihar_relevance,
+             ca.keywords, ca.gs_paper, ca.prelims_pointers, ca.mains_dimensions, ca.related_concept_ids,
+             ca.source_provenance, ca.verification_status, ca.quality_status, ca.created_at, ca.updated_at
+      FROM public.current_affairs ca
       INNER JOIN public.revision_items ri ON ca.id = ri.current_affair_id
       WHERE ri.user_id = $1
       ORDER BY ri.updated_at DESC;
@@ -1617,7 +1645,7 @@ export class CurrentAffairsRepository {
       UPDATE public.current_affairs
       SET is_published = TRUE, status = 'PUBLISHED', quality_status = 'PASSED', verification_status = 'VERIFIED', updated_at = NOW()
       WHERE id = $1
-      RETURNING *;
+      RETURNING ${CA_BASE_COLUMNS};
     `;
     const res = await pool.query(query, [id]);
     return res.rows.length > 0 ? this.mapRowToRecord(res.rows[0]) : null;
@@ -1628,7 +1656,7 @@ export class CurrentAffairsRepository {
       UPDATE public.current_affairs
       SET is_published = FALSE, status = 'REJECTED', quality_status = 'FAILED', rejection_reason = $2, updated_at = NOW()
       WHERE id = $1
-      RETURNING *;
+      RETURNING ${CA_BASE_COLUMNS};
     `;
     const res = await pool.query(query, [id, reason || 'Rejected by administrator']);
     return res.rows.length > 0 ? this.mapRowToRecord(res.rows[0]) : null;

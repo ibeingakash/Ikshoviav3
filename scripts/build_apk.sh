@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+echo "=== 0. Syncing Web Assets with Capacitor ==="
+cd /app/applet
+npm run build
+npx cap sync android
+
+# Clean any existing old APKs to prevent stale files
+rm -f /app/applet/app-debug.apk /app/applet/public/apk/app-debug.apk /app/applet/android/app/build/outputs/apk/debug/*.apk || true
+
 echo "=== 1. Setting up Java 21 ==="
 if [ ! -f /opt/jdk-21/bin/java ]; then
   echo "Downloading OpenJDK 21..."

@@ -12,7 +12,11 @@ import {
 } from '../../src/types/liveClass.js';
 
 export class LiveClassRepository {
+  private schemaChecked = false;
+
   async ensureSchema(): Promise<void> {
+    if (this.schemaChecked) return;
+    this.schemaChecked = true;
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS public.live_classes (

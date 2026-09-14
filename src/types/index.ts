@@ -288,12 +288,12 @@ export interface PyqCompletenessValidation {
   status: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
 }
 
-export type QuestionFormatType = 
-  | 'SINGLE_CHOICE' 
-  | 'MULTIPLE_CHOICE' 
-  | 'STATEMENT_BASED' 
-  | 'MATCH_FOLLOWING' 
-  | 'ASSERTION_REASON' 
+export type QuestionFormatType =
+  | 'SINGLE_CHOICE'
+  | 'MULTIPLE_CHOICE'
+  | 'STATEMENT_BASED'
+  | 'MATCH_FOLLOWING'
+  | 'ASSERTION_REASON'
   | 'COMPREHENSION'
   | 'PASSAGE_BASED'
   | 'NUMERICAL_CSAT'
@@ -1183,5 +1183,48 @@ export interface TestSeriesTest {
 
 export interface TestSeriesWithTests extends TestSeries {
   tests: TestSeriesTest[];
+}
+
+// ----------------------------------------------------
+// MOBILE APP RELEASE & UPDATE DISTRIBUTION TYPES
+// ----------------------------------------------------
+export type AppReleaseStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export type AppUpdateType = 'MANDATORY' | 'OPTIONAL' | 'NONE';
+
+export interface AppRelease {
+  id: string;
+  platform: 'android' | 'ios' | string;
+  version_name: string;
+  version_code: number;
+  min_supported_version_code: number;
+  apk_url: string;
+  sha256_checksum: string;
+  file_size_bytes: number;
+  release_notes?: string | null;
+  is_mandatory: boolean;
+  status: AppReleaseStatus;
+  created_at: string;
+}
+
+export interface AppVersionResponse {
+  status: 'CURRENT' | 'UPDATE_AVAILABLE' | 'MANDATORY_UPDATE' | 'NO_RELEASE_AVAILABLE' | string;
+  updateAvailable: boolean;
+  updateRequired: boolean;
+  updateType: AppUpdateType;
+  latestVersion: string;
+  latestBuildNumber: number;
+  minimumSupportedVersion: string;
+  minimumSupportedBuildNumber: number;
+  updateUrl: string;
+  apkUrl: string;
+  downloadUrl: string;
+  releaseNotes: string[];
+  releaseNotesRaw: string;
+  publishedAt: string;
+  fileSizeBytes: number;
+  sha256Checksum: string;
+  platform: string;
+  packageId: string;
+  release?: AppRelease | null;
 }
 

@@ -34,6 +34,8 @@ import {
   Receipt,
   TrendingUp,
   Percent,
+  Smartphone,
+  Video,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -62,6 +64,7 @@ export const Sidebar: React.FC = () => {
 
   // Learning Hub Items
   const learningNavItems: NavItem[] = [
+    { id: 'live-classes', label: 'Live Classes & Faculty', icon: Video, badge: 'Live', badgeColor: 'bg-rose-100 text-rose-900 border border-rose-300' },
     { id: 'pyq-practice', label: 'Official PYQ Papers', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs', badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300' },
     { id: 'mock-tests', label: 'Mock Tests', icon: FileCheck2, badge: 'Simulations', badgeColor: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
@@ -80,6 +83,7 @@ export const Sidebar: React.FC = () => {
   // Administration Hub Items
   const adminNavItems: NavItem[] = [
     { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+    { id: 'admin-app-releases', label: 'App Releases & APK', icon: Smartphone, badge: 'APK', badgeColor: 'bg-emerald-100 text-emerald-900 border border-emerald-300' },
     { id: 'admin-resources', label: 'Resource Studio', icon: FolderArchive, badge: 'Drive', badgeColor: 'bg-blue-100 text-blue-900 border border-blue-300' },
     { id: 'admin-short-notes', label: 'Short Notes Studio', icon: BookOpen, badge: 'OCR' },
     { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
@@ -113,6 +117,7 @@ export const Sidebar: React.FC = () => {
     if (label.includes('Bookmarks') && (activeSection === 'revision' || activeSection === 'bookmarks')) return true;
     if (itemId === 'short-notes' && (activeSection === 'short-notes')) return true;
     if (itemId === 'admin-short-notes' && (activeSection === 'admin-short-notes')) return true;
+    if (itemId === 'admin-app-releases' && (activeSection === 'admin-app-releases' || activeSection === 'admin-releases')) return true;
     if ((itemId === 'admin-resources' || label.includes('Resource Studio')) && (activeSection === 'admin-resources' || activeSection === 'admin-resource-studio')) return true;
     if (itemId === 'notes' && activeSection === 'notes') return true;
     if (itemId === 'resources' && activeSection === 'resources') return true;

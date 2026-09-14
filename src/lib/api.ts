@@ -33,9 +33,11 @@ import {
   TestSeries,
   TestSeriesTest,
   TestSeriesWithTests,
+  AppRelease,
+  AppVersionResponse,
 } from '../types/index.js';
 
-export const PRODUCTION_API_URL = 'https://ikshoviav3.onrender.com';
+export const PRODUCTION_API_URL = 'https://ais-pre-bjqh6ofcv72aazj6hbxmms-837374106881.asia-southeast1.run.app';
 
 /**
  * Detects if the current environment is running inside Capacitor (specifically Android native app).
@@ -79,7 +81,8 @@ export function isCapacitorNative(): boolean {
 /**
  * Resolves the appropriate API base URL dynamically:
  * - If VITE_API_BASE_URL is explicitly set, uses it.
- * - If running inside Capacitor Android native APK, uses production backend https://ikshoviav3.onrender.com.
+ * - If runtime config (window.IKSHOVIA_CONFIG.API_URL) is set, uses it.
+ * - If running inside Capacitor Android native APK, uses production backend.
  * - Otherwise (local development & web production), uses relative URL / same origin.
  */
 export function getApiBaseUrl(): string {
@@ -87,6 +90,18 @@ export function getApiBaseUrl(): string {
   const envUrl = (meta?.env?.VITE_API_BASE_URL as string | undefined)?.trim();
   if (envUrl) {
     return envUrl.replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined') {
+    const configUrl = (window as any).IKSHOVIA_CONFIG?.API_URL;
+    if (configUrl && typeof configUrl === 'string' && configUrl.trim()) {
+      return configUrl.trim().replace(/\/+$/, '');
+    }
+
+    const storedUrl = localStorage.getItem('ikshovia_api_url');
+    if (storedUrl && storedUrl.trim()) {
+      return storedUrl.trim().replace(/\/+$/, '');
+    }
   }
 
   if (isCapacitorNative()) {
@@ -327,7 +342,7 @@ export async function parseSafeApiResponse<T = any>(res: Response, endpointLabel
   return data as T;
 }
 
-const getAuthHeaders = () => {
+export const getAuthHeaders = () => {
   const token = localStorage.getItem('ikshovia_token');
   const role = localStorage.getItem('ikshovia_user_role');
   const userId = localStorage.getItem('ikshovia_user_id');
@@ -3195,6 +3210,160 @@ export const api = {
       body: JSON.stringify({ testIdsInOrder }),
     });
     return res.ok;
+  },
+
+  // ----------------------------------------------------
+  // APP RELEASES & IN-APP UPDATE CHECK APIS
+  // ----------------------------------------------------
+  getAppVersion: async (currentBuildNumber?: number, currentVersion?: string): Promise<AppVersionResponse | null> => {
+    try {
+      const params = new URLSearchParams();
+      params.set('platform', 'android');
+      if (currentBuildNumber !== undefined && currentBuildNumber !== null) {
+        params.set('currentBuildNumber', String(currentBuildNumber));
+      }
+      if (currentVersion) {
+        params.set('currentVersion', currentVersion);
+      }
+      const res = await apiFetch(`/api/app/version?${params.toString()}`);
+      if (!res.ok) return null;
+      return res.json();
+    } catch (err) {
+      console.error('[getAppVersion Error]', err);
+      return null;
+    }
+  },
+
+  getAdminAppReleases: async (): Promise<AppRelease[]> => {
+    try {
+      const res = await apiFetch('/api/admin/app/releases', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.releases || [];
+    } catch (err) {
+      console.error('[getAdminAppReleases Error]', err);
+      return [];
+    }
+  },
+
+  createOrUpdateAppRelease: async (payload: Partial<AppRelease>): Promise<{ success: boolean; release?: AppRelease; error?: string }> => {
+    try {
+      const res = await apiFetch('/api/admin/app/releases', {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to save release' };
+      }
+      return { success: true, release: data.release };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  publishAppRelease: async (id: string): Promise<{ success: boolean; release?: AppRelease; error?: string }> => {
+    try {
+      const res = await apiFetch(`/api/admin/app/releases/${encodeURIComponent(id)}/publish`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to publish release' };
+      }
+      return { success: true, release: data.release };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  archiveAppRelease: async (id: string): Promise<{ success: boolean; release?: AppRelease; error?: string }> => {
+    try {
+      const res = await apiFetch(`/api/admin/app/releases/${encodeURIComponent(id)}/archive`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to archive release' };
+      }
+      return { success: true, release: data.release };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  rollbackAppRelease: async (id: string): Promise<{ success: boolean; release?: AppRelease; error?: string }> => {
+    try {
+      const res = await apiFetch(`/api/admin/app/releases/${encodeURIComponent(id)}/rollback`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to rollback release' };
+      }
+      return { success: true, release: data.release };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  deleteAppRelease: async (id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await apiFetch(`/api/admin/app/releases/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to delete release' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  inspectLocalServerApk: async (): Promise<{
+    success: boolean;
+    fileName?: string;
+    fileSizeBytes?: number;
+    fileSizeMb?: string;
+    sha256Checksum?: string;
+    suggestedApkUrl?: string;
+    error?: string;
+  }> => {
+    try {
+      const res = await apiFetch('/api/admin/app/releases/inspect-local', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to inspect local APK' };
+      }
+      return data;
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
+  getAppReleaseAuditLogs: async (): Promise<any[]> => {
+    try {
+      const res = await apiFetch('/api/admin/app/releases/audit', {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.auditLogs || [];
+    } catch {
+      return [];
+    }
   },
 };
 

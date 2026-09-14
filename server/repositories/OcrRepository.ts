@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import pool from '../db/pool.js';
 import { OCRJob, Question, FieldConfidence } from '../../src/types/index.js';
 import { questionRepository } from './QuestionRepository.js';
+import { resolveCanonicalSourceOrigin } from '../utils/provenance.js';
 import {
   validatePaperCompleteness,
   normalizeOptionsForExam,
@@ -68,7 +69,11 @@ export interface ExtractedQuestionRecord extends Question {
 }
 
 export class OcrRepository {
+  private schemaChecked = false;
+
   async initSchema(): Promise<void> {
+    if (this.schemaChecked) return;
+    this.schemaChecked = true;
     await pool.query(`
       ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL;
       ALTER TABLE public.ocr_jobs ADD COLUMN IF NOT EXISTS exam TEXT DEFAULT 'UPSC CSE';
@@ -279,13 +284,32 @@ export class OcrRepository {
   }
 
   async getJobById(id: string): Promise<OcrJobRecord | null> {
-    const res = await pool.query('SELECT * FROM public.ocr_jobs WHERE id = $1', [id]);
+    const res = await pool.query(`
+      SELECT id, user_id, original_file_name, storage_key, file_size_bytes, page_count,
+             strategy, exam, expected_question_count, status, processed_pages,
+             detected_questions_count, approved_count, rejected_count, confidence_score,
+             missing_question_numbers, duplicate_question_numbers, review_state,
+             error_message, document_hash, official_source_url, source_domain,
+             commission, paper, year, exam_cycle, parser_version, ocr_engine_version,
+             structure_report, answer_key_status, created_at, updated_at
+      FROM public.ocr_jobs
+      WHERE id = $1
+    `, [id]);
     if (res.rows.length === 0) return null;
     return this.mapRowToJob(res.rows[0]);
   }
 
   async listJobs(userId?: string, limit = 50, offset = 0): Promise<OcrJobRecord[]> {
-    let query = 'SELECT * FROM public.ocr_jobs';
+    let query = `
+      SELECT id, user_id, original_file_name, storage_key, file_size_bytes, page_count,
+             strategy, exam, expected_question_count, status, processed_pages,
+             detected_questions_count, approved_count, rejected_count, confidence_score,
+             missing_question_numbers, duplicate_question_numbers, review_state,
+             error_message, document_hash, official_source_url, source_domain,
+             commission, paper, year, exam_cycle, parser_version, ocr_engine_version,
+             structure_report, answer_key_status, created_at, updated_at
+      FROM public.ocr_jobs
+    `;
     let params: any[] = [];
 
     if (userId) {
@@ -488,14 +512,34 @@ export class OcrRepository {
 
   async getQuestionsByJobId(jobId: string): Promise<ExtractedQuestionRecord[]> {
     const res = await pool.query(
-      'SELECT * FROM public.ocr_extracted_questions WHERE job_id = $1 ORDER BY question_num ASC NULLS LAST, created_at ASC',
+      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
+              question_type, question_text, question_en, question_hi, statements, statements_hi,
+              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
+              explanation, explanation_en, explanation_hi, available_languages, difficulty,
+              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
+              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
+              created_at, updated_at
+       FROM public.ocr_extracted_questions
+       WHERE job_id = $1
+       ORDER BY question_num ASC NULLS LAST, created_at ASC`,
       [jobId]
     );
     return res.rows.map(r => this.mapRowToExtractedQuestion(r));
   }
 
   async getExtractedQuestionById(id: string): Promise<ExtractedQuestionRecord | null> {
-    const res = await pool.query('SELECT * FROM public.ocr_extracted_questions WHERE id = $1', [id]);
+    const res = await pool.query(
+      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
+              question_type, question_text, question_en, question_hi, statements, statements_hi,
+              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
+              explanation, explanation_en, explanation_hi, available_languages, difficulty,
+              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
+              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
+              created_at, updated_at
+       FROM public.ocr_extracted_questions
+       WHERE id = $1`,
+      [id]
+    );
     if (res.rows.length === 0) return null;
     return this.mapRowToExtractedQuestion(res.rows[0]);
   }
@@ -550,7 +594,7 @@ export class OcrRepository {
 
     // Admin OCR uploads are strictly ADMIN_IMPORTED.
     // Official Commission is strictly for papers ingested by the official crawler pipeline.
-    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' = 
+    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' =
       (job as any)?.isOfficialIngestion ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
     const client = await pool.connect();
@@ -559,8 +603,8 @@ export class OcrRepository {
 
       // 1. Update in staging table
       await client.query(
-        `UPDATE public.ocr_extracted_questions 
-         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4, 
+        `UPDATE public.ocr_extracted_questions
+         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4,
              difficulty = $5, exam_tag = $6, pyq_year = $7, destination = $8, updated_at = NOW()
          WHERE id = $9`,
         [resolvedSourceType === 'OFFICIAL_COMMISSION', finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, questionId]
@@ -937,31 +981,31 @@ export class OcrRepository {
     try {
       await client.query('BEGIN');
 
-      const eqRes = await client.query('SELECT * FROM public.ocr_extracted_questions WHERE id = $1', [params.questionId]);
+      const eqRes = await client.query('SELECT id, job_id, source, corrections_count FROM public.ocr_extracted_questions WHERE id = $1', [params.questionId]);
       let isStaging = eqRes.rows.length > 0;
       let questionRow = eqRes.rows[0];
       let sourceOrigin = 'ADMIN_IMPORTED';
 
       if (!isStaging) {
-        const qRes = await client.query('SELECT * FROM public.questions WHERE id = $1', [params.questionId]);
+        const qRes = await client.query('SELECT id, source_type, source, source_job_id, corrections_count FROM public.questions WHERE id = $1', [params.questionId]);
         if (qRes.rows.length === 0) {
           await client.query('ROLLBACK');
           return { success: false, error: 'Question not found in staging or questions bank' };
         }
         questionRow = qRes.rows[0];
-        // CRITICAL: Preserve source_origin / source_type for OFFICIAL_COMMISSION
-        sourceOrigin = questionRow.source_type || questionRow.source || 'OFFICIAL_COMMISSION';
+        // Server-side authoritative provenance derivation
+        sourceOrigin = resolveCanonicalSourceOrigin(questionRow);
       } else {
         const isOfficialJob = questionRow.job_id
           ? Boolean(
               questionRow.source === 'OFFICIAL_COMMISSION' ||
               (await client.query(
-                "SELECT id FROM public.ocr_jobs WHERE id = $1 AND (commission IS NOT NULL OR official_source_url IS NOT NULL OR exam ILIKE '%BPSC%' OR exam ILIKE '%UPSC%')",
+                "SELECT id FROM public.ocr_jobs WHERE id = $1 AND (commission IS NOT NULL OR official_source_url IS NOT NULL)",
                 [questionRow.job_id]
               )).rows.length > 0
             )
           : questionRow.source === 'OFFICIAL_COMMISSION';
-        sourceOrigin = isOfficialJob ? 'OFFICIAL_COMMISSION' : (questionRow.source || 'ADMIN_IMPORTED');
+        sourceOrigin = isOfficialJob ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
       }
 
       const currentCorrectionsCount = Number(questionRow.corrections_count || 0);
@@ -1123,7 +1167,11 @@ export class OcrRepository {
 
   async getQuestionRevisions(questionId: string): Promise<any[]> {
     const res = await pool.query(
-      'SELECT * FROM public.question_revisions WHERE question_id = $1 ORDER BY revision_num DESC, changed_at DESC',
+      `SELECT id, question_id, job_id, revision_num, source_origin, field_changed,
+              old_value, new_value, reason, details, changed_by, changed_at
+       FROM public.question_revisions
+       WHERE question_id = $1
+       ORDER BY revision_num DESC, changed_at DESC`,
       [questionId]
     );
     return res.rows.map(r => ({
@@ -1195,7 +1243,7 @@ export class OcrRepository {
       (job as any)?.isOfficialIngestion ||
       (job.exam && (job.exam.includes('BPSC') || job.exam.includes('UPSC')) && (job.year || (job as any).isPyq))
     );
-    const resolvedSourceOrigin = isOfficialCommission ? 'OFFICIAL_COMMISSION' : 'ADMIN_ADDED';
+    const resolvedSourceOrigin = isOfficialCommission ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
     const questionId = `ocr_q_${jobId}_${data.questionNum}_${crypto.randomBytes(3).toString('hex')}`;
     const newRecord: ExtractedQuestionRecord = {
@@ -1330,7 +1378,15 @@ export class OcrRepository {
     try {
       await client.query('BEGIN');
       const fetchRes = await client.query(
-        'SELECT * FROM public.ocr_extracted_questions WHERE id = ANY($1::text[])',
+        `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
+                question_type, question_text, question_en, question_hi, statements, statements_hi,
+                match_data, match_data_hi, options, options_en, options_hi, correct_answer,
+                explanation, explanation_en, explanation_hi, available_languages, difficulty,
+                exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
+                duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
+                created_at, updated_at
+         FROM public.ocr_extracted_questions
+         WHERE id = ANY($1::text[])`,
         [questionIds]
       );
       const rowMap = new Map<string, any>(fetchRes.rows.map(r => [r.id, r]));
@@ -1379,7 +1435,7 @@ export class OcrRepository {
         const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
 
         await client.query(
-          `UPDATE public.ocr_extracted_questions 
+          `UPDATE public.ocr_extracted_questions
            SET status = 'READY_TO_PUBLISH',
                subject_id = $1, topic_id = $2, concept_id = $3,
                difficulty = $4, exam_tag = $5, pyq_year = $6, destination = $7,
@@ -1441,7 +1497,15 @@ export class OcrRepository {
     const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
 
     const fetchRes = await pool.query(
-      'SELECT * FROM public.ocr_extracted_questions WHERE id = ANY($1::text[])',
+      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
+              question_type, question_text, question_en, question_hi, statements, statements_hi,
+              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
+              explanation, explanation_en, explanation_hi, available_languages, difficulty,
+              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
+              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
+              created_at, updated_at
+       FROM public.ocr_extracted_questions
+       WHERE id = ANY($1::text[])`,
       [questionIds]
     );
     const rowMap = new Map<string, any>(fetchRes.rows.map(r => [r.id, this.mapRowToExtractedQuestion(r)]));

@@ -58,12 +58,20 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Sync initial page when resource changes
+  // Sync initial page when resource changes & set loading timeout
   useEffect(() => {
     const p = Math.min(totalPages, Math.max(1, resource.last_page || resource.lastPage || 1));
     setCurrentPage(p);
     setPageInput(String(p));
     setIsBookmarked(Boolean(resource.is_bookmarked || resource.isBookmarked));
+    setStreamLoading(true);
+    setStreamError(null);
+
+    // Ensure overlay never persists indefinitely if browser doesn't fire load event for PDF plugin
+    const timer = setTimeout(() => {
+      setStreamLoading(false);
+    }, 1800);
+    return () => clearTimeout(timer);
   }, [resource.id]);
 
   // Handle Android back button
@@ -121,7 +129,9 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
     // If iframe supports PDF fragment navigation, update src hash
     if (iframeRef.current) {
       try {
-        iframeRef.current.src = `/api/resources/${resource.id}/stream#page=${valid}&zoom=${zoomLevel}`;
+        iframeRef.current.src = valid > 1
+          ? `/api/resources/${resource.id}/stream#page=${valid}`
+          : `/api/resources/${resource.id}/stream`;
       } catch (e) {
         // ignore hash set error
       }
@@ -179,7 +189,11 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
 
   if (!isOpen) return null;
 
-  const streamUrl = `/api/resources/${resource.id}/stream#page=${currentPage}&zoom=${zoomLevel}`;
+  const streamUrl = currentPage > 1
+    ? `/api/resources/${resource.id}/stream#page=${currentPage}`
+    : `/api/resources/${resource.id}/stream`;
+
+  const isGoogleDriveStream = resource.storage_provider === 'GOOGLE_DRIVE' || Boolean(resource.drive_file_id);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
@@ -204,6 +218,10 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
                 <span className="text-amber-400 font-medium">{resource.subject || 'General Studies'}</span>
                 <span>•</span>
                 <span className="hidden sm:inline">{resource.exam || 'UPSC / BPSC'}</span>
+                <span>•</span>
+                <span className="text-stone-400">
+                  {isGoogleDriveStream ? 'Streaming directly from Google Drive' : 'Local PDF Stream'}
+                </span>
               </div>
             </div>
           </div>
@@ -328,7 +346,7 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
         {/* Reader Canvas / Document Viewport */}
         <div className="flex-1 bg-stone-950 relative overflow-hidden flex flex-col">
           {streamLoading && (
-            <div className="absolute inset-0 z-10 bg-stone-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-stone-400 gap-3">
+            <div className="absolute inset-0 z-10 bg-stone-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-stone-400 gap-3 pointer-events-none">
               <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
               <div className="text-center">
                 <p className="text-xs font-semibold text-stone-200">

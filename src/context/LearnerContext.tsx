@@ -50,6 +50,8 @@ export type NavigationSection =
   | 'admin-current-affairs'
   | 'admin-import-logs'
   | 'admin-resources'
+  | 'admin-app-releases'
+  | 'admin-releases'
   | 'admin-settings'
   | 'courses-catalog'
   | 'test-series'

@@ -11,19 +11,49 @@ import {
   Moon,
   Sparkles,
   Database,
+  Smartphone,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
+import { api } from '../../lib/api.js';
+import { CURRENT_APP_VERSION, getClientAppVersion } from '../../config/appVersion.js';
+import { AppVersionResponse } from '../../types/index.js';
 
 export const SettingsView: React.FC = () => {
   const { user } = useAuth();
-  const { refreshLearnerData } = useLearner();
+  const { refreshLearnerData, setActiveSection } = useLearner();
 
   const [tutorMode, setTutorMode] = useState<'SOCRATIC' | 'DIRECT' | 'SUMMARY'>('SOCRATIC');
   const [dailyReminders, setDailyReminders] = useState(true);
   const [revisionAlerts, setRevisionAlerts] = useState(true);
   const [aiDigest, setAiDigest] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // App Update checking state
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<AppVersionResponse | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  const handleManualCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateMessage(null);
+    try {
+      const clientVer = await getClientAppVersion();
+      const res = await api.getAppVersion(clientVer.buildNumber, clientVer.versionName);
+      setUpdateStatus(res);
+      if (res.updateAvailable) {
+        setUpdateMessage(`Version ${res.latestVersion} (Build ${res.latestBuildNumber}) is available!`);
+      } else {
+        setUpdateMessage('You are running the latest version of IKSHOVIA.');
+      }
+    } catch {
+      setUpdateMessage('Unable to connect to release server. Please try again later.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,6 +229,89 @@ export const SettingsView: React.FC = () => {
               <span>Re-sync</span>
             </button>
           </div>
+        </div>
+
+        {/* Android App & In-App Update Center */}
+        <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-[#35156B]" />
+              <span>Android App &amp; Website Release System</span>
+            </h2>
+            <button
+              type="button"
+              onClick={() => setActiveSection('download')}
+              className="text-xs font-bold text-[#35156B] hover:text-[#21094E] flex items-center gap-1 cursor-pointer"
+            >
+              <span>Download Portal</span>
+              <Download className="w-3 h-3" />
+            </button>
+          </div>
+
+          <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-[#111426] flex items-center gap-2">
+                <span>Client Build: v{CURRENT_APP_VERSION.versionName}</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-stone-200 text-stone-800 font-semibold">
+                  Build {CURRENT_APP_VERSION.buildNumber}
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                  Official APK Direct
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-500 font-mono">
+                Package ID: {CURRENT_APP_VERSION.packageId} • Upgrades preserve user data
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleManualCheckUpdate}
+              disabled={isCheckingUpdate}
+              className="px-4 py-2 bg-[#35156B] hover:bg-[#250d4d] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs disabled:opacity-50 transition-all shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              <span>{isCheckingUpdate ? 'Checking Server...' : 'Check for Updates'}</span>
+            </button>
+          </div>
+
+          {updateMessage && (
+            <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+              updateStatus?.updateAvailable
+                ? updateStatus.updateRequired
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            }`}>
+              {updateStatus?.updateAvailable ? (
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 space-y-1">
+                <p className="font-semibold">{updateMessage}</p>
+                {updateStatus?.updateAvailable && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <a
+                      href="/api/app/download/latest"
+                      className="inline-flex items-center gap-1.5 font-bold underline hover:no-underline text-xs"
+                      download
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Latest APK</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection('download')}
+                      className="font-medium underline hover:no-underline text-xs"
+                    >
+                      View Full Release Notes &amp; Checksums
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end">

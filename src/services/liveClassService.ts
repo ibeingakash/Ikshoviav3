@@ -9,6 +9,19 @@ import {
   LiveClassPoll,
   LiveClassAnalytics
 } from '../types/liveClass.js';
+import { apiUrl, getAuthHeaders } from '../lib/api.js';
+
+const liveFetch = async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
+  const authHeaders = getAuthHeaders();
+  const headers = {
+    ...authHeaders,
+    ...(options.headers || {})
+  };
+  return fetch(apiUrl(endpoint), {
+    ...options,
+    headers
+  });
+};
 
 export const liveClassService = {
   async getClasses(filters?: {
@@ -25,19 +38,19 @@ export const liveClassService = {
     if (filters?.search) params.append('search', filters.search);
     if (filters?.tab) params.append('tab', filters.tab);
 
-    const res = await fetch(`/api/live/classes?${params.toString()}`);
+    const res = await liveFetch(`/api/live/classes?${params.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch live classes');
     return res.json();
   },
 
   async getClassById(id: string): Promise<LiveClass> {
-    const res = await fetch(`/api/live/classes/${id}`);
+    const res = await liveFetch(`/api/live/classes/${id}`);
     if (!res.ok) throw new Error('Class not found');
     return res.json();
   },
 
   async createClass(data: Partial<LiveClass>): Promise<LiveClass> {
-    const res = await fetch('/api/live/classes', {
+    const res = await liveFetch('/api/live/classes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -50,7 +63,7 @@ export const liveClassService = {
   },
 
   async updateClass(id: string, updates: Partial<LiveClass>): Promise<LiveClass> {
-    const res = await fetch(`/api/live/classes/${id}`, {
+    const res = await liveFetch(`/api/live/classes/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -60,7 +73,7 @@ export const liveClassService = {
   },
 
   async startClass(id: string): Promise<LiveClass> {
-    const res = await fetch(`/api/live/classes/${id}/start`, {
+    const res = await liveFetch(`/api/live/classes/${id}/start`, {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to start class');
@@ -68,7 +81,7 @@ export const liveClassService = {
   },
 
   async endClass(id: string): Promise<LiveClass> {
-    const res = await fetch(`/api/live/classes/${id}/end`, {
+    const res = await liveFetch(`/api/live/classes/${id}/end`, {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to end class');
@@ -76,14 +89,14 @@ export const liveClassService = {
   },
 
   async deleteClass(id: string): Promise<boolean> {
-    const res = await fetch(`/api/live/classes/${id}`, {
+    const res = await liveFetch(`/api/live/classes/${id}`, {
       method: 'DELETE',
     });
     return res.ok;
   },
 
   async registerForClass(id: string): Promise<LiveClassParticipant> {
-    const res = await fetch(`/api/live/classes/${id}/register`, {
+    const res = await liveFetch(`/api/live/classes/${id}/register`, {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to register for class');
@@ -101,7 +114,7 @@ export const liveClassService = {
       token?: string;
     };
   }> {
-    const res = await fetch(`/api/live/classes/${id}/join`, {
+    const res = await liveFetch(`/api/live/classes/${id}/join`, {
       method: 'POST',
     });
     if (!res.ok) {
@@ -112,7 +125,7 @@ export const liveClassService = {
   },
 
   async leaveClass(id: string): Promise<void> {
-    await fetch(`/api/live/classes/${id}/leave`, {
+    await liveFetch(`/api/live/classes/${id}/leave`, {
       method: 'POST',
     }).catch(() => {});
   },
@@ -125,7 +138,7 @@ export const liveClassService = {
     status?: string;
     targetUserId?: string;
   }): Promise<LiveClassParticipant> {
-    const res = await fetch(`/api/live/classes/${id}/participants/state`, {
+    const res = await liveFetch(`/api/live/classes/${id}/participants/state`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -135,7 +148,7 @@ export const liveClassService = {
   },
 
   async getParticipants(id: string): Promise<LiveClassParticipant[]> {
-    const res = await fetch(`/api/live/classes/${id}/participants`);
+    const res = await liveFetch(`/api/live/classes/${id}/participants`);
     if (!res.ok) return [];
     return res.json();
   },
@@ -151,19 +164,19 @@ export const liveClassService = {
       averageDurationMinutes: number;
     };
   }> {
-    const res = await fetch(`/api/live/classes/${id}/attendance`);
+    const res = await liveFetch(`/api/live/classes/${id}/attendance`);
     if (!res.ok) throw new Error('Failed to fetch attendance');
     return res.json();
   },
 
   async getMessages(id: string): Promise<LiveClassMessage[]> {
-    const res = await fetch(`/api/live/classes/${id}/messages`);
+    const res = await liveFetch(`/api/live/classes/${id}/messages`);
     if (!res.ok) return [];
     return res.json();
   },
 
   async sendMessage(id: string, message: string): Promise<LiveClassMessage> {
-    const res = await fetch(`/api/live/classes/${id}/messages`, {
+    const res = await liveFetch(`/api/live/classes/${id}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message }),
@@ -173,7 +186,7 @@ export const liveClassService = {
   },
 
   async pinMessage(id: string, messageId: string, isPinned: boolean): Promise<boolean> {
-    const res = await fetch(`/api/live/classes/${id}/messages/${messageId}/pin`, {
+    const res = await liveFetch(`/api/live/classes/${id}/messages/${messageId}/pin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPinned }),
@@ -182,20 +195,20 @@ export const liveClassService = {
   },
 
   async deleteMessage(id: string, messageId: string): Promise<boolean> {
-    const res = await fetch(`/api/live/classes/${id}/messages/${messageId}`, {
+    const res = await liveFetch(`/api/live/classes/${id}/messages/${messageId}`, {
       method: 'DELETE',
     });
     return res.ok;
   },
 
   async getQuestions(id: string): Promise<LiveClassQuestion[]> {
-    const res = await fetch(`/api/live/classes/${id}/questions`);
+    const res = await liveFetch(`/api/live/classes/${id}/questions`);
     if (!res.ok) return [];
     return res.json();
   },
 
   async askQuestion(id: string, question: string): Promise<LiveClassQuestion> {
-    const res = await fetch(`/api/live/classes/${id}/questions`, {
+    const res = await liveFetch(`/api/live/classes/${id}/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question }),
@@ -205,7 +218,7 @@ export const liveClassService = {
   },
 
   async upvoteQuestion(id: string, questionId: string): Promise<LiveClassQuestion> {
-    const res = await fetch(`/api/live/classes/${id}/questions/${questionId}/upvote`, {
+    const res = await liveFetch(`/api/live/classes/${id}/questions/${questionId}/upvote`, {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to upvote question');
@@ -217,7 +230,7 @@ export const liveClassService = {
     isPinned?: boolean;
     answer?: string;
   }): Promise<LiveClassQuestion> {
-    const res = await fetch(`/api/live/classes/${id}/questions/${questionId}`, {
+    const res = await liveFetch(`/api/live/classes/${id}/questions/${questionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
@@ -227,7 +240,7 @@ export const liveClassService = {
   },
 
   async getFiles(id: string): Promise<LiveClassFile[]> {
-    const res = await fetch(`/api/live/classes/${id}/files`);
+    const res = await liveFetch(`/api/live/classes/${id}/files`);
     if (!res.ok) return [];
     return res.json();
   },
@@ -239,7 +252,7 @@ export const liveClassService = {
     fileSizeBytes?: number;
     description?: string;
   }): Promise<LiveClassFile> {
-    const res = await fetch(`/api/live/classes/${id}/files`, {
+    const res = await liveFetch(`/api/live/classes/${id}/files`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fileData),
@@ -250,7 +263,7 @@ export const liveClassService = {
 
   async getRecordings(classId?: string): Promise<LiveClassRecording[]> {
     const url = classId ? `/api/live/recordings?classId=${classId}` : '/api/live/recordings';
-    const res = await fetch(url);
+    const res = await liveFetch(url);
     if (!res.ok) return [];
     return res.json();
   },
@@ -263,7 +276,7 @@ export const liveClassService = {
     transcript?: string;
     keyTakeaways?: string[];
   }): Promise<LiveClassRecording> {
-    const res = await fetch(`/api/live/classes/${id}/recordings`, {
+    const res = await liveFetch(`/api/live/classes/${id}/recordings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(recordingData),
@@ -273,7 +286,7 @@ export const liveClassService = {
   },
 
   async getPolls(id: string): Promise<LiveClassPoll[]> {
-    const res = await fetch(`/api/live/classes/${id}/polls`);
+    const res = await liveFetch(`/api/live/classes/${id}/polls`);
     if (!res.ok) return [];
     return res.json();
   },
@@ -284,7 +297,7 @@ export const liveClassService = {
     durationSeconds?: number;
     isAnonymous?: boolean;
   }): Promise<LiveClassPoll> {
-    const res = await fetch(`/api/live/classes/${id}/polls`, {
+    const res = await liveFetch(`/api/live/classes/${id}/polls`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pollData),
@@ -294,7 +307,7 @@ export const liveClassService = {
   },
 
   async votePoll(id: string, pollId: string, optionId: string): Promise<boolean> {
-    const res = await fetch(`/api/live/classes/${id}/polls/${pollId}/vote`, {
+    const res = await liveFetch(`/api/live/classes/${id}/polls/${pollId}/vote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ optionId }),
@@ -303,14 +316,14 @@ export const liveClassService = {
   },
 
   async closePoll(id: string, pollId: string): Promise<boolean> {
-    const res = await fetch(`/api/live/classes/${id}/polls/${pollId}/close`, {
+    const res = await liveFetch(`/api/live/classes/${id}/polls/${pollId}/close`, {
       method: 'POST',
     });
     return res.ok;
   },
 
   async getAdminAnalytics(): Promise<LiveClassAnalytics> {
-    const res = await fetch('/api/live/admin/analytics');
+    const res = await liveFetch('/api/live/admin/analytics');
     if (!res.ok) throw new Error('Failed to fetch analytics');
     return res.json();
   },

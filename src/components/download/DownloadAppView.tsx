@@ -160,11 +160,12 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
   };
 
   const release = versionData.release;
-  const apkUrl = release?.apkUrl || '/apk/app-debug.apk';
+  const apkUrl = release?.apkUrl || '/api/app/download/latest';
   const versionName = release?.versionName || '1.0';
   const versionCode = release?.versionCode || 1;
   const checksum = release?.sha256Checksum || '30a97db96538142058f3b99b3e228098b65a7f18be347d969e2ddebb6eb87d63';
   const fileSizeBytes = release?.fileSizeBytes || 14522269;
+  const releaseNotes = release?.releaseNotes || 'Offline synchronization, Capacitor 8 native integration, daily quiz, and full UPSC/BPSC question bank.';
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] text-[#111426] font-sans-editorial flex flex-col selection:bg-[#35156B] selection:text-amber-300">
@@ -193,7 +194,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200/80 text-emerald-900 text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-2xs font-mono">
             <Smartphone className="w-4 h-4 text-emerald-600" />
-            <span>Android App — Available</span>
+            <span>Official Android APK — Direct Distribution</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-serif-editorial font-bold text-[#111426] tracking-tight leading-tight">
@@ -255,25 +256,25 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
               <div className="space-y-1.5">
                 <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Android App — Available</span>
+                  <span>Official Release Available</span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
                   IKSHOVIA Android App
                 </h2>
                 <p className="text-xs text-stone-600 font-sans">
-                  Native Android package (Capacitor 8) • Ready for direct device testing & installation
+                  Direct APK package for Android devices (arm64-v8a / universal) • Safe, official direct install
                 </p>
               </div>
             </div>
 
             <a
               id="download-apk-button"
-              href={apkUrl}
-              download="ikshovia-debug.apk"
+              href="/api/app/download/latest"
+              download={`ikshovia-v${versionName}.apk`}
               className="inline-flex items-center justify-center gap-2.5 bg-[#0C1024] hover:bg-[#1B2144] active:scale-[0.98] text-white px-7 py-3.5 rounded-xl font-bold text-sm sm:text-base shadow-md transition-all cursor-pointer shrink-0"
             >
               <Download className="w-5 h-5 text-amber-400" />
-              <span>DOWNLOAD APK</span>
+              <span>DOWNLOAD APK (v{versionName})</span>
             </a>
           </div>
 
@@ -282,20 +283,12 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
               <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Version</div>
               <div className="text-stone-900 font-bold text-sm">
-                v{versionName} <span className="text-stone-500 font-normal text-xs">(Code {versionCode})</span>
+                v{versionName} <span className="text-stone-500 font-normal text-xs">(Build {versionCode})</span>
               </div>
             </div>
 
             <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
-              <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Build</div>
-              <div className="text-amber-800 font-bold text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
-                <span>Debug / Testing Build</span>
-              </div>
-            </div>
-
-            <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
-              <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Package</div>
+              <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Package ID</div>
               <div className="text-stone-900 font-bold text-xs truncate">com.ikshovia.app</div>
             </div>
 
@@ -304,6 +297,11 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
               <div className="text-stone-900 font-bold text-sm">
                 {formatFileSize(fileSizeBytes)}
               </div>
+            </div>
+
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-xl space-y-1">
+              <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Platform</div>
+              <div className="text-stone-900 font-bold text-xs">Android 8.0+ (API 26+)</div>
             </div>
           </div>
 
@@ -324,51 +322,60 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             </div>
           </div>
 
-          {/* Mandatory Testing Build Notice */}
-          <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-200/90 rounded-2xl flex items-start gap-3.5 text-xs text-amber-950 font-sans">
-            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="font-bold uppercase tracking-wider text-[11px] text-amber-900 font-mono">
-                Testing Build
+          {/* Release Notes */}
+          {releaseNotes && (
+            <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-2 text-xs">
+              <div className="font-bold text-stone-800 uppercase tracking-wider text-[11px] font-mono">
+                Release Highlights:
               </div>
-              <p className="leading-relaxed text-amber-900/90">
-                This is an early testing build. For testing purposes only. A production signed release APK will be published after final device testing and security verification.
+              <p className="text-stone-700 whitespace-pre-line leading-relaxed">
+                {releaseNotes}
               </p>
             </div>
+          )}
+
+          {/* Installation & Upgrade Guide */}
+          <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-200/90 rounded-2xl space-y-3 text-xs text-amber-950 font-sans">
+            <div className="font-bold uppercase tracking-wider text-[11px] text-amber-900 font-mono flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              <span>How to Install or Update on Android</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1.5 text-amber-900 text-xs pl-1 leading-relaxed">
+              <li>Tap the <strong>DOWNLOAD APK</strong> button above to download the file directly to your device.</li>
+              <li>When prompted by your browser (&ldquo;File might be harmful&rdquo;), tap <strong>Download anyway</strong> (standard Android notice for direct APK downloads).</li>
+              <li>Once downloaded, open the file from your notification bar or Downloads folder.</li>
+              <li>If you already have IKSHOVIA installed, select <strong>Update</strong>. Your existing test attempts, login credentials, and local notes will remain completely intact.</li>
+              <li>If installing for the first time, allow &ldquo;Install Unknown Apps&rdquo; for your browser in Android Settings when prompted.</li>
+            </ol>
           </div>
 
-          {/* Divider and Early Access Section Below Download */}
-          <div className="pt-8 border-t border-stone-200/80 space-y-5">
+          {/* Notification signup for future updates */}
+          <div className="pt-6 border-t border-stone-200/80 space-y-4">
             <div className="space-y-1 text-left">
-              <h3 className="text-lg sm:text-xl font-serif-editorial font-bold text-[#111426]">
-                Want updates about the production release?
+              <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-[#111426]">
+                Get Notified of New APK Releases
               </h3>
               <p className="text-xs text-stone-600 font-sans leading-relaxed">
-                Join early access to get notified the moment our Google Play Store listing and official signed production APK are published.
+                Enter your email to receive an instant alert when a new APK update is published.
               </p>
             </div>
 
             {/* Early Access Form */}
-            <div className="bg-[#FAF8F5] border border-stone-200 p-5 rounded-2xl space-y-4 text-left">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#35156B] uppercase tracking-wider font-mono">
-                <Bell className="w-4 h-4 text-amber-600" />
-                <span>Early Access / Notify Me</span>
-              </div>
-
+            <div className="bg-[#FAF8F5] border border-stone-200 p-4 rounded-xl space-y-3 text-left">
               {subscribeStatus?.success ? (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
                     <div className="font-bold text-emerald-900">
-                      {subscribeStatus.alreadySubscribed ? 'Already Registered!' : 'You’re on the priority list!'}
+                      {subscribeStatus.alreadySubscribed ? 'Already Registered!' : 'Subscription Confirmed!'}
                     </div>
-                    <div className="text-[11px] text-emerald-700 mt-1">
+                    <div className="text-[11px] text-emerald-700 mt-0.5">
                       {subscribeStatus.message}
                     </div>
                   </div>
                 </div>
               ) : (
-                <form onSubmit={handleEarlyAccessSubmit} className="space-y-3">
+                <form onSubmit={handleEarlyAccessSubmit} className="space-y-2">
                   <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="email"
@@ -376,18 +383,18 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email address"
-                      className="flex-1 px-4 py-3 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#35156B] focus:border-transparent font-sans"
+                      className="flex-1 px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#35156B] focus:border-transparent font-sans"
                     />
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="px-6 py-3 bg-[#0C1024] hover:bg-[#1B2144] disabled:opacity-60 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 font-sans"
+                      className="px-5 py-2.5 bg-[#0C1024] hover:bg-[#1B2144] disabled:opacity-60 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 font-sans"
                     >
                       {submitting ? (
                         <span>Submitting...</span>
                       ) : (
                         <>
-                          <span>Notify Me on Launch</span>
+                          <span>Notify Me</span>
                           <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
                         </>
                       )}
@@ -399,11 +406,6 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
                       {subscribeStatus.message}
                     </div>
                   )}
-
-                  <div className="flex items-center gap-2 text-[11px] text-stone-500 font-sans">
-                    <ShieldCheck className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                    <span>Zero spam. You will only receive a notification when the official production release is published.</span>
-                  </div>
                 </form>
               )}
             </div>

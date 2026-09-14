@@ -7,6 +7,8 @@ import { currentAffairsRepository } from '../repositories/CurrentAffairsReposito
 import { pyqRepository } from '../repositories/PyqRepository.js';
 import { ocrRepository } from '../repositories/OcrRepository.js';
 import { shortNotesRepository } from '../repositories/ShortNotesRepository.js';
+import { mockTestRepository } from '../repositories/MockTestRepository.js';
+import { liveClassRepository } from '../repositories/LiveClassRepository.js';
 import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
 import { seedCanonicalResources } from './seedResources.js';
 import { runTestSeriesMigration } from './testSeriesMigration.js';
@@ -377,6 +379,17 @@ export async function ensureDatabaseSchema(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_app_releases_platform_status ON public.app_releases(platform, status, version_code DESC);
 
+      -- Seed initial baseline release if empty
+      INSERT INTO public.app_releases (
+        id, platform, version_name, version_code, min_supported_version_code,
+        apk_url, sha256_checksum, file_size_bytes, release_notes, is_mandatory, status, created_at
+      )
+      SELECT 'rel_android_1_baseline', 'android', '1.0', 1, 1,
+             '/apk/app-debug.apk', '30a97db96538142058f3b99b3e228098b65a7f18be347d969e2ddebb6eb87d63',
+             14522269, 'Initial release with Capacitor 8 native integration, offline queue synchronization, daily quiz, and full UPSC/BPSC question bank.',
+             false, 'PUBLISHED', NOW()
+      WHERE NOT EXISTS (SELECT 1 FROM public.app_releases WHERE platform = 'android');
+
       -- Mobile App Early Access Subscribers
       CREATE TABLE IF NOT EXISTS public.app_early_access_subscribers (
         id VARCHAR(64) PRIMARY KEY,
@@ -462,6 +475,22 @@ export async function ensureDatabaseSchema(): Promise<void> {
       console.log('[DB Schema] Applied Migration 009 (admin book upload & metadata) successfully.');
     }
 
+    // 2f. Apply Live Classroom Schema Migration 010
+    const liveClassSqlPath = path.resolve(process.cwd(), 'supabase/migrations/010_live_classroom_schema.sql');
+    if (fs.existsSync(liveClassSqlPath)) {
+      const liveClassSql = fs.readFileSync(liveClassSqlPath, 'utf8');
+      await pool.query(liveClassSql);
+      console.log('[DB Schema] Applied Migration 010 (live classroom schema) successfully.');
+    }
+
+    // 2g. Apply Production Database & Supabase Egress Optimization Migration 011
+    const egressOptSqlPath = path.resolve(process.cwd(), 'supabase/migrations/011_database_and_egress_optimization.sql');
+    if (fs.existsSync(egressOptSqlPath)) {
+      const egressOptSql = fs.readFileSync(egressOptSqlPath, 'utf8');
+      await pool.query(egressOptSql);
+      console.log('[DB Schema] Applied Migration 011 (database & egress optimization) successfully.');
+    }
+
     // 3. Ensure authentic syllabus, question bank, official PYQ, and canonical courses seeds exist
     await ensureSyllabusSeed();
     await ensureQuestionBankSeed();
@@ -471,6 +500,9 @@ export async function ensureDatabaseSchema(): Promise<void> {
     await pyqRepository.seedOfficialPapers();
     await ocrRepository.initSchema();
     await shortNotesRepository.init();
+    await mockTestRepository.ensureSchema();
+    await mockTestRepository.ensureDefaultTests();
+    await liveClassRepository.ensureSchema();
     await ensureContentOriginSeparation();
     await seedCanonicalResources();
     await runTestSeriesMigration();

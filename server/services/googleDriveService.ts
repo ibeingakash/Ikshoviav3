@@ -653,22 +653,58 @@ export class GoogleDriveService {
   }
 
   /**
-   * Returns a readable stream of the file content for secure server-side streaming
+   * Returns a readable stream of the file content for secure server-side streaming,
+   * with full HTTP Range support and upstream header propagation.
    */
-  public async downloadFileStream(fileId: string): Promise<NodeJS.ReadableStream> {
+  public async downloadFileStreamWithRange(
+    fileId: string,
+    rangeHeader?: string
+  ): Promise<{
+    status: number;
+    headers: Record<string, string>;
+    stream: NodeJS.ReadableStream;
+  }> {
     const accessToken = await this.getValidAccessToken();
 
     const fileUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+    const fetchHeaders: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+    };
+    if (rangeHeader) {
+      fetchHeaders['Range'] = rangeHeader;
+    }
+
     const res = await fetch(fileUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: fetchHeaders,
     });
 
     if (!res.ok || !res.body) {
-      throw new Error(`Failed to stream file from Google Drive: ${res.statusText}`);
+      const errorText = await res.text().catch(() => res.statusText);
+      throw new Error(`Failed to stream file from Google Drive (HTTP ${res.status}): ${errorText}`);
     }
 
-    // Convert Web ReadableStream to Node.js Readable stream
-    return Readable.fromWeb(res.body as any);
+    const headers: Record<string, string> = {};
+    const trackedHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'content-disposition', 'cache-control'];
+    for (const h of trackedHeaders) {
+      const val = res.headers.get(h);
+      if (val) {
+        headers[h] = val;
+      }
+    }
+
+    return {
+      status: res.status,
+      headers,
+      stream: Readable.fromWeb(res.body as any),
+    };
+  }
+
+  /**
+   * Returns a readable stream of the file content for secure server-side streaming
+   */
+  public async downloadFileStream(fileId: string): Promise<NodeJS.ReadableStream> {
+    const res = await this.downloadFileStreamWithRange(fileId);
+    return res.stream;
   }
 
   /**

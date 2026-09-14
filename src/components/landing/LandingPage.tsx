@@ -27,7 +27,6 @@ import {
   Smartphone
 } from 'lucide-react';
 import { BrandLogo, BrandSymbol } from '../common/BrandLogo.js';
-import { IKLogo } from '../common/IKLogo.js';
 import { IKBrandMark } from '../common/IKBrandMark.js';
 import { Hero3DDashboard } from './Hero3DDashboard.js';
 import { api } from '../../lib/api.js';
@@ -60,13 +59,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
   return (
     <div className="min-h-screen bg-[#FAF7F0] text-[#111426] flex flex-col font-sans-editorial selection:bg-[#35156B] selection:text-amber-300">
-      
+
       {/* ========================================== */}
       {/* 1. BRAND NAVBAR                            */}
       {/* ========================================== */}
       <header className="sticky top-0 z-50 bg-[#FAF7F0]/95 backdrop-blur-md border-b border-stone-200/80 px-4 sm:px-8 py-3.5 transition-colors">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          
+
           {/* Brand Logo & Preferred Symbol */}
           <BrandLogo
             variant="login"
@@ -163,16 +162,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* 2. HERO SECTION & 3D FLOATING DASHBOARD    */}
       {/* ========================================== */}
       <section className="relative px-4 sm:px-8 pt-8 sm:pt-12 pb-16 max-w-7xl mx-auto w-full">
-        
+
         {/* Soft Ambient Radial Lighting */}
         <div className="absolute top-1/4 right-10 w-96 h-96 bg-[#35156B]/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-10 left-10 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center relative z-10">
-          
+
           {/* Left Hero Column: Headline & Messaging */}
           <div className="lg:col-span-5 space-y-6 text-left">
-            
+
             {/* AI Pill Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200/80 text-[#35156B]">
               <IKBrandMark size="sm" />
@@ -292,7 +291,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section className="py-12 px-4 sm:px-8 bg-[#0C1024] text-white border-b border-amber-500/20">
         <div className="max-w-7xl mx-auto space-y-8">
-          
+
           <div className="text-center space-y-2">
             <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-400">
               BUILT FOR DEEP LEARNING
@@ -303,7 +302,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            
+
             <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
               <Compass className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Learning Intelligence</div>
@@ -354,7 +353,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="how-it-works" className="py-16 px-4 sm:px-8 bg-[#FAF7F0] border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-12">
-          
+
           <div className="text-center max-w-2xl mx-auto space-y-3">
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#35156B]">
               HOW IKSHOVIA WORKS
@@ -368,7 +367,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            
+
             {/* Stage 1 */}
             <div className="p-6 rounded-2xl bg-white border border-stone-200/90 space-y-4 shadow-2xs">
               <div className="flex items-center justify-between">
@@ -450,9 +449,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="ai-system" className="py-16 px-4 sm:px-8 bg-white border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-12">
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-            
+
             {/* Testimonial Quote Card */}
             <div className="p-6 rounded-2xl bg-[#FAF7F0] border border-stone-200 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
@@ -537,7 +536,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="pricing" className="py-16 px-4 sm:px-8 bg-[#FAF7F0] border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-10">
-          
+
           <div className="text-center max-w-2xl mx-auto space-y-3">
             <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
               Examination Programs & Transparent Pricing
@@ -548,7 +547,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
-            
+
             {/* FREE TIER */}
             <div className="p-5 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-5 shadow-2xs">
               <div className="space-y-3">
@@ -786,7 +785,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       <section className="py-16 px-4 sm:px-8 bg-white">
         <div className="max-w-4xl mx-auto rounded-3xl bg-[#0C1024] text-white p-8 sm:p-12 text-center space-y-6 border border-amber-500/30 relative overflow-hidden shadow-2xl">
           <div className="absolute inset-0 bg-[radial-gradient(#C9953C_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
-          
+
           <div className="space-y-2 relative z-10">
             <IKBrandMark size="lg" glow className="mx-auto mb-2" />
             <h2 className="text-2xl sm:text-4xl font-serif-editorial font-bold text-white leading-tight">
@@ -814,9 +813,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <footer className="bg-[#0C1024] text-white border-t border-slate-800 pt-12 pb-8 px-4 sm:px-8">
         <div className="max-w-7xl mx-auto space-y-10">
-          
+
           <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-            
+
             {/* Column 1: Brand & Tagline */}
             <div className="md:col-span-2 space-y-4">
               <BrandLogo

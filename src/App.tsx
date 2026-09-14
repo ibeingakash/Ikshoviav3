@@ -48,12 +48,16 @@ import { TestSeriesMarketplaceView } from './components/mock/TestSeriesMarketpla
 import { NotesSyllabusView } from './components/syllabus/NotesSyllabusView.js';
 import { DownloadAppView } from './components/download/DownloadAppView.js';
 import { LiveClassesHubView } from './components/live/LiveClassesHubView.js';
+import { AppReleasesView } from './components/admin/AppReleasesView.js';
+import { AppUpdateModal } from './components/common/AppUpdateModal.js';
+import { useAppUpdateCheck } from './hooks/useAppUpdateCheck.js';
 import { initCapacitorApp } from './lib/capacitor.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
 const MainContent: React.FC = () => {
   const { user, loading } = useAuth();
   const { activeSection, setActiveSection, appTheme, navigateBack } = useLearner();
+  const { updateInfo, isUpdateModalOpen, dismissUpdateModal } = useAppUpdateCheck();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
 
@@ -211,6 +215,9 @@ const MainContent: React.FC = () => {
         return <SettingsView />;
       case 'download':
         return <DownloadAppView onBackToHome={() => setActiveSection('dashboard')} />;
+      case 'admin-app-releases':
+      case 'admin-releases':
+        return <AppReleasesView />;
       case 'admin-dashboard':
         return <AdminDashboardView />;
       case 'admin-resources':
@@ -285,6 +292,11 @@ const MainContent: React.FC = () => {
       <MobileNav />
       <GlobalSearchModal />
       <OnboardingModal />
+      <AppUpdateModal
+        isOpen={isUpdateModalOpen}
+        updateInfo={updateInfo}
+        onDismiss={dismissUpdateModal}
+      />
     </div>
   );
 };

@@ -89,13 +89,21 @@ function getQuestionDedupKey(q: {
 
 export class QuestionRepository {
   async findById(id: string): Promise<Question | null> {
-    const res = await pool.query('SELECT * FROM public.questions WHERE id = $1', [id]);
+    const res = await pool.query(`
+      SELECT id, subject_id, topic_id, concept_id, type, question_type, statements, statements_hi,
+             match_data, match_data_hi, question, question_en, question_hi, options, options_en, options_hi,
+             correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
+             exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
+             verified_status, is_published, status, created_at
+      FROM public.questions
+      WHERE id = $1
+    `, [id]);
     if (res.rows.length > 0) {
       return this.mapRowToQuestion(res.rows[0]);
     }
 
     const dqRes = await pool.query(`
-      SELECT 
+      SELECT
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,
@@ -455,7 +463,16 @@ export class QuestionRepository {
       }
 
       const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-      const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY created_at DESC`, values);
+      const res = await pool.query(`
+        SELECT id, subject_id, topic_id, concept_id, type, question_type, statements, statements_hi,
+               match_data, match_data_hi, question, question_en, question_hi, options, options_en, options_hi,
+               correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
+               exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
+               verified_status, is_published, status, created_at
+        FROM public.questions
+        ${whereClause}
+        ORDER BY created_at DESC
+      `, values);
       const dbQuestions = res.rows.map(r => this.mapRowToQuestion(r));
 
       // Combine memory and database questions by ID
@@ -509,7 +526,7 @@ export class QuestionRepository {
 
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
     const query = `
-      SELECT 
+      SELECT
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,
@@ -574,7 +591,16 @@ export class QuestionRepository {
       }
 
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-      const res = await pool.query(`SELECT * FROM public.questions ${whereClause} ORDER BY pyq_year DESC NULLS LAST, created_at DESC`, values);
+      const res = await pool.query(`
+        SELECT id, subject_id, topic_id, concept_id, type, question_type, statements, statements_hi,
+               match_data, match_data_hi, question, question_en, question_hi, options, options_en, options_hi,
+               correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
+               exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
+               verified_status, is_published, status, created_at
+        FROM public.questions
+        ${whereClause}
+        ORDER BY pyq_year DESC NULLS LAST, created_at DESC
+      `, values);
       const dbPYQs = res.rows.map(r => this.mapRowToQuestion(r));
 
       const map = new Map<string, Question>();
@@ -619,7 +645,7 @@ export class QuestionRepository {
 
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
     const query = `
-      SELECT 
+      SELECT
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,

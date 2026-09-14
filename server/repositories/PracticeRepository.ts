@@ -38,7 +38,9 @@ export class PracticeRepository {
 
   async getUserAttempts(userId: string, limit: number = 50): Promise<QuestionAttempt[]> {
     const query = `
-      SELECT * FROM public.question_attempts
+      SELECT id, user_id, question_id, concept_id, user_answer, is_correct,
+             time_spent_seconds, confidence_rating, mistake_category, timestamp
+      FROM public.question_attempts
       WHERE user_id = $1
       ORDER BY timestamp DESC
       LIMIT $2;
