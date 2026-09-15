@@ -1,6 +1,65 @@
 export type UserRole = 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'TEACHER' | 'STUDENT';
 export * from './liveClass.js';
 
+export interface YptGroup {
+  id: string;
+  name: string;
+  description?: string;
+  exam: string;
+  creatorId: string;
+  creatorName: string;
+  inviteCode: string;
+  dailyGoalMinutes: number;
+  isArchived: boolean;
+  memberCount: number;
+  activeStudyingCount: number;
+  userRole?: 'CREATOR' | 'ADMIN' | 'MEMBER';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YptMember {
+  id: string;
+  groupId: string;
+  userId: string;
+  userName: string;
+  role: 'CREATOR' | 'ADMIN' | 'MEMBER';
+  joinedAt: string;
+  isActiveStudying: boolean;
+  currentSubject?: string;
+  lastActiveAt: string;
+  todaySeconds: number;
+}
+
+export interface YptStudySession {
+  id: string;
+  userId: string;
+  groupId?: string;
+  subject: string;
+  durationSeconds: number;
+  startedAt: string;
+  endedAt: string;
+  sessionDate: string;
+  createdAt: string;
+}
+
+export interface YptTodaySummary {
+  todaySeconds: number;
+  todayMinutes: number;
+  dailyGoalMinutes: number;
+  goalProgressPercent: number;
+  sessionsCount: number;
+  activeStudying: boolean;
+  currentSubject?: string;
+  activeGroupsCount: number;
+  primaryGroup?: {
+    id: string;
+    name: string;
+    activeMembersCount: number;
+    memberCount: number;
+  };
+}
+
 export type QuestionStatus =
   | 'IMPORTED'
   | 'DRAFT'

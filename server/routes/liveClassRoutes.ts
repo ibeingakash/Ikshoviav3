@@ -7,8 +7,11 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
   // 1. List Classes
   router.get('/classes', async (req, res) => {
     try {
-      const { exam, status, teacherId, search, tab } = req.query as Record<string, string>;
+      const { exam, status, teacherId, search, tab, adminView } = req.query as Record<string, string>;
       const user = (req as any).user;
+      const isAdminUser = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'TEACHER');
+      const isAdminView = isAdminUser && adminView === 'true';
+
       const classes = await liveClassRepository.getLiveClasses({
         exam,
         status,
@@ -16,6 +19,7 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
         search,
         tab,
         userId: user?.id,
+        isAdminView,
       });
       res.json(classes);
     } catch (err: any) {
@@ -132,6 +136,47 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
     } catch (err: any) {
       console.error('[LiveAPI] endClass error:', err);
       res.status(500).json({ error: 'Failed to end live class' });
+    }
+  });
+
+  // 7.1 Publish/Unpublish Class (Host / Admin)
+  router.post('/classes/:id/publish', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const current = await liveClassRepository.getLiveClassById(req.params.id);
+      if (!current) return res.status(404).json({ error: 'Class not found' });
+
+      const isHost = current.teacherId === user.id || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      if (!isHost) {
+        return res.status(403).json({ error: 'Permission denied to modify publication state' });
+      }
+
+      const { isPublished } = req.body;
+      const updated = await liveClassRepository.publishClass(req.params.id, isPublished !== false);
+      res.json(updated);
+    } catch (err: any) {
+      console.error('[LiveAPI] publishClass error:', err);
+      res.status(500).json({ error: 'Failed to update publication state' });
+    }
+  });
+
+  // 7.2 Cancel Class (Host / Admin)
+  router.post('/classes/:id/cancel', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const current = await liveClassRepository.getLiveClassById(req.params.id);
+      if (!current) return res.status(404).json({ error: 'Class not found' });
+
+      const isHost = current.teacherId === user.id || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      if (!isHost) {
+        return res.status(403).json({ error: 'Permission denied to cancel class' });
+      }
+
+      const cancelled = await liveClassRepository.cancelClass(req.params.id);
+      res.json(cancelled);
+    } catch (err: any) {
+      console.error('[LiveAPI] cancelClass error:', err);
+      res.status(500).json({ error: 'Failed to cancel class' });
     }
   });
 
@@ -446,6 +491,102 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
     } catch (err: any) {
       console.error('[LiveAPI] admin analytics error:', err);
       res.status(500).json({ error: 'Failed to calculate analytics' });
+    }
+  });
+
+  // ==========================================
+  // 1:1 Direct Video Call System
+  // ==========================================
+
+  // List users available to call
+  router.get('/calls/users', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { search } = req.query as { search?: string };
+      const users = await liveClassRepository.getCallableUsers(user.id, search);
+      res.json(users);
+    } catch (err: any) {
+      console.error('[LiveCalls] list users error:', err);
+      res.status(500).json({ error: 'Failed to retrieve contacts for calling' });
+    }
+  });
+
+  // Get active incoming or outgoing direct call
+  router.get('/calls/active', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const activeCall = await liveClassRepository.getActiveDirectCallForUser(user.id);
+      res.json({ call: activeCall });
+    } catch (err: any) {
+      console.error('[LiveCalls] active call error:', err);
+      res.status(500).json({ error: 'Failed to check active call' });
+    }
+  });
+
+  // Initiate direct call
+  router.post('/calls/initiate', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { calleeId, calleeName, calleeAvatar } = req.body;
+      if (!calleeId) {
+        return res.status(400).json({ error: 'calleeId is required' });
+      }
+
+      const call = await liveClassRepository.initiateDirectCall(
+        { id: user.id, name: user.name || 'Scholar', avatarUrl: user.avatarUrl },
+        { id: calleeId, name: calleeName || 'User', avatarUrl: calleeAvatar }
+      );
+      res.status(201).json(call);
+    } catch (err: any) {
+      console.error('[LiveCalls] initiate call error:', err);
+      res.status(500).json({ error: 'Failed to place call' });
+    }
+  });
+
+  // Respond to direct call (ACCEPT or DECLINE)
+  router.post('/calls/:id/respond', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { action } = req.body;
+      if (action !== 'ACCEPT' && action !== 'DECLINE') {
+        return res.status(400).json({ error: 'Action must be ACCEPT or DECLINE' });
+      }
+
+      const updated = await liveClassRepository.respondDirectCall(req.params.id, user.id, action);
+      res.json(updated);
+    } catch (err: any) {
+      console.error('[LiveCalls] respond call error:', err);
+      res.status(400).json({ error: err.message || 'Failed to respond to call' });
+    }
+  });
+
+  // End direct call
+  router.post('/calls/:id/end', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const ended = await liveClassRepository.endDirectCall(req.params.id, user.id);
+      res.json(ended);
+    } catch (err: any) {
+      console.error('[LiveCalls] end call error:', err);
+      res.status(400).json({ error: err.message || 'Failed to end call' });
+    }
+  });
+
+  // Room details for direct call
+  router.get('/calls/room/:roomId', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const call = await liveClassRepository.getDirectCallByRoomId(req.params.roomId);
+      if (!call) {
+        return res.status(404).json({ error: 'Call room not found' });
+      }
+      if (call.callerId !== user.id && call.calleeId !== user.id) {
+        return res.status(403).json({ error: 'Not authorized for this call room' });
+      }
+      res.json(call);
+    } catch (err: any) {
+      console.error('[LiveCalls] call room error:', err);
+      res.status(500).json({ error: 'Failed to load call room' });
     }
   });
 

@@ -7,7 +7,25 @@ export type MeetingType =
   | 'MENTORSHIP'
   | 'ANSWER_WRITING';
 
-export type LiveClassStatus = 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'CANCELLED';
+export type LiveClassStatus = 'DRAFT' | 'PUBLISHED' | 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'ENDED' | 'CANCELLED' | 'DELETED';
+
+export type DirectCallStatus = 'RINGING' | 'ACCEPTED' | 'DECLINED' | 'ENDED' | 'MISSED';
+
+export interface DirectVideoCall {
+  id: string;
+  callerId: string;
+  callerName: string;
+  callerAvatar?: string;
+  calleeId: string;
+  calleeName: string;
+  calleeAvatar?: string;
+  roomId: string;
+  status: DirectCallStatus;
+  startedAt?: string;
+  endedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface LiveClass {
   id: string;
@@ -31,6 +49,9 @@ export interface LiveClass {
   maxParticipants?: number;
   meetingType?: MeetingType;
   status: LiveClassStatus;
+  isPublished?: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
   recordingEnabled?: boolean;
   chatEnabled?: boolean;
   enableChat?: boolean;

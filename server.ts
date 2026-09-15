@@ -30,6 +30,7 @@ import pool from './server/db/pool.js';
 import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
 import { liveClassRepository } from './server/repositories/LiveClassRepository.js';
 import { createLiveClassRouter } from './server/routes/liveClassRoutes.js';
+import { createYptRouter } from './server/routes/yptRoutes.js';
 import { setupLiveClassWebSocket } from './server/liveClassSocket.js';
 import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './server/db/syllabusData.js';
 import {
@@ -459,6 +460,9 @@ async function startServer() {
 
   // Mount Live Classroom API Router
   app.use('/api/live', createLiveClassRouter(requireAuth, requireAdmin));
+
+  // Mount YPT Group & Focus Tracking Router
+  app.use('/api/ypt', createYptRouter(requireAuth));
 
   // OpenAPI Specification endpoint
   app.get('/openapi.json', (req, res) => {
@@ -6600,23 +6604,51 @@ async function startServer() {
       if (result.rows.length > 0) {
         latest = result.rows[0];
       } else if (platform === 'android') {
-        // Fallback to local APK metadata
-        const local = resolveLocalApk();
-        if (local) {
-          latest = {
-            id: 'rel_android_1_baseline',
-            platform: 'android',
-            version_name: '1.0',
-            version_code: 1,
-            min_supported_version_code: 1,
-            apk_url: '/apk/app-debug.apk',
-            sha256_checksum: local.checksum,
-            file_size_bytes: local.size,
-            release_notes: 'Initial production release with Capacitor 8 native integration, offline queue synchronization, daily quiz, and full question bank.',
-            is_mandatory: false,
-            status: 'PUBLISHED',
-            created_at: new Date().toISOString()
-          };
+        // First check if a release-metadata.json was deployed by CI
+        const metaPath = path.join(process.cwd(), 'public', 'apk', 'release-metadata.json');
+        if (fs.existsSync(metaPath)) {
+          try {
+            const raw = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            if (raw && (raw.version_code || raw.versionCode)) {
+              latest = {
+                id: raw.id || `rel_android_${raw.version_code || raw.versionCode}`,
+                platform: 'android',
+                version_name: raw.version_name || raw.versionName || '1.1',
+                version_code: Number(raw.version_code || raw.versionCode),
+                min_supported_version_code: Number(raw.min_supported_version_code || raw.minSupportedVersionCode || 1),
+                apk_url: raw.apk_url || raw.apkUrl || '/apk/app-debug.apk',
+                sha256_checksum: raw.sha256_checksum || raw.sha256Checksum || '',
+                file_size_bytes: Number(raw.file_size_bytes || raw.fileSizeBytes || 0),
+                release_notes: raw.release_notes || raw.releaseNotes || 'Automated production release',
+                is_mandatory: Boolean(raw.is_mandatory || raw.isMandatory),
+                status: 'PUBLISHED',
+                created_at: raw.created_at || raw.createdAt || new Date().toISOString()
+              };
+            }
+          } catch (metaErr) {
+            console.error('[Read release-metadata.json Error]', metaErr);
+          }
+        }
+
+        // Fallback to local APK file metadata if no metadata JSON exists
+        if (!latest) {
+          const local = resolveLocalApk();
+          if (local) {
+            latest = {
+              id: 'rel_android_1_baseline',
+              platform: 'android',
+              version_name: '1.0',
+              version_code: 1,
+              min_supported_version_code: 1,
+              apk_url: '/apk/app-debug.apk',
+              sha256_checksum: local.checksum,
+              file_size_bytes: local.size,
+              release_notes: 'Initial production release with Capacitor 8 native integration, offline queue synchronization, daily quiz, and full question bank.',
+              is_mandatory: false,
+              status: 'PUBLISHED',
+              created_at: new Date().toISOString()
+            };
+          }
         }
       }
 
@@ -6855,6 +6887,90 @@ async function startServer() {
     } catch (err: any) {
       console.error('[AppRelease Upsert Error]', err);
       res.status(500).json({ error: err.message || 'Failed to save app release' });
+    }
+  });
+
+  // 7b. CI / GitHub Actions Automated Release Webhook
+  app.post('/api/releases/ci-publish', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+      const validSecret = process.env.CI_RELEASE_SECRET || process.env.ADMIN_API_KEY || process.env.AUTH_SECRET;
+
+      if (!validSecret || token !== validSecret) {
+        return res.status(401).json({ error: 'Unauthorized: invalid or missing release publishing secret.' });
+      }
+
+      const {
+        id: customId,
+        platform = 'android',
+        version_name: versionName,
+        version_code: versionCode,
+        min_supported_version_code: minSupportedVersionCode = 1,
+        apk_url: apkUrl,
+        sha256_checksum: sha256Checksum,
+        file_size_bytes: fileSizeBytes,
+        release_notes: releaseNotes,
+        is_mandatory: isMandatory = false
+      } = req.body || {};
+
+      if (!versionName || !versionCode || !apkUrl || !sha256Checksum) {
+        return res.status(400).json({ error: 'version_name, version_code, apk_url, and sha256_checksum are required.' });
+      }
+
+      const id = customId || `rel_${platform}_${versionCode}_${Date.now()}`;
+
+      // Archive previous published releases
+      await pool.query(`
+        UPDATE public.app_releases
+        SET status = 'ARCHIVED'
+        WHERE platform = $1 AND id != $2 AND status = 'PUBLISHED';
+      `, [platform, id]);
+
+      const query = `
+        INSERT INTO public.app_releases (
+          id, platform, version_name, version_code, min_supported_version_code,
+          apk_url, sha256_checksum, file_size_bytes, release_notes, is_mandatory, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PUBLISHED', NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          version_name = EXCLUDED.version_name,
+          version_code = EXCLUDED.version_code,
+          min_supported_version_code = EXCLUDED.min_supported_version_code,
+          apk_url = EXCLUDED.apk_url,
+          sha256_checksum = EXCLUDED.sha256_checksum,
+          file_size_bytes = EXCLUDED.file_size_bytes,
+          release_notes = EXCLUDED.release_notes,
+          is_mandatory = EXCLUDED.is_mandatory,
+          status = 'PUBLISHED'
+        RETURNING *;
+      `;
+
+      const result = await pool.query(query, [
+        id,
+        platform,
+        versionName,
+        Number(versionCode),
+        Number(minSupportedVersionCode),
+        apkUrl,
+        sha256Checksum,
+        Number(fileSizeBytes || 0),
+        releaseNotes || 'Automated CI production release',
+        Boolean(isMandatory)
+      ]);
+
+      // Also persist to public/apk/release-metadata.json
+      try {
+        const metaPath = path.join(process.cwd(), 'public', 'apk', 'release-metadata.json');
+        fs.writeFileSync(metaPath, JSON.stringify(result.rows[0], null, 2), 'utf8');
+      } catch (e) {
+        console.warn('[CI Publish Metadata File Warning]', e);
+      }
+
+      console.log(`[CI Release Published] ${platform} v${versionName} (build ${versionCode})`);
+      return res.json({ success: true, release: result.rows[0] });
+    } catch (err: any) {
+      console.error('[CI Release Publish Error]', err);
+      return res.status(500).json({ error: err.message || 'Failed to publish release' });
     }
   });
 

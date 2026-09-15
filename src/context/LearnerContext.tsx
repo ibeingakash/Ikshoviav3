@@ -21,6 +21,7 @@ export type NavigationSection =
   | 'bookmarks'
   | 'notes'
   | 'short-notes'
+  | 'ypt'
   | 'live-classes'
   | 'live-classroom'
   | 'graph'

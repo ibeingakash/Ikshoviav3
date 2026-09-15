@@ -90,7 +90,7 @@ export class ResourceRepository {
     limit?: number;
     offset?: number;
   }): Promise<{ resources: DbResource[]; total: number }> {
-    const conditions: string[] = [];
+    const conditions: string[] = ['(r.is_deleted IS NULL OR r.is_deleted = FALSE)'];
     const whereValues: any[] = [];
     let paramIndex = 1;
 
@@ -262,14 +262,17 @@ export class ResourceRepository {
         FROM public.resources r
         LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $2
         LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $2
-        WHERE r.id = $1`,
+        WHERE r.id = $1 AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)`,
         [id, userId]
       );
       if (res.rows.length === 0) return null;
       return this.mapRowToResource(res.rows[0]);
     }
 
-    const res = await pool.query(`SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE id = $1`, [id]);
+    const res = await pool.query(
+      `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      [id]
+    );
     if (res.rows.length === 0) return null;
     return this.mapRowToResource(res.rows[0]);
   }
@@ -492,7 +495,21 @@ export class ResourceRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const res = await pool.query('DELETE FROM public.resources WHERE id = $1', [id]);
+    const existing = await this.findById(id);
+    if (existing) {
+      // Record in tombstone table so auto-seeding/rescan cannot resurrect it
+      await pool.query(
+        `INSERT INTO public.deleted_resources_tombstone (id, file_name, file_hash, title, deleted_by)
+         VALUES ($1, $2, $3, $4, 'ADMIN')
+         ON CONFLICT (id) DO UPDATE SET deleted_at = NOW()`,
+        [id, existing.file_name || null, existing.file_hash || null, existing.title || null]
+      );
+    }
+
+    const res = await pool.query(
+      `UPDATE public.resources SET is_deleted = TRUE, deleted_at = NOW(), status = 'ARCHIVED' WHERE id = $1`,
+      [id]
+    );
     return (res.rowCount || 0) > 0;
   }
 

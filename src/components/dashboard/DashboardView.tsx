@@ -27,6 +27,7 @@ import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../lib/api.js';
 import { StudyGoal } from '../../types/index.js';
+import { YptHomeWidget } from './YptHomeWidget.js';
 
 interface LearnerProgressItem {
   conceptId: string;
@@ -200,6 +201,9 @@ export const DashboardView: React.FC = () => {
             </div>
 
           </div>
+
+          {/* YPT STUDY FOCUS & PEER GROUPS WIDGET */}
+          <YptHomeWidget />
 
           {/* MY ENROLLED COURSES SECTION (Direct from Entitlements Table) */}
           <div className="space-y-3">

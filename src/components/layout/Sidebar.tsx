@@ -36,6 +36,7 @@ import {
   Percent,
   Smartphone,
   Video,
+  Flame,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -64,6 +65,7 @@ export const Sidebar: React.FC = () => {
 
   // Learning Hub Items
   const learningNavItems: NavItem[] = [
+    { id: 'ypt', label: 'YPT Study Focus & Groups', icon: Flame, badge: 'Focus', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'live-classes', label: 'Live Classes & Faculty', icon: Video, badge: 'Live', badgeColor: 'bg-rose-100 text-rose-900 border border-rose-300' },
     { id: 'pyq-practice', label: 'Official PYQ Papers', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs', badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300' },

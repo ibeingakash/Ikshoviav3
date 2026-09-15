@@ -7,7 +7,8 @@ import {
   LiveClassFile,
   LiveClassRecording,
   LiveClassPoll,
-  LiveClassAnalytics
+  LiveClassAnalytics,
+  DirectVideoCall
 } from '../types/liveClass.js';
 import { apiUrl, getAuthHeaders } from '../lib/api.js';
 
@@ -30,6 +31,7 @@ export const liveClassService = {
     teacherId?: string;
     search?: string;
     tab?: string;
+    adminView?: boolean;
   }): Promise<LiveClass[]> {
     const params = new URLSearchParams();
     if (filters?.exam) params.append('exam', filters.exam);
@@ -37,6 +39,7 @@ export const liveClassService = {
     if (filters?.teacherId) params.append('teacherId', filters.teacherId);
     if (filters?.search) params.append('search', filters.search);
     if (filters?.tab) params.append('tab', filters.tab);
+    if (filters?.adminView) params.append('adminView', 'true');
 
     const res = await liveFetch(`/api/live/classes?${params.toString()}`);
     if (!res.ok) throw new Error('Failed to fetch live classes');
@@ -85,6 +88,24 @@ export const liveClassService = {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Failed to end class');
+    return res.json();
+  },
+
+  async publishClass(id: string, isPublished: boolean): Promise<LiveClass> {
+    const res = await liveFetch(`/api/live/classes/${id}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPublished }),
+    });
+    if (!res.ok) throw new Error('Failed to update publication status');
+    return res.json();
+  },
+
+  async cancelClass(id: string): Promise<LiveClass> {
+    const res = await liveFetch(`/api/live/classes/${id}/cancel`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to cancel class');
     return res.json();
   },
 
@@ -325,6 +346,61 @@ export const liveClassService = {
   async getAdminAnalytics(): Promise<LiveClassAnalytics> {
     const res = await liveFetch('/api/live/admin/analytics');
     if (!res.ok) throw new Error('Failed to fetch analytics');
+    return res.json();
+  },
+
+  // 1:1 Direct Video Calling
+  async getCallableUsers(search?: string): Promise<{ id: string; name: string; email: string; role: string; avatarUrl?: string }[]> {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    const res = await liveFetch(`/api/live/calls/users?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch users');
+    return res.json();
+  },
+
+  async getActiveDirectCall(): Promise<{ call: DirectVideoCall | null }> {
+    const res = await liveFetch('/api/live/calls/active');
+    if (!res.ok) return { call: null };
+    return res.json();
+  },
+
+  async initiateDirectCall(calleeId: string, calleeName?: string, calleeAvatar?: string): Promise<DirectVideoCall> {
+    const res = await liveFetch('/api/live/calls/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calleeId, calleeName, calleeAvatar }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to initiate call');
+    }
+    return res.json();
+  },
+
+  async respondDirectCall(callId: string, action: 'ACCEPT' | 'DECLINE'): Promise<DirectVideoCall> {
+    const res = await liveFetch(`/api/live/calls/${callId}/respond`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to respond to call');
+    }
+    return res.json();
+  },
+
+  async endDirectCall(callId: string): Promise<DirectVideoCall> {
+    const res = await liveFetch(`/api/live/calls/${callId}/end`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to end call');
+    return res.json();
+  },
+
+  async getDirectCallRoom(roomId: string): Promise<DirectVideoCall> {
+    const res = await liveFetch(`/api/live/calls/room/${roomId}`);
+    if (!res.ok) throw new Error('Failed to load call room');
     return res.json();
   },
 };

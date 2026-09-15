@@ -18,12 +18,17 @@ import {
   CheckCircle2,
   AlertCircle,
   HelpCircle,
-  MessageSquare
+  MessageSquare,
+  Phone,
+  Edit3,
+  EyeOff
 } from 'lucide-react';
 import { LiveClass, LiveClassRecording } from '../../types/liveClass.js';
 import { liveClassService } from '../../services/liveClassService.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { CreateLiveClassModal } from './CreateLiveClassModal.js';
+import { EditLiveClassModal } from './EditLiveClassModal.js';
+import { DirectCallModal } from './DirectCallModal.js';
 import { LiveAttendanceModal } from './LiveAttendanceModal.js';
 import { PreJoinScreen } from './PreJoinScreen.js';
 import { LiveClassroomView } from './LiveClassroomView.js';
@@ -56,6 +61,8 @@ export const LiveClassesHubView: React.FC = () => {
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDirectCallModal, setShowDirectCallModal] = useState(false);
+  const [editingClass, setEditingClass] = useState<LiveClass | null>(null);
   const [attendanceClass, setAttendanceClass] = useState<LiveClass | null>(null);
 
   useEffect(() => {
@@ -71,6 +78,7 @@ export const LiveClassesHubView: React.FC = () => {
         exam: examFilter !== 'ALL' ? examFilter : undefined,
         tab: activeTab,
         search: searchQuery || undefined,
+        adminView: isTeacherOrAdmin,
       });
       setClasses(data);
     } catch (err: any) {
@@ -166,6 +174,14 @@ export const LiveClassesHubView: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowDirectCallModal(true)}
+            className="px-4 py-2.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 hover:border-amber-500/50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
+          >
+            <Phone className="w-4 h-4 text-emerald-400" />
+            <span>1:1 Video Consultation</span>
+          </button>
+
           {isTeacherOrAdmin && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -407,6 +423,12 @@ export const LiveClassesHubView: React.FC = () => {
                           }`}>
                             {c.exam} CSE
                           </span>
+                          {isTeacherOrAdmin && c.isPublished === false && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center gap-1">
+                              <EyeOff className="w-3 h-3" />
+                              <span>Draft</span>
+                            </span>
+                          )}
                           <span className="text-xs text-stone-400 truncate max-w-[130px]">
                             {c.subject}
                           </span>
@@ -469,6 +491,13 @@ export const LiveClassesHubView: React.FC = () => {
                       {isHost ? (
                         <div className="flex items-center gap-2 w-full">
                           <button
+                            onClick={() => setEditingClass(c)}
+                            className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-amber-400 hover:text-amber-300 transition-colors"
+                            title="Edit Class & Settings"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => setAttendanceClass(c)}
                             className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-stone-300 hover:text-white transition-colors"
                             title="View Attendance Report"
@@ -528,6 +557,27 @@ export const LiveClassesHubView: React.FC = () => {
         onSuccess={() => {
           loadClasses();
         }}
+      />
+
+      {/* MODAL: EDIT CLASS */}
+      {editingClass && (
+        <EditLiveClassModal
+          isOpen={Boolean(editingClass)}
+          liveClass={editingClass}
+          onClose={() => setEditingClass(null)}
+          onUpdated={_updated => {
+            loadClasses();
+          }}
+          onDeleted={_classId => {
+            loadClasses();
+          }}
+        />
+      )}
+
+      {/* MODAL: DIRECT VIDEO CALL */}
+      <DirectCallModal
+        isOpen={showDirectCallModal}
+        onClose={() => setShowDirectCallModal(false)}
       />
 
       {/* MODAL: ATTENDANCE */}

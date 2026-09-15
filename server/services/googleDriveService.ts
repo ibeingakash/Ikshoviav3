@@ -55,7 +55,7 @@ export class GoogleDriveService {
     if (process.env.GOOGLE_DRIVE_REDIRECT_URI) {
       return process.env.GOOGLE_DRIVE_REDIRECT_URI;
     }
-    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshoviav3.onrender.com' : 'http://localhost:3000');
+    const appUrl = process.env.APP_URL || (process.env.NODE_ENV === 'production' ? 'https://ikshovia.onrender.com' : 'http://localhost:3000');
     return `${appUrl.replace(/\/+$/, '')}/api/auth/google/callback`;
   }
 
@@ -360,8 +360,8 @@ export class GoogleDriveService {
       clientSecretConfigured: !!clientSecret,
       clientSecretLength: clientSecret ? clientSecret.length : 0,
       redirectUri,
-      expectedRedirectUri: 'https://ikshoviav3.onrender.com/api/auth/google/callback',
-      redirectUriMatchesExpected: redirectUri === 'https://ikshoviav3.onrender.com/api/auth/google/callback',
+      expectedRedirectUri: 'https://ikshovia.onrender.com/api/auth/google/callback',
+      redirectUriMatchesExpected: redirectUri === 'https://ikshovia.onrender.com/api/auth/google/callback',
       scopesRequested: this.getScopes(),
       databaseIntegration: {
         recordExists: dbRecordExists,

@@ -1767,7 +1767,7 @@ export const AdminResourceStudioView: React.FC = () => {
                   <li>Ensure the dedicated account <code>ikshovia@gmail.com</code> is listed as a Test User.</li>
                   <li>Navigate to <strong>APIs &amp; Services &gt; Enabled APIs &amp; Services</strong> and verify <strong>Google Drive API</strong> is enabled.</li>
                   <li>Under <strong>Google Auth Platform &gt; Data Access</strong> (or <strong>OAuth consent screen &gt; Scopes</strong>), ensure <code>https://www.googleapis.com/auth/drive.file</code> is added.</li>
-                  <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, click <strong>IKSHOVIA Resource Manager</strong> and confirm Authorized Redirect URI: <code>https://ikshoviav3.onrender.com/api/auth/google/callback</code>.</li>
+                  <li>Under <strong>Credentials &gt; OAuth 2.0 Client IDs</strong>, click <strong>IKSHOVIA Resource Manager</strong> and confirm Authorized Redirect URI: <code>https://ikshovia.onrender.com/api/auth/google/callback</code>.</li>
                   <li>When logging in via OAuth, <strong>check the checkbox</strong> for <em>"See, edit, create, and delete only the specific Google Drive files you use with this app"</em> to grant Drive access.</li>
                 </ol>
               </div>

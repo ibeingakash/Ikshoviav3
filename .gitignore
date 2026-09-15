@@ -16,6 +16,7 @@ data/bpsc_official_pdfs/
 *.traineddata.gz
 
 # Android local/generated files
+.tools/
 android/.idea/
 android/local.properties
 android/.gradle/

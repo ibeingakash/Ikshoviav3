@@ -48,6 +48,7 @@ import { TestSeriesMarketplaceView } from './components/mock/TestSeriesMarketpla
 import { NotesSyllabusView } from './components/syllabus/NotesSyllabusView.js';
 import { DownloadAppView } from './components/download/DownloadAppView.js';
 import { LiveClassesHubView } from './components/live/LiveClassesHubView.js';
+import { YptView } from './components/ypt/YptView.js';
 import { AppReleasesView } from './components/admin/AppReleasesView.js';
 import { AppUpdateModal } from './components/common/AppUpdateModal.js';
 import { useAppUpdateCheck } from './hooks/useAppUpdateCheck.js';
@@ -203,6 +204,9 @@ const MainContent: React.FC = () => {
         return <NotesSyllabusView />;
       case 'short-notes':
         return <ShortNotesView />;
+      case 'ypt':
+      case 'ypt-groups':
+        return <YptView />;
       case 'live-classes':
       case 'live-classroom':
         return <LiveClassesHubView />;

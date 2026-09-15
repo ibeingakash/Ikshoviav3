@@ -18,6 +18,7 @@ import {
   Layers,
   Receipt,
   Video,
+  Flame,
 } from 'lucide-react';
 import { NavigationSection } from '../context/LearnerContext.js';
 
@@ -41,6 +42,7 @@ export const MORE_MENU_CATEGORIES = [
   {
     title: 'LEARNING HUB',
     items: [
+      { id: 'ypt', label: 'YPT Focus & Peer Groups', icon: Flame, badge: 'Focus' },
       { id: 'daily-quiz', label: 'Daily Quiz', icon: CheckSquare },
       { id: 'live-classes', label: 'Live Classes & Faculty', icon: Video, badge: 'Live' },
       { id: 'pyq-practice', label: 'Official PYQ Practice', icon: FolderArchive, badge: 'Official' },

@@ -317,6 +317,30 @@ export async function ensureDatabaseSchema(): Promise<void> {
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS is_bookmarked BOOLEAN DEFAULT FALSE;
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+      -- Live Classroom & Direct Calls
+      CREATE TABLE IF NOT EXISTS public.direct_video_calls (
+        id TEXT PRIMARY KEY,
+        caller_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        caller_name TEXT NOT NULL,
+        caller_avatar TEXT,
+        callee_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        callee_name TEXT NOT NULL,
+        callee_avatar TEXT,
+        room_id TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'RINGING',
+        started_at TIMESTAMPTZ,
+        ended_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_direct_calls_users ON public.direct_video_calls(caller_id, callee_id, status);
+
+      ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE public.users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
+      ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT TRUE;
+      ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
       DO $$
       BEGIN
         IF NOT EXISTS (

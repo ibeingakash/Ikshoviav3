@@ -164,306 +164,38 @@ export class LiveClassRepository {
           created_at TIMESTAMPTZ DEFAULT NOW(),
           CONSTRAINT uq_live_poll_response UNIQUE (poll_id, user_id)
         );
+
+        CREATE TABLE IF NOT EXISTS public.direct_video_calls (
+          id TEXT PRIMARY KEY,
+          caller_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          caller_name TEXT NOT NULL,
+          caller_avatar TEXT,
+          callee_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          callee_name TEXT NOT NULL,
+          callee_avatar TEXT,
+          room_id TEXT UNIQUE NOT NULL,
+          status TEXT NOT NULL DEFAULT 'RINGING',
+          started_at TIMESTAMPTZ,
+          ended_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_direct_calls_users ON public.direct_video_calls(caller_id, callee_id, status);
+
+        -- Safe column additions
+        ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT TRUE;
+        ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+        ALTER TABLE public.live_classes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+        ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ DEFAULT NOW();
+        ALTER TABLE public.users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ACTIVE';
       `);
 
-      // Seed initial high-quality live classes and past recordings if table is empty
-      const countRes = await pool.query(`SELECT COUNT(*) FROM public.live_classes`);
-      if (parseInt(countRes.rows[0].count, 10) === 0) {
-        await this.seedDefaultLiveClasses();
-      }
-      console.log('[LiveClassRepository] Schema and initial seed verified.');
+      // Automatic demo seeding disabled. Admin has full control over classes.
+      console.log('[LiveClassRepository] Schema verified.');
     } catch (e: any) {
       console.error('[LiveClassRepository] Error ensuring schema:', e.message);
     }
-  }
-
-  private async seedDefaultLiveClasses(): Promise<void> {
-    const now = new Date();
-
-    // 1. A Live Now class
-    const liveStart = new Date(now.getTime() - 25 * 60 * 1000); // started 25 min ago
-    const liveClassId = 'live_cls_bpsc71_essay';
-    const liveMeetingId = 'IK-BPSC-7F42';
-
-    // 2. An Upcoming Today class
-    const todayUpcoming = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
-    const upcomingClassId = 'live_cls_upsc_ethics';
-    const upcomingMeetingId = 'IK-UPSC-9A13';
-
-    // 3. An Upcoming Tomorrow class
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const tomorrowClassId = 'live_cls_bpsc_history';
-    const tomorrowMeetingId = 'IK-BPSC-4D19';
-
-    // 4. A Completed Class with full recording and materials
-    const completedPast = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-    const completedClassId = 'live_cls_bpsc_polity';
-    const completedMeetingId = 'IK-BPSC-2B88';
-
-    const classesToSeed = [
-      {
-        id: liveClassId,
-        meetingId: liveMeetingId,
-        title: 'BPSC 71st Mains — Essay Discussion & Structural Frameworks',
-        description: 'Comprehensive walkthrough of Section 1 & Section 3 philosophical and Bihar-centric thematic essays. Focus on dialectical structure, quotes, and case studies.',
-        subject: 'Mains Essay',
-        exam: 'BPSC',
-        topic: 'Philosophical & Bihar Proverbs Essay Framing',
-        teacherName: 'Prof. Anand Vardhan',
-        teacherAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        scheduledDate: now.toISOString().split('T')[0],
-        startTime: `${String(liveStart.getHours()).padStart(2, '0')}:${String(liveStart.getMinutes()).padStart(2, '0')}`,
-        scheduledStartIso: liveStart.toISOString(),
-        expectedDurationMinutes: 90,
-        actualStartTime: liveStart.toISOString(),
-        status: 'LIVE',
-        meetingType: 'ESSAY_EVALUATION',
-        maxParticipants: 150,
-        recordingEnabled: true,
-        chatEnabled: true,
-        studentMicAllowed: true,
-        studentCameraAllowed: true,
-        waitingRoomEnabled: false,
-        screenSharingAllowed: true,
-        fileSharingAllowed: true,
-        linkedMainsTaskId: 'mains_task_essay_01',
-        linkedMockTestId: 'mock_job_ocr_1788854092974_5snb',
-        metadata: {
-          recommendedPrerequisites: ['Read BPSC 69th & 70th Essay Solved Papers'],
-          syllabusPointers: ['Section I: Abstract & Philosophical', 'Section III: Bihar Specific Themes & Dialects'],
-        },
-      },
-      {
-        id: upcomingClassId,
-        meetingId: upcomingMeetingId,
-        title: 'UPSC CSE 2026 — Ethics Case Studies Masterclass (GS IV)',
-        description: 'Live roleplay framework for Section B complex dilemmas involving public interest vs executive orders, whistleblowing, and administrative discretion.',
-        subject: 'General Studies IV',
-        exam: 'UPSC',
-        topic: 'Section B Case Studies & Decision Matrix',
-        teacherName: 'Dr. Meenakshi Sundaram',
-        teacherAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-        scheduledDate: todayUpcoming.toISOString().split('T')[0],
-        startTime: `${String(todayUpcoming.getHours()).padStart(2, '0')}:${String(todayUpcoming.getMinutes()).padStart(2, '0')}`,
-        scheduledStartIso: todayUpcoming.toISOString(),
-        expectedDurationMinutes: 75,
-        status: 'SCHEDULED',
-        meetingType: 'LECTURE',
-        maxParticipants: 200,
-        recordingEnabled: true,
-        chatEnabled: true,
-        studentMicAllowed: true,
-        studentCameraAllowed: true,
-        waitingRoomEnabled: true,
-        screenSharingAllowed: true,
-        fileSharingAllowed: true,
-        metadata: {
-          recommendedPrerequisites: ['Nolan Principles of Public Life'],
-        },
-      },
-      {
-        id: tomorrowClassId,
-        meetingId: tomorrowMeetingId,
-        title: 'BPSC 71st GS Paper 1 — Modern History & Freedom Struggle In Bihar',
-        description: 'Deep dive into Santhal Uprising, 1857 Revolt in Bihar under Kunwar Singh, Champaran Satyagraha, and Quit India Movement 1942.',
-        subject: 'History & Culture',
-        exam: 'BPSC',
-        topic: 'Tribal Resistance & Nationalist Movements in Bihar',
-        teacherName: 'Sanjay Kumar Jha',
-        teacherAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-        scheduledDate: tomorrow.toISOString().split('T')[0],
-        startTime: '11:00',
-        scheduledStartIso: tomorrow.toISOString(),
-        expectedDurationMinutes: 120,
-        status: 'SCHEDULED',
-        meetingType: 'LECTURE',
-        maxParticipants: 100,
-        recordingEnabled: true,
-        chatEnabled: true,
-        studentMicAllowed: true,
-        studentCameraAllowed: true,
-        waitingRoomEnabled: false,
-        screenSharingAllowed: true,
-        fileSharingAllowed: true,
-        metadata: {
-          recommendedPrerequisites: ['BPSC PYQ Modern History Notes'],
-        },
-      },
-      {
-        id: completedClassId,
-        meetingId: completedMeetingId,
-        title: 'BPSC 70th Mains — Indian Polity & Federal Governance Breakdown',
-        description: 'Analyzing recent trends in Governor discretionary powers, Centre-State financial relations, and Bihar Panchayati Raj 50% reservation impact.',
-        subject: 'Indian Polity & Governance',
-        exam: 'BPSC',
-        topic: 'Governor Powers & Fiscal Federalism in Bihar',
-        teacherName: 'Prof. Anand Vardhan',
-        teacherAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        scheduledDate: completedPast.toISOString().split('T')[0],
-        startTime: '17:00',
-        scheduledStartIso: completedPast.toISOString(),
-        expectedDurationMinutes: 90,
-        actualStartTime: completedPast.toISOString(),
-        actualEndTime: new Date(completedPast.getTime() + 92 * 60 * 1000).toISOString(),
-        status: 'COMPLETED',
-        meetingType: 'DOUBT_CLEARING',
-        maxParticipants: 150,
-        recordingEnabled: true,
-        chatEnabled: true,
-        studentMicAllowed: true,
-        studentCameraAllowed: true,
-        waitingRoomEnabled: false,
-        screenSharingAllowed: true,
-        fileSharingAllowed: true,
-        metadata: {
-          durationSummary: '92 minutes held',
-        },
-      },
-    ];
-
-    for (const c of classesToSeed) {
-      await pool.query(`
-        INSERT INTO public.live_classes (
-          id, meeting_id, title, description, subject, exam, topic,
-          teacher_name, teacher_avatar, scheduled_date, start_time,
-          scheduled_start_iso, expected_duration_minutes, actual_start_time,
-          actual_end_time, status, meeting_type, max_participants,
-          recording_enabled, chat_enabled, student_mic_allowed,
-          student_camera_allowed, waiting_room_enabled, screen_sharing_allowed,
-          file_sharing_allowed, linked_mains_task_id, linked_mock_test_id, metadata
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-          $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28
-        ) ON CONFLICT (id) DO NOTHING;
-      `, [
-        c.id, c.meetingId, c.title, c.description, c.subject, c.exam, c.topic,
-        c.teacherName, c.teacherAvatar, c.scheduledDate, c.startTime,
-        c.scheduledStartIso, c.expectedDurationMinutes, c.actualStartTime || null,
-        c.actualEndTime || null, c.status, c.meetingType, c.maxParticipants,
-        c.recordingEnabled, c.chatEnabled, c.studentMicAllowed,
-        c.studentCameraAllowed, c.waitingRoomEnabled, c.screenSharingAllowed,
-        c.fileSharingAllowed, c.linkedMainsTaskId || null, c.linkedMockTestId || null,
-        JSON.stringify(c.metadata || {}),
-      ]);
-    }
-
-    // Seed shared files for the live & completed classes
-    await pool.query(`
-      INSERT INTO public.live_class_files (
-        id, live_class_id, uploaded_by, uploader_name, file_name, file_url, file_type, file_size_bytes, description
-      ) VALUES
-      (
-        'f_bpsc71_01', 'live_cls_bpsc71_essay', 'usr_admin', 'Prof. Anand Vardhan',
-        'BPSC_71st_Mains_Essay_Structural_Templates_v2.pdf',
-        'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        'application/pdf', 1420500,
-        'Official 12-page structural framework for Section 1 and Section 3 Bihar Proverbs.'
-      ),
-      (
-        'f_bpsc71_02', 'live_cls_bpsc71_essay', 'usr_admin', 'Prof. Anand Vardhan',
-        'Quotes_And_Philosophical_Connectors_Handout.pdf',
-        'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        'application/pdf', 840200,
-        'Curated 50 historical quotes categorized by Ethics, Governance, and Human Nature.'
-      ),
-      (
-        'f_bpsc_polity_01', 'live_cls_bpsc_polity', 'usr_admin', 'Prof. Anand Vardhan',
-        'Governor_Discretionary_Powers_Supreme_Court_Rulings.pdf',
-        'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-        'application/pdf', 1980000,
-        'Comprehensive notes with Sarkaria & Punchhi commission recommendations.'
-      ) ON CONFLICT (id) DO NOTHING;
-    `);
-
-    // Seed realistic recording for completed class
-    await pool.query(`
-      INSERT INTO public.live_class_recordings (
-        id, live_class_id, title, recording_url, duration_seconds, file_size_bytes, transcript, key_takeaways, download_allowed
-      ) VALUES (
-        'rec_bpsc_polity_01',
-        'live_cls_bpsc_polity',
-        'BPSC 70th Mains — Indian Polity & Federal Governance (Full Session)',
-        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        5520,
-        428500000,
-        'Welcome students to this comprehensive BPSC Polity session. Today we examine Article 163, 174, and 200...',
-        '["Article 200 Presidential Assent timelines", "Punchhi Commission Recommendations on Gubernatorial appointments", "Impact of 73rd Amendment in Bihar Local Governance"]'::jsonb,
-        TRUE
-      ) ON CONFLICT (id) DO NOTHING;
-    `);
-
-    // Seed live poll for the active live class
-    await pool.query(`
-      INSERT INTO public.live_class_polls (
-        id, live_class_id, created_by, question, options, is_anonymous, duration_seconds, status
-      ) VALUES (
-        'poll_bpsc71_01',
-        'live_cls_bpsc71_essay',
-        'usr_admin',
-        'Which essay type do you find most challenging in BPSC Mains?',
-        '[
-          {"id": "opt1", "text": "Philosophical & Abstract Topics (Section 1)", "votes": 14},
-          {"id": "opt2", "text": "Bhojpuri/Maithili Proverb Based Essays (Section 3)", "votes": 28},
-          {"id": "opt3", "text": "Socio-Economic Analytical Themes (Section 2)", "votes": 9},
-          {"id": "opt4", "text": "Maintaining 700-800 word coherence under 3 hours", "votes": 21}
-        ]'::jsonb,
-        FALSE,
-        180,
-        'ACTIVE'
-      ) ON CONFLICT (id) DO NOTHING;
-    `);
-
-    // Seed interactive messages in the live class
-    await pool.query(`
-      INSERT INTO public.live_class_messages (
-        id, live_class_id, sender_id, sender_name, sender_role, message, is_pinned, created_at
-      ) VALUES
-      (
-        'msg_1', 'live_cls_bpsc71_essay', 'usr_admin', 'Prof. Anand Vardhan', 'TEACHER',
-        'Welcome everyone! Please ensure you have downloaded the Structural Templates PDF from the Files tab.',
-        TRUE,
-        NOW() - INTERVAL '20 minutes'
-      ),
-      (
-        'msg_2', 'live_cls_bpsc71_essay', 'usr_student_1', 'Rohan Verma', 'STUDENT',
-        'Good evening Sir. Can we use Bihar folk songs or local poetry as introductions in Section 3?',
-        FALSE,
-        NOW() - INTERVAL '15 minutes'
-      ),
-      (
-        'msg_3', 'live_cls_bpsc71_essay', 'usr_admin', 'Prof. Anand Vardhan', 'TEACHER',
-        'Yes Rohan! Folk proverbs and short couplets in Maithili/Magahi/Bhojpuri add immense contextual authenticity. I will illustrate with examples shortly.',
-        FALSE,
-        NOW() - INTERVAL '12 minutes'
-      ),
-      (
-        'msg_4', 'live_cls_bpsc71_essay', 'usr_student_2', 'Pooja Kumari', 'STUDENT',
-        'Audio and screen clarity are crystal clear!',
-        FALSE,
-        NOW() - INTERVAL '8 minutes'
-      ) ON CONFLICT (id) DO NOTHING;
-    `);
-
-    // Seed questions in Q&A queue
-    await pool.query(`
-      INSERT INTO public.live_class_questions (
-        id, live_class_id, student_id, student_name, question, upvotes, upvoted_by, status, is_pinned, answer
-      ) VALUES
-      (
-        'q_1', 'live_cls_bpsc71_essay', 'usr_student_1', 'Rohan Verma',
-        'Sir, how should we structure the transition between the literal meaning of a Bihar proverb and its contemporary socio-economic application?',
-        8, '["usr_student_2", "usr_student_3"]'::jsonb,
-        'ANSWERING', TRUE,
-        'Dedicate paragraph 1-2 to the cultural root, then pivot via "In contemporary governance and human ethos..." to broad multi-sector analysis.'
-      ),
-      (
-        'q_2', 'live_cls_bpsc71_essay', 'usr_student_3', 'Vikram Singh',
-        'Is it advisable to take an anti-establishment stance when critiquing administrative apathy in essay questions?',
-        5, '["usr_student_1"]'::jsonb,
-        'PENDING', FALSE,
-        NULL
-      ) ON CONFLICT (id) DO NOTHING;
-    `);
   }
 
   // Format helper
@@ -488,6 +220,9 @@ export class LiveClassRepository {
       maxParticipants: row.max_participants || 100,
       meetingType: row.meeting_type || 'LECTURE',
       status: row.status || 'SCHEDULED',
+      isPublished: row.is_published !== false,
+      isDeleted: Boolean(row.is_deleted),
+      deletedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : undefined,
       recordingEnabled: row.recording_enabled !== false,
       chatEnabled: row.chat_enabled !== false,
       studentMicAllowed: row.student_mic_allowed !== false,
@@ -513,22 +248,28 @@ export class LiveClassRepository {
     status?: string;
     teacherId?: string;
     search?: string;
-    tab?: string; // 'live' | 'upcoming' | 'today' | 'recordings' | 'my'
+    tab?: string; // 'live' | 'upcoming' | 'today' | 'recordings' | 'my' | 'drafts' | 'all'
     userId?: string;
+    isAdminView?: boolean;
   }): Promise<LiveClass[]> {
-    const conditions: string[] = ['1=1'];
+    const conditions: string[] = ['c.is_deleted = FALSE'];
     const params: any[] = [];
     let idx = 1;
+
+    // Visibility enforcement:
+    // Learners must ONLY see published or live or ended classes, never drafts or deleted or cancelled
+    if (!filters?.isAdminView) {
+      conditions.push(`(c.is_published = TRUE OR c.status = 'LIVE')`);
+      conditions.push(`c.status NOT IN ('DRAFT', 'DELETED', 'CANCELLED')`);
+    } else if (filters?.status && filters.status !== 'ALL') {
+      conditions.push(`c.status = $${idx}`);
+      params.push(filters.status);
+      idx++;
+    }
 
     if (filters?.exam && filters.exam !== 'ALL') {
       conditions.push(`(c.exam = $${idx} OR c.exam = 'ALL')`);
       params.push(filters.exam);
-      idx++;
-    }
-
-    if (filters?.status && filters.status !== 'ALL') {
-      conditions.push(`c.status = $${idx}`);
-      params.push(filters.status);
       idx++;
     }
 
@@ -549,9 +290,13 @@ export class LiveClassRepository {
     if (filters?.tab === 'live') {
       conditions.push(`c.status = 'LIVE'`);
     } else if (filters?.tab === 'upcoming') {
-      conditions.push(`c.status = 'SCHEDULED'`);
+      conditions.push(`c.status IN ('SCHEDULED', 'PUBLISHED')`);
     } else if (filters?.tab === 'today') {
       conditions.push(`c.scheduled_date = '${todayDate}'`);
+    } else if (filters?.tab === 'drafts') {
+      conditions.push(`(c.status = 'DRAFT' OR c.is_published = FALSE)`);
+    } else if (filters?.tab === 'recordings') {
+      conditions.push(`c.status IN ('COMPLETED', 'ENDED')`);
     } else if (filters?.tab === 'my' && filters?.userId) {
       conditions.push(`(c.teacher_id = $${idx} OR EXISTS (SELECT 1 FROM public.live_class_participants p WHERE p.live_class_id = c.id AND p.user_id = $${idx}))`);
       params.push(filters.userId);
@@ -603,18 +348,21 @@ export class LiveClassRepository {
     const startTime = data.startTime || '18:00';
     const scheduledStartIso = data.scheduledStartIso || new Date(`${scheduledDate}T${startTime}:00Z`).toISOString();
 
+    const isPublished = data.isPublished !== false;
+    const status = data.status || (isPublished ? 'PUBLISHED' : 'DRAFT');
+
     const res = await pool.query(`
       INSERT INTO public.live_classes (
         id, meeting_id, title, description, subject, exam, topic,
         teacher_id, teacher_name, teacher_avatar, scheduled_date, start_time,
         scheduled_start_iso, expected_duration_minutes, max_participants,
-        meeting_type, status, recording_enabled, chat_enabled,
+        meeting_type, status, is_published, is_deleted, recording_enabled, chat_enabled,
         student_mic_allowed, student_camera_allowed, waiting_room_enabled,
         screen_sharing_allowed, file_sharing_allowed, target_course_id,
         target_test_series_id, linked_mock_test_id, linked_mains_task_id, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29
+        $15, $16, $17, $18, FALSE, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30
       ) RETURNING *;
     `, [
       classId,
@@ -633,7 +381,8 @@ export class LiveClassRepository {
       data.expectedDurationMinutes || 60,
       data.maxParticipants || 100,
       data.meetingType || 'LECTURE',
-      'SCHEDULED',
+      status,
+      isPublished,
       data.recordingEnabled !== false,
       data.chatEnabled !== false,
       data.studentMicAllowed !== false,
@@ -680,8 +429,10 @@ export class LiveClassRepository {
         screen_sharing_allowed = COALESCE($18, screen_sharing_allowed),
         file_sharing_allowed = COALESCE($19, file_sharing_allowed),
         is_locked = COALESCE($20, is_locked),
+        is_published = COALESCE($21, is_published),
+        status = COALESCE($22, status),
         updated_at = NOW()
-      WHERE id = $21
+      WHERE id = $23
       RETURNING *;
     `, [
       updates.title,
@@ -704,9 +455,32 @@ export class LiveClassRepository {
       updates.screenSharingAllowed,
       updates.fileSharingAllowed,
       updates.isLocked,
+      updates.isPublished !== undefined ? updates.isPublished : null,
+      updates.status || null,
       current.id,
     ]);
 
+    return this.formatClassRow(res.rows[0]);
+  }
+
+  async publishClass(id: string, isPublished: boolean): Promise<LiveClass> {
+    const current = await this.getLiveClassById(id);
+    if (!current) throw new Error('Live class not found');
+    const newStatus = isPublished ? (current.status === 'DRAFT' ? 'PUBLISHED' : current.status) : 'DRAFT';
+    const res = await pool.query(
+      `UPDATE public.live_classes SET is_published = $1, status = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
+      [isPublished, newStatus, current.id]
+    );
+    return this.formatClassRow(res.rows[0]);
+  }
+
+  async cancelClass(id: string): Promise<LiveClass> {
+    const current = await this.getLiveClassById(id);
+    if (!current) throw new Error('Live class not found');
+    const res = await pool.query(
+      `UPDATE public.live_classes SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [current.id]
+    );
     return this.formatClassRow(res.rows[0]);
   }
 
@@ -759,8 +533,151 @@ export class LiveClassRepository {
   }
 
   async deleteClass(id: string): Promise<boolean> {
-    const res = await pool.query(`DELETE FROM public.live_classes WHERE id = $1 OR meeting_id = $1`, [id]);
+    const res = await pool.query(
+      `UPDATE public.live_classes SET is_deleted = TRUE, status = 'DELETED', deleted_at = NOW() WHERE id = $1 OR meeting_id = $1`,
+      [id]
+    );
     return (res.rowCount || 0) > 0;
+  }
+
+  // 1:1 Direct Video Calling System
+  async initiateDirectCall(
+    caller: { id: string; name: string; avatarUrl?: string },
+    callee: { id: string; name: string; avatarUrl?: string }
+  ): Promise<any> {
+    await this.ensureSchema();
+    const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const roomId = `meet_1to1_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    const res = await pool.query(
+      `INSERT INTO public.direct_video_calls (
+        id, caller_id, caller_name, caller_avatar, callee_id, callee_name, callee_avatar,
+        room_id, status, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'RINGING', NOW(), NOW())
+      RETURNING *`,
+      [
+        callId,
+        caller.id,
+        caller.name || 'Caller',
+        caller.avatarUrl || null,
+        callee.id,
+        callee.name || 'Recipient',
+        callee.avatarUrl || null,
+        roomId,
+      ]
+    );
+    return this.formatDirectCallRow(res.rows[0]);
+  }
+
+  async respondDirectCall(callId: string, userId: string, action: 'ACCEPT' | 'DECLINE'): Promise<any> {
+    await this.ensureSchema();
+    const check = await pool.query(`SELECT * FROM public.direct_video_calls WHERE id = $1`, [callId]);
+    if (check.rows.length === 0) throw new Error('Call not found');
+    const call = check.rows[0];
+    if (call.callee_id !== userId && call.caller_id !== userId) {
+      throw new Error('Not authorized to respond to this call');
+    }
+
+    const newStatus = action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED';
+    const startedAtClause = action === 'ACCEPT' ? ', started_at = NOW()' : '';
+    const endedAtClause = action === 'DECLINE' ? ', ended_at = NOW()' : '';
+
+    const res = await pool.query(
+      `UPDATE public.direct_video_calls SET status = $1, updated_at = NOW() ${startedAtClause} ${endedAtClause} WHERE id = $2 RETURNING *`,
+      [newStatus, callId]
+    );
+    return this.formatDirectCallRow(res.rows[0]);
+  }
+
+  async endDirectCall(callId: string, userId: string): Promise<any> {
+    await this.ensureSchema();
+    const check = await pool.query(`SELECT * FROM public.direct_video_calls WHERE id = $1`, [callId]);
+    if (check.rows.length === 0) throw new Error('Call not found');
+    const call = check.rows[0];
+    if (call.callee_id !== userId && call.caller_id !== userId) {
+      throw new Error('Not authorized to end this call');
+    }
+
+    const res = await pool.query(
+      `UPDATE public.direct_video_calls SET status = 'ENDED', ended_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [callId]
+    );
+    return this.formatDirectCallRow(res.rows[0]);
+  }
+
+  async getActiveDirectCallForUser(userId: string): Promise<any | null> {
+    await this.ensureSchema();
+    const res = await pool.query(
+      `SELECT * FROM public.direct_video_calls
+       WHERE (callee_id = $1 OR caller_id = $1)
+         AND status IN ('RINGING', 'ACCEPTED')
+         AND created_at > NOW() - INTERVAL '10 minutes'
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId]
+    );
+    if (res.rows.length === 0) return null;
+    return this.formatDirectCallRow(res.rows[0]);
+  }
+
+  async getDirectCallByRoomId(roomId: string): Promise<any | null> {
+    await this.ensureSchema();
+    const res = await pool.query(
+      `SELECT * FROM public.direct_video_calls WHERE room_id = $1 LIMIT 1`,
+      [roomId]
+    );
+    if (res.rows.length === 0) return null;
+    return this.formatDirectCallRow(res.rows[0]);
+  }
+
+  async getCallableUsers(currentUserId: string, search?: string): Promise<any[]> {
+    await this.ensureSchema();
+    const conditions = ['id != $1'];
+    const params: any[] = [currentUserId];
+    let idx = 2;
+
+    if (search && search.trim()) {
+      conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx})`);
+      params.push(`%${search.trim()}%`);
+      idx++;
+    }
+
+    const res = await pool.query(
+      `SELECT id, name, email, role, avatar_url, created_at
+       FROM public.users
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY
+         CASE WHEN role IN ('TEACHER', 'ADMIN', 'SUPER_ADMIN') THEN 1 ELSE 2 END,
+         created_at DESC NULLS LAST, name ASC
+       LIMIT 30`,
+      params
+    );
+
+    return res.rows.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      avatarUrl: u.avatar_url,
+      lastActiveAt: u.created_at ? new Date(u.created_at).toISOString() : new Date().toISOString(),
+    }));
+  }
+
+  private formatDirectCallRow(row: any): any {
+    return {
+      id: row.id,
+      callerId: row.caller_id,
+      callerName: row.caller_name,
+      callerAvatar: row.caller_avatar,
+      calleeId: row.callee_id,
+      calleeName: row.callee_name,
+      calleeAvatar: row.callee_avatar,
+      roomId: row.room_id,
+      status: row.status,
+      startedAt: row.started_at ? new Date(row.started_at).toISOString() : undefined,
+      endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : undefined,
+      createdAt: new Date(row.created_at).toISOString(),
+      updatedAt: new Date(row.updated_at).toISOString(),
+    };
   }
 
   // Participants & Registration

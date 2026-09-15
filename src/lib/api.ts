@@ -37,7 +37,7 @@ import {
   AppVersionResponse,
 } from '../types/index.js';
 
-export const PRODUCTION_API_URL = 'https://ais-pre-bjqh6ofcv72aazj6hbxmms-837374106881.asia-southeast1.run.app';
+export const PRODUCTION_API_URL = 'https://ikshovia.onrender.com';
 
 /**
  * Detects if the current environment is running inside Capacitor (specifically Android native app).

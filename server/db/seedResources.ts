@@ -403,6 +403,18 @@ export async function seedCanonicalResources(): Promise<void> {
     );
 
     for (const item of CANONICAL_SEED_RESOURCES) {
+      // Check if this resource was deleted by admin
+      const tombstoneCheck = await pool.query(
+        `SELECT 1 FROM public.deleted_resources_tombstone WHERE id = $1
+         UNION
+         SELECT 1 FROM public.resources WHERE id = $1 AND is_deleted = TRUE`,
+        [item.id]
+      );
+      if (tombstoneCheck.rows.length > 0) {
+        console.log(`[SeedResources] Skipping deleted/tombstoned resource: ${item.id} (${item.title})`);
+        continue;
+      }
+
       // 1. Generate valid multi-page PDF buffer
       const pdfBuffer = generateMultiPagePdf(item.title, item.author, item.pages);
       const filePath = path.join(pdfOutputDir, `${item.id}.pdf`);
