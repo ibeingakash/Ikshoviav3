@@ -15,7 +15,7 @@ import {
   Share2,
   CheckCircle2,
 } from 'lucide-react';
-import { api } from '../../lib/api.js';
+import { api, apiUrl } from '../../lib/api.js';
 import { LearningResource } from '../../types/index.js';
 import { registerBackButtonHandler } from '../../lib/capacitor.js';
 import { ResourceAskAIDialog } from './ResourceAskAIDialog.js';
@@ -273,7 +273,7 @@ export const ResourceDetailModal: React.FC<ResourceDetailModalProps> = ({
           <div className="flex items-center gap-2">
             {/* Download */}
             <a
-              href={`/api/resources/${resource.id}/download`}
+              href={apiUrl(`/api/resources/${resource.id}/download`)}
               target="_blank"
               rel="noreferrer"
               className="p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-200 rounded-xl transition border border-stone-200 bg-white"

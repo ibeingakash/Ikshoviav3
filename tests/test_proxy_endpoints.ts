@@ -596,7 +596,7 @@ async function runTests() {
     const res = await request('POST', '/api/v1/data/ingestion/run', payload);
     if (res.status !== 200) throw new Error(`Expected status 200, got ${res.status}: ${JSON.stringify(res.data)}`);
     if (!res.data?.success || !res.data?.data) throw new Error(`Expected success response: ${JSON.stringify(res.data)}`);
-
+    
     const runData = res.data.data;
     if (!runData.job_id || runData.status !== 'COMPLETED') {
       throw new Error(`Expected completed job status, got: ${JSON.stringify(runData)}`);

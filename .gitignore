@@ -20,3 +20,9 @@ data/bpsc_official_pdfs/
 android/.idea/
 android/local.properties
 android/.gradle/
+*.keystore
+*.jks
+secrets/
+android/keystores/
+android/release-keystore.properties
+release-keystore.properties

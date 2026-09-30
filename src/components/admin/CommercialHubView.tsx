@@ -90,7 +90,7 @@ export const CommercialHubView: React.FC = () => {
               <TrendingUp className="w-5 h-5 text-amber-800" />
             </div>
             <div>
-              <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+              <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
                 Commercial & Financial Hub
               </h1>
               <p className="text-xs text-stone-500 font-medium">
@@ -157,7 +157,7 @@ export const CommercialHubView: React.FC = () => {
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold font-serif-editorial text-[#111426]">
+          <div className="text-2xl font-bold font-serif-editorial text-stone-900">
             ₹{(metrics?.totalRevenue || 0).toLocaleString('en-IN')}
           </div>
           <div className="text-[11px] text-stone-500 mt-1 flex items-center gap-1">
@@ -351,7 +351,7 @@ export const CommercialHubView: React.FC = () => {
                 />
                 <Tooltip
                   formatter={(value: any) => [`₹${Number(value).toLocaleString('en-IN')}`, 'Revenue']}
-                  labelFormatter={label => `Date: ${new Date(label).toLocaleDateString()}`}
+                  labelFormatter={(label: any) => `Date: ${new Date(label).toLocaleDateString()}`}
                   contentStyle={{
                     backgroundColor: '#1C1917',
                     borderColor: '#44403C',
@@ -444,8 +444,8 @@ export const CommercialHubView: React.FC = () => {
                     </td>
 
                     <td className="py-3 px-3 text-right font-mono text-rose-600">
-                      {course.totalDiscount > 0
-                        ? `-₹${course.totalDiscount.toLocaleString('en-IN')}`
+                      {(course.totalDiscount || 0) > 0
+                        ? `-₹${(course.totalDiscount || 0).toLocaleString('en-IN')}`
                         : '₹0'}
                     </td>
 

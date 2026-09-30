@@ -1,6 +1,6 @@
 /**
  * publish_release_metadata.cjs
- *
+ * 
  * Invoked by GitHub Actions after Android APK build succeeds.
  * Calculates exact APK metrics (SHA-256, size in bytes) and safely records
  * the new release in the IKSHOVIA distribution and in-app update system.
@@ -14,7 +14,7 @@ async function main() {
   console.log('=== IKSHOVIA CI Release Publisher ===');
 
   const projectRoot = process.cwd();
-
+  
   // Locate the freshly built APK
   const possiblePaths = [
     process.env.APK_PATH,
@@ -50,10 +50,10 @@ async function main() {
   const repository = process.env.GITHUB_REPOSITORY || 'ikshovia/ikshovia';
 
   // Default APK download URL points to the GitHub Release asset or direct server download
-  const apkDownloadUrl = process.env.APK_DOWNLOAD_URL ||
+  const apkDownloadUrl = process.env.APK_DOWNLOAD_URL || 
     `https://github.com/${repository}/releases/download/v${versionName}/app-debug.apk`;
 
-  const releaseNotes = process.env.RELEASE_NOTES ||
+  const releaseNotes = process.env.RELEASE_NOTES || 
     `- Automated CI Production Build v${versionName} (build ${versionCode})\n` +
     `- Synchronized with https://ikshovia.onrender.com backend\n` +
     `- Native Capacitor 8 offline-ready engine and live update system`;

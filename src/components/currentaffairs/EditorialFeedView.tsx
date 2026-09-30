@@ -469,16 +469,16 @@ export const EditorialFeedView: React.FC<EditorialFeedViewProps> = ({ onSelectAr
                 </div>
 
                 {/* Pros & Cons Debate Matrix */}
-                {(analysis.argumentsFor?.length > 0 || analysis.argumentsAgainst?.length > 0) && (
+                {Boolean((analysis.argumentsFor?.length ?? 0) > 0 || (analysis.argumentsAgainst?.length ?? 0) > 0) && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    {analysis.argumentsFor?.length > 0 && (
+                    {Boolean((analysis.argumentsFor?.length ?? 0) > 0) && (
                       <div className="bg-emerald-50/50 border border-emerald-200/70 p-3 rounded-xl space-y-1">
                         <div className="text-[10px] font-bold uppercase text-emerald-950 flex items-center gap-1 font-mono">
                           <CheckCircle2 className="w-3 h-3 text-emerald-700" />
                           <span>Arguments In Support (Affirmative)</span>
                         </div>
                         <ul className="space-y-1 text-[11px] text-emerald-950">
-                          {analysis.argumentsFor.slice(0, 2).map((arg: string, i: number) => (
+                          {analysis.argumentsFor?.slice(0, 2).map((arg: string, i: number) => (
                             <li key={i} className="flex items-start gap-1">
                               <span className="text-emerald-700 font-bold">•</span>
                               <span className="line-clamp-2">{arg}</span>
@@ -488,14 +488,14 @@ export const EditorialFeedView: React.FC<EditorialFeedViewProps> = ({ onSelectAr
                       </div>
                     )}
 
-                    {analysis.argumentsAgainst?.length > 0 && (
+                    {Boolean((analysis.argumentsAgainst?.length ?? 0) > 0) && (
                       <div className="bg-rose-50/50 border border-rose-200/70 p-3 rounded-xl space-y-1">
                         <div className="text-[10px] font-bold uppercase text-rose-950 flex items-center gap-1 font-mono">
                           <AlertCircle className="w-3 h-3 text-rose-700" />
                           <span>Critique & Concerns (Counterarguments)</span>
                         </div>
                         <ul className="space-y-1 text-[11px] text-rose-950">
-                          {analysis.argumentsAgainst.slice(0, 2).map((arg: string, i: number) => (
+                          {analysis.argumentsAgainst?.slice(0, 2).map((arg: string, i: number) => (
                             <li key={i} className="flex items-start gap-1">
                               <span className="text-rose-700 font-bold">•</span>
                               <span className="line-clamp-2">{arg}</span>
@@ -508,10 +508,10 @@ export const EditorialFeedView: React.FC<EditorialFeedViewProps> = ({ onSelectAr
                 )}
 
                 {/* Constitutional / Statutory Linkages */}
-                {analysis.constitutionalDimensions?.length > 0 && (
+                {Boolean((analysis.constitutionalDimensions?.length ?? 0) > 0) && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span className="text-[11px] font-bold text-stone-500 mr-1 font-mono">Constitutional Anchors:</span>
-                    {analysis.constitutionalDimensions.map((cd: string, i: number) => (
+                    {analysis.constitutionalDimensions?.map((cd: string, i: number) => (
                       <span key={i} className="text-[11px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-mono">
                         {cd}
                       </span>
@@ -520,13 +520,13 @@ export const EditorialFeedView: React.FC<EditorialFeedViewProps> = ({ onSelectAr
                 )}
 
                 {/* PYQ Linkage Badge */}
-                {analysis.pyqLinkages?.length > 0 && (
+                {Boolean((analysis.pyqLinkages?.length ?? 0) > 0) && (
                   <div className="bg-[#FAF8F5] border border-[#EAE6DF] p-2.5 rounded-xl flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <GraduationCap className="w-4 h-4 text-amber-700" />
                       <span className="font-bold text-stone-900 font-mono">Directly Linked to Past Exam Questions:</span>
                       <span className="text-stone-700">
-                        {analysis.pyqLinkages.map((p: any) => `${p.exam} ${p.year} (${p.paper || p.topic})`).join(' • ')}
+                        {analysis.pyqLinkages?.map((p: any) => `${p.exam} ${p.year} (${p.paper || p.topic})`).join(' • ')}
                       </span>
                     </div>
                   </div>

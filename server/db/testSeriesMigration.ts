@@ -222,7 +222,7 @@ export async function runTestSeriesMigration(): Promise<void> {
 
     // Recalculate stats
     const statsRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(tst.id) as total_tests,
         COALESCE(SUM(CASE WHEN mt.is_published = true AND (mt.is_deleted IS NULL OR mt.is_deleted = false) THEN 1 ELSE 0 END), 0) as published_test_count,
         COALESCE(SUM(mt.total_questions), 0) as total_questions

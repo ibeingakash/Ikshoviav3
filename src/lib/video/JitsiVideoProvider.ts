@@ -5,6 +5,7 @@ import {
   ProviderParticipant,
   ProviderEventHandler
 } from './VideoMeetingProvider.js';
+import { IkshoviaWebRtcProvider } from './IkshoviaWebRtcProvider.js';
 
 declare global {
   interface Window {
@@ -332,13 +333,13 @@ export class JitsiVideoProvider implements VideoMeetingProvider {
       avatarOverlay.innerHTML = `
         <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-linear-to-br from-amber-600/30 to-amber-900/40 border-2 border-amber-500/40 flex items-center justify-center shadow-2xl mb-4">
           <span class="text-3xl sm:text-4xl font-bold tracking-wider text-amber-200">
-            ${(options.user.name || 'U').substring(0, 2).toUpperCase()}
+            ${String(options.user?.name || 'U').substring(0, 2).toUpperCase()}
           </span>
         </div>
-        <h4 class="text-lg font-medium text-stone-200">${options.user.name}</h4>
+        <h4 class="text-lg font-medium text-stone-200">${options.user?.name || 'Scholar'}</h4>
         <div class="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-stone-800/80 border border-stone-700/60 text-xs text-stone-300">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>${options.user.role === 'TEACHER' ? 'Instructor Stage Active' : 'Connected to Live Room'}</span>
+          <span>${options.user?.role === 'TEACHER' ? 'Instructor Stage Active' : 'Connected to Live Room'}</span>
         </div>
       `;
 
@@ -527,10 +528,6 @@ export class JitsiVideoProvider implements VideoMeetingProvider {
 }
 
 // Factory function
-export function createVideoMeetingProvider(providerType: 'jitsi' | 'livekit' = 'jitsi'): VideoMeetingProvider {
-  if (providerType === 'jitsi') {
-    return new JitsiVideoProvider();
-  }
-  // Future extension for LiveKit
-  return new JitsiVideoProvider();
+export function createVideoMeetingProvider(providerType: 'ikshovia' | 'jitsi' | 'livekit' = 'ikshovia'): VideoMeetingProvider {
+  return new IkshoviaWebRtcProvider();
 }

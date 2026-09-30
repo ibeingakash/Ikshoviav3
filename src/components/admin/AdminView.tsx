@@ -161,8 +161,8 @@ export const AdminView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <Shield className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <Shield className="w-6 h-6 text-amber-800" />
             <span>IKSHOVIA Admin & Content Control Panel</span>
           </h1>
           <p className="text-xs text-stone-500 mt-0.5 font-medium">
@@ -174,7 +174,7 @@ export const AdminView: React.FC = () => {
           onClick={fetchAdminData}
           className="px-3.5 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200/90 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs self-start"
         >
-          <RefreshCw className="w-4 h-4 text-[#35156B]" />
+          <RefreshCw className="w-4 h-4 text-amber-800" />
           <span>Refresh Data</span>
         </button>
       </div>
@@ -190,7 +190,7 @@ export const AdminView: React.FC = () => {
               onClick={() => setActiveSection(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 isActive
-                  ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                  ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
                   : 'bg-white hover:bg-stone-100/80 text-stone-600 border border-stone-200/90'
               }`}
             >
@@ -207,19 +207,19 @@ export const AdminView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-stone-200/90 p-5 rounded-2xl shadow-2xs">
               <div className="text-xs text-stone-500 font-bold uppercase font-mono">Total Registered Learners</div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426] mt-1">{metrics?.totalUsers ?? 0}</div>
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900 mt-1">{metrics?.totalUsers ?? 0}</div>
               <div className="text-[10px] text-emerald-700 font-medium mt-1">Active Learner Engine</div>
             </div>
 
             <div className="bg-white border border-stone-200/90 p-5 rounded-2xl shadow-2xs">
               <div className="text-xs text-stone-500 font-bold uppercase font-mono">Syllabus Concepts</div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#35156B] mt-1">{metrics?.totalConcepts ?? 0}</div>
+              <div className="text-2xl font-serif-editorial font-bold text-amber-800 mt-1">{metrics?.totalConcepts ?? 0}</div>
               <div className="text-[10px] text-stone-500 font-medium mt-1">across {metrics?.totalSubjects ?? 0} Subjects</div>
             </div>
 
             <div className="bg-white border border-stone-200/90 p-5 rounded-2xl shadow-2xs">
               <div className="text-xs text-stone-500 font-bold uppercase font-mono">Question Bank Size</div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426] mt-1">{metrics?.totalQuestions ?? 0}</div>
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900 mt-1">{metrics?.totalQuestions ?? 0}</div>
               <div className="text-[10px] text-stone-500 font-medium mt-1">Prelims & Mains MCQs</div>
             </div>
 
@@ -232,20 +232,20 @@ export const AdminView: React.FC = () => {
 
           <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
             <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-[#35156B]" />
+              <BarChart2 className="w-4 h-4 text-amber-800" />
               <span>Platform Health Summary</span>
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/90 space-y-2">
-                <div className="font-bold text-[#111426]">Gemini AI Studio Engine</div>
+                <div className="font-bold text-stone-900">Gemini AI Studio Engine</div>
                 <p className="text-stone-600 text-[11px] leading-relaxed">
                   Server-side @google/genai SDK active with model gemini-2.5-flash. Automatically powers AI Tutor chat, custom question generation, and real-time learner model insights.
                 </p>
               </div>
 
               <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/90 space-y-2">
-                <div className="font-bold text-[#111426]">Learner Intelligence Matrix</div>
+                <div className="font-bold text-stone-900">Learner Intelligence Matrix</div>
                 <p className="text-stone-600 text-[11px] leading-relaxed">
                   Real-time updating of mastery percentages, mistake breakdowns, confidence self-ratings, and next best action priorities.
                 </p>
@@ -259,7 +259,7 @@ export const AdminView: React.FC = () => {
       {activeSection === 'admin-users' && (
         <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
           <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#35156B]" />
+            <Users className="w-4 h-4 text-amber-800" />
             <span>Registered Learner Directory</span>
           </h2>
 
@@ -278,12 +278,12 @@ export const AdminView: React.FC = () => {
                 {usersList.map((u, i) => (
                   <tr key={i} className="hover:bg-stone-50">
                     <td className="py-3 px-3">
-                      <div className="font-bold text-[#111426]">{u.name}</div>
+                      <div className="font-bold text-stone-900">{u.name}</div>
                       <div className="text-[10px] text-stone-500 font-mono">{u.email}</div>
                     </td>
                     <td className="py-3 px-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                        u.role === 'ADMIN' ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-purple-50 text-[#35156B] border border-purple-200'
+                        u.role === 'ADMIN' ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}>
                         {u.role}
                       </span>
@@ -327,7 +327,7 @@ export const AdminView: React.FC = () => {
                   value={newConceptTitle}
                   onChange={e => setNewConceptTitle(e.target.value)}
                   placeholder="e.g. Article 300A Right to Property"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
                   required
                 />
               </div>
@@ -337,7 +337,7 @@ export const AdminView: React.FC = () => {
                 <select
                   value={newConceptSubject}
                   onChange={e => setNewConceptSubject(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
                 >
                   <option value="sub_polity">Indian Polity & Governance</option>
                   <option value="sub_economy">Indian Economy & Development</option>
@@ -351,14 +351,14 @@ export const AdminView: React.FC = () => {
                 value={newConceptSummary}
                 onChange={e => setNewConceptSummary(e.target.value)}
                 placeholder="High-yield constitutional summary..."
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B] h-20"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700 h-20"
                 required
               />
             </div>
 
             <button
               type="submit"
-              className="px-5 py-2.5 bg-[#0C1024] hover:bg-[#121027] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer"
+              className="px-5 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer"
             >
               Publish Concept
             </button>
@@ -371,7 +371,7 @@ export const AdminView: React.FC = () => {
         <div className="space-y-6">
           <form onSubmit={handleCreateQuestion} className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
             <h2 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono flex items-center gap-2">
-              <HelpCircle className="w-4 h-4 text-[#35156B]" />
+              <HelpCircle className="w-4 h-4 text-amber-800" />
               <span>Add Custom Practice MCQ</span>
             </h2>
 
@@ -388,7 +388,7 @@ export const AdminView: React.FC = () => {
                 value={newQQuestion}
                 onChange={e => setNewQQuestion(e.target.value)}
                 placeholder="Consider the following statements..."
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B] h-20"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700 h-20"
                 required
               />
             </div>
@@ -457,7 +457,7 @@ export const AdminView: React.FC = () => {
 
             <button
               type="submit"
-              className="px-5 py-2.5 bg-[#0C1024] hover:bg-[#121027] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer"
+              className="px-5 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer"
             >
               Add Question
             </button>
@@ -485,7 +485,7 @@ export const AdminView: React.FC = () => {
               <textarea
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-900 focus:outline-none focus:border-[#35156B] h-24"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl p-3 text-xs text-stone-900 focus:outline-none focus:border-amber-700 h-24"
                 placeholder="Prompt Gemini..."
               />
             </div>
@@ -493,7 +493,7 @@ export const AdminView: React.FC = () => {
             <button
               type="submit"
               disabled={isGenerating}
-              className="px-6 py-2.5 bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold text-xs rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="px-6 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold text-xs rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {isGenerating ? (
                 <>
@@ -525,7 +525,7 @@ export const AdminView: React.FC = () => {
                 {drafts.map((draft, idx) => (
                   <div key={idx} className="p-4 bg-stone-50 border border-stone-200/90 rounded-xl space-y-3">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono text-[#35156B] font-bold">{draft.id}</span>
+                      <span className="font-mono text-amber-800 font-bold">{draft.id}</span>
                       <span className={`px-2 py-0.5 rounded font-bold text-[10px] font-mono ${
                         draft.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}>
@@ -535,7 +535,7 @@ export const AdminView: React.FC = () => {
 
                     {draft.generatedData && (
                       <div className="space-y-2 text-xs text-stone-800">
-                        <div className="font-bold text-[#111426]">{draft.generatedData.question}</div>
+                        <div className="font-bold text-stone-900">{draft.generatedData.question}</div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-2 text-stone-700 text-[11px]">
                           {draft.generatedData.options?.map((opt: any, i: number) => {
                             const optText = typeof opt === 'object' && opt !== null ? (opt.text || JSON.stringify(opt)) : String(opt);

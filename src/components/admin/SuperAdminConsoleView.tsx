@@ -179,7 +179,7 @@ export const SuperAdminConsoleView: React.FC = () => {
               Root Authority & Compliance
             </span>
           </div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] tracking-tight">
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 tracking-tight">
             Super Admin Control Center
           </h1>
           <p className="text-xs text-stone-500 mt-1 max-w-2xl leading-relaxed font-medium">
@@ -190,7 +190,7 @@ export const SuperAdminConsoleView: React.FC = () => {
         <div className="flex items-center gap-3 self-start sm:self-auto">
           <button
             onClick={() => setShowAddModal(true)}
-            className="bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold px-4 py-2 rounded-xl shadow-2xs border border-amber-500/30 transition-all flex items-center gap-2 text-xs cursor-pointer"
+            className="bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold px-4 py-2 rounded-xl shadow-2xs border border-amber-500/30 transition-all flex items-center gap-2 text-xs cursor-pointer"
           >
             <Plus className="w-4 h-4 text-amber-400" />
             <span>Provision Admin</span>
@@ -226,7 +226,7 @@ export const SuperAdminConsoleView: React.FC = () => {
           onClick={() => setActiveTab('OVERVIEW')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'OVERVIEW'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100/80 border border-stone-200/90'
           }`}
         >
@@ -238,7 +238,7 @@ export const SuperAdminConsoleView: React.FC = () => {
           onClick={() => setActiveTab('ADMINS')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'ADMINS'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100/80 border border-stone-200/90'
           }`}
         >
@@ -250,7 +250,7 @@ export const SuperAdminConsoleView: React.FC = () => {
           onClick={() => setActiveTab('AUDIT_LOGS')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'AUDIT_LOGS'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100/80 border border-stone-200/90'
           }`}
         >
@@ -262,7 +262,7 @@ export const SuperAdminConsoleView: React.FC = () => {
           onClick={() => setActiveTab('SETTINGS')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === 'SETTINGS'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100/80 border border-stone-200/90'
           }`}
         >
@@ -278,9 +278,9 @@ export const SuperAdminConsoleView: React.FC = () => {
             <div className="bg-white border border-stone-200/90 rounded-2xl p-5 shadow-2xs">
               <div className="flex items-center justify-between text-stone-500 mb-2 font-mono">
                 <span className="text-xs font-bold uppercase">Total Platform Users</span>
-                <Users className="w-4 h-4 text-[#35156B]" />
+                <Users className="w-4 h-4 text-amber-800" />
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">{metrics?.totalUsers ?? 0}</div>
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900">{metrics?.totalUsers ?? 0}</div>
               <p className="text-xs text-stone-500 mt-1">Aspirants & Admins registered</p>
             </div>
 
@@ -298,7 +298,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                 <span className="text-xs font-bold uppercase">Question Bank Items</span>
                 <Key className="w-4 h-4 text-emerald-600" />
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">{metrics?.totalQuestions ?? 0}</div>
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900">{metrics?.totalQuestions ?? 0}</div>
               <p className="text-xs text-stone-500 mt-1">Practice Bank + OCR Drafts</p>
             </div>
 
@@ -326,10 +326,10 @@ export const SuperAdminConsoleView: React.FC = () => {
                 auditLogs.slice(0, 6).map(log => (
                   <div key={log.id} className="p-3 bg-stone-50 border border-stone-200/90 rounded-xl flex items-center justify-between text-xs">
                     <div className="flex items-center gap-3">
-                      <span className="px-2 py-0.5 rounded bg-purple-50 text-[#35156B] border border-purple-200 font-mono font-bold text-[10px]">
+                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 font-mono font-bold text-[10px]">
                         {log.actorRole}
                       </span>
-                      <span className="font-bold text-[#111426]">{log.action}</span>
+                      <span className="font-bold text-stone-900">{log.action}</span>
                       <span className="text-stone-500">Target: {log.targetType} ({log.targetId})</span>
                     </div>
                     <span className="text-stone-400 font-mono text-[11px]">{new Date(log.timestamp).toLocaleTimeString()}</span>
@@ -348,7 +348,7 @@ export const SuperAdminConsoleView: React.FC = () => {
             <h3 className="text-xs font-bold text-stone-600 uppercase tracking-wider font-mono">Platform Administrators & Role Permissions</h3>
             <button
               onClick={() => setShowAddModal(true)}
-              className="bg-[#0C1024] hover:bg-[#121027] text-amber-300 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+              className="bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold px-3 py-1.5 rounded-xl border border-amber-500/30 flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Admin</span>
@@ -360,12 +360,12 @@ export const SuperAdminConsoleView: React.FC = () => {
               <div key={admin.id} className="p-4 bg-stone-50 border border-stone-200/90 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-[#111426] text-sm">{admin.name}</span>
+                    <span className="font-bold text-stone-900 text-sm">{admin.name}</span>
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono border ${
                         admin.role === 'SUPER_ADMIN'
                           ? 'bg-amber-50 text-amber-800 border-amber-300'
-                          : 'bg-purple-50 text-[#35156B] border-purple-200'
+                          : 'bg-stone-100 text-stone-800 border-stone-300'
                       }`}
                     >
                       {admin.role}
@@ -430,9 +430,9 @@ export const SuperAdminConsoleView: React.FC = () => {
                   auditLogs.map(log => (
                     <tr key={log.id} className="hover:bg-stone-50">
                       <td className="p-3 font-mono text-[11px] text-stone-500">{log.id}</td>
-                      <td className="p-3 font-semibold text-[#111426]">{log.actorUserId}</td>
+                      <td className="p-3 font-semibold text-stone-900">{log.actorUserId}</td>
                       <td className="p-3">
-                        <span className="px-2 py-0.5 rounded bg-purple-50 text-[#35156B] border border-purple-200 text-[10px] font-bold font-mono">
+                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-bold font-mono">
                           {log.actorRole}
                         </span>
                       </td>
@@ -455,7 +455,7 @@ export const SuperAdminConsoleView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
             <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <h4 className="font-bold text-[#111426] text-sm">Server-Side Auth Enforcement</h4>
+              <h4 className="font-bold text-stone-900 text-sm">Server-Side Auth Enforcement</h4>
               <p className="text-stone-600">All admin API endpoints enforce strict server-side HTTP header token verification and role checking.</p>
               <div className="flex items-center gap-2 pt-2 text-emerald-700 font-bold">
                 <CheckCircle2 className="w-4 h-4" />
@@ -464,7 +464,7 @@ export const SuperAdminConsoleView: React.FC = () => {
             </div>
 
             <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <h4 className="font-bold text-[#111426] text-sm">Gemini AI Safety Filtering</h4>
+              <h4 className="font-bold text-stone-900 text-sm">Gemini AI Safety Filtering</h4>
               <p className="text-stone-600">Content generated by AI Tutor and AI Question Studio is checked for civil services syllabus alignment.</p>
               <div className="flex items-center gap-2 pt-2 text-emerald-700 font-bold">
                 <CheckCircle2 className="w-4 h-4" />
@@ -477,10 +477,10 @@ export const SuperAdminConsoleView: React.FC = () => {
 
       {/* Provision Admin Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-[#0C1024]/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-[#1C1917]/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-stone-200 rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <h3 className="font-serif-editorial font-bold text-[#111426] text-base">Provision Platform Administrator</h3>
+              <h3 className="font-serif-editorial font-bold text-stone-900 text-base">Provision Platform Administrator</h3>
               <button onClick={() => setShowAddModal(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">✕</button>
             </div>
 
@@ -492,7 +492,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                   value={newAdminName}
                   onChange={e => setNewAdminName(e.target.value)}
                   placeholder="e.g. Akash Singh"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-stone-900 focus:outline-none focus:border-[#35156B]"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-stone-900 focus:outline-none focus:border-amber-700"
                   required
                 />
               </div>
@@ -504,7 +504,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                   value={newAdminEmail}
                   onChange={e => setNewAdminEmail(e.target.value)}
                   placeholder="rajesh.admin@ikshovia.com"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-stone-900 focus:outline-none focus:border-[#35156B]"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl p-2.5 text-stone-900 focus:outline-none focus:border-amber-700"
                   required
                 />
               </div>
@@ -530,7 +530,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                         type="checkbox"
                         checked={selectedPermissions.includes(perm)}
                         onChange={() => togglePermission(perm)}
-                        className="rounded border-stone-300 text-[#35156B] accent-[#35156B]"
+                        className="rounded border-stone-300 text-amber-800 accent-amber-800"
                       />
                       <span>{perm}</span>
                     </label>
@@ -548,7 +548,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs"
+                  className="px-5 py-2 rounded-xl bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs"
                 >
                   Create Admin
                 </button>
@@ -560,11 +560,11 @@ export const SuperAdminConsoleView: React.FC = () => {
 
       {/* Edit Admin Permissions Modal */}
       {editingAdmin && (
-        <div className="fixed inset-0 z-50 bg-[#0C1024]/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-[#1C1917]/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-stone-200 rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div>
-                <h3 className="font-serif-editorial font-bold text-[#111426] text-base">
+                <h3 className="font-serif-editorial font-bold text-stone-900 text-base">
                   Granular Permissions: {editingAdmin.name}
                 </h3>
                 <span className="text-[11px] text-stone-500 font-mono">
@@ -610,7 +610,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                       type="checkbox"
                       checked={adminPermissionsToEdit.includes(perm)}
                       onChange={() => toggleEditPermission(perm)}
-                      className="rounded border-stone-300 text-[#35156B] accent-[#35156B]"
+                      className="rounded border-stone-300 text-amber-800 accent-amber-800"
                     />
                     <span className="font-mono text-[10px] font-medium">{perm}</span>
                   </label>
@@ -628,7 +628,7 @@ export const SuperAdminConsoleView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSavingPermissions}
-                  className="px-5 py-2 rounded-xl bg-[#0C1024] hover:bg-[#121027] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold border border-amber-500/30 cursor-pointer shadow-2xs disabled:opacity-50"
                 >
                   {isSavingPermissions ? 'Saving...' : 'Save Permissions'}
                 </button>

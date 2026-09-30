@@ -34,7 +34,7 @@ export const PublishedTestEditorModal: React.FC<PublishedTestEditorModalProps> =
   onTestUpdated,
 }) => {
   const [activeTab, setActiveTab] = useState<'SETTINGS' | 'QUESTIONS'>('QUESTIONS');
-
+  
   // Test Settings State
   const [displayName, setDisplayName] = useState(test.displayName || test.title);
   const [title, setTitle] = useState(test.title);
@@ -50,7 +50,7 @@ export const PublishedTestEditorModal: React.FC<PublishedTestEditorModalProps> =
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
   const [questionSearch, setQuestionSearch] = useState('');
-
+  
   // Single Question Editing State
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [editQText, setEditQText] = useState('');
@@ -95,7 +95,7 @@ export const PublishedTestEditorModal: React.FC<PublishedTestEditorModalProps> =
         durationMinutes: Number(durationMinutes),
         totalMarks: Number(totalMarks),
         negativeMarkingRate: Number(negativeMarkingRate),
-        instructions: instructions.trim(),
+        instructions: Array.isArray(instructions) ? instructions.join('\n') : (instructions || '').trim(),
         isPublished,
       });
       if (res?.test) {
@@ -114,11 +114,17 @@ export const PublishedTestEditorModal: React.FC<PublishedTestEditorModalProps> =
     setEditingQuestion(q);
     setEditQText(q.question_en || q.question || '');
     setEditQTextHi(q.question_hi || '');
-
+    
     // Canonical exam-specific option policy (BPSC A-E vs UPSC A-D)
     const examPolicy = getExpectedOptionsForExam((test as any).exam || (test as any).examTag || test.title);
     const validLetters = examPolicy.allowedOptionIds;
-    const rawOpts = q.options || [];
+    const rawOpts = (q.options || []).map((o, idx) => {
+      if (typeof o === 'string') {
+        const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+        return { id: letters[idx] || String(idx + 1), text: o };
+      }
+      return o;
+    });
     const normalized = validLetters.map(letter => {
       const existing = rawOpts.find(o => String(o.id).trim().toUpperCase() === letter);
       const optText = existing ? (typeof existing.text === 'string' ? existing.text : (existing as any).en || '') : '';

@@ -48,17 +48,20 @@ import { TestSeriesMarketplaceView } from './components/mock/TestSeriesMarketpla
 import { NotesSyllabusView } from './components/syllabus/NotesSyllabusView.js';
 import { DownloadAppView } from './components/download/DownloadAppView.js';
 import { LiveClassesHubView } from './components/live/LiveClassesHubView.js';
+import { GlobalCallManager } from './components/live/GlobalCallManager.js';
 import { YptView } from './components/ypt/YptView.js';
 import { AppReleasesView } from './components/admin/AppReleasesView.js';
-import { AppUpdateModal } from './components/common/AppUpdateModal.js';
-import { useAppUpdateCheck } from './hooks/useAppUpdateCheck.js';
+import { AndroidUpdateGateway } from './components/common/AndroidUpdateGateway.js';
+import { TeacherWorkspaceView, TeacherTab } from './components/teacher/TeacherWorkspaceView.js';
+import { LearnerClassesAndAssignmentsView } from './components/teacher/LearnerClassesAndAssignmentsView.js';
+import { UnifiedExamEngineView } from './components/exam/UnifiedExamEngineView.js';
 import { initCapacitorApp } from './lib/capacitor.js';
+import { initPushNotifications } from './lib/pushNotifications.js';
 import { ErrorBoundary } from './components/common/ErrorBoundary.js';
 
 const MainContent: React.FC = () => {
   const { user, loading } = useAuth();
   const { activeSection, setActiveSection, appTheme, navigateBack } = useLearner();
-  const { updateInfo, isUpdateModalOpen, dismissUpdateModal } = useAppUpdateCheck();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
 
@@ -68,6 +71,58 @@ const MainContent: React.FC = () => {
     const p = window.location.pathname.toLowerCase();
     return p === '/download' || p === '/app' || p.startsWith('/download/') || p.startsWith('/app/');
   });
+
+  // Test Series & Mock Test Navigation State
+  const [activeTestParams, setActiveTestParams] = useState<{
+    testId: string;
+    seriesId?: string;
+    forceNew?: boolean;
+  } | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('active_test_params');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return null;
+  });
+
+  const [activeTestSeriesId, setActiveTestSeriesId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('active_test_series_id');
+    } catch {}
+    return null;
+  });
+
+  const handleStartMockTestFromSeries = (mockTestId: string, seriesId?: string, forceNew = false) => {
+    const params = { testId: mockTestId, seriesId, forceNew };
+    setActiveTestParams(params);
+    try {
+      sessionStorage.setItem('active_test_params', JSON.stringify(params));
+      if (seriesId) {
+        sessionStorage.setItem('active_test_series_id', seriesId);
+      }
+    } catch {}
+    if (seriesId) {
+      setActiveTestSeriesId(seriesId);
+    }
+    setActiveSection('mock-tests');
+  };
+
+  const handleBackToSeries = (seriesId: string) => {
+    setActiveTestParams(null);
+    try {
+      sessionStorage.removeItem('active_test_params');
+      sessionStorage.setItem('active_test_series_id', seriesId);
+    } catch {}
+    setActiveTestSeriesId(seriesId);
+    setActiveSection('test-series');
+  };
+
+  const handleClearActiveTest = () => {
+    setActiveTestParams(null);
+    try {
+      sessionStorage.removeItem('active_test_params');
+    } catch {}
+  };
 
   React.useEffect(() => {
     const handleUrlChange = () => {
@@ -100,6 +155,13 @@ const MainContent: React.FC = () => {
       }
     });
   }, [navigateBack, isDownloadPath]);
+
+  // Initialize native Push Notifications when user is authenticated
+  React.useEffect(() => {
+    if (user) {
+      initPushNotifications();
+    }
+  }, [user]);
 
   if (loading) {
     return (
@@ -168,9 +230,48 @@ const MainContent: React.FC = () => {
       }
     }
 
+    // Teacher Route Guard
+    if (activeSection.startsWith('teacher-')) {
+      if (user?.role !== 'TEACHER' && user?.role !== 'ADMIN' && user?.role !== 'SUPER_ADMIN') {
+        return <DashboardView />;
+      }
+    }
+
     switch (activeSection) {
       case 'dashboard':
+        if (user?.role === 'TEACHER') {
+          return <TeacherWorkspaceView initialTab="dashboard" />;
+        }
         return <DashboardView />;
+      case 'teacher-dashboard':
+        return <TeacherWorkspaceView initialTab="dashboard" />;
+      case 'teacher-classes':
+        return <TeacherWorkspaceView initialTab="classes" />;
+      case 'teacher-students':
+        return <TeacherWorkspaceView initialTab="students" />;
+      case 'teacher-assignments':
+        return <TeacherWorkspaceView initialTab="assignments" />;
+      case 'teacher-evaluations':
+        return <TeacherWorkspaceView initialTab="evaluations" />;
+      case 'teacher-quizzes':
+        return <TeacherWorkspaceView initialTab="quizzes" />;
+      case 'teacher-resources':
+        return <TeacherWorkspaceView initialTab="resources" />;
+      case 'teacher-live':
+        return <TeacherWorkspaceView initialTab="live" />;
+      case 'teacher-announcements':
+        return <TeacherWorkspaceView initialTab="announcements" />;
+      case 'teacher-analytics':
+        return <TeacherWorkspaceView initialTab="analytics" />;
+      case 'learner-classes':
+      case 'learner-assignments':
+        return <LearnerClassesAndAssignmentsView />;
+      case 'exam-engine':
+        return <UnifiedExamEngineView initialStage="PRELIMS" />;
+      case 'mains':
+        return <UnifiedExamEngineView initialStage="MAINS" />;
+      case 'interview':
+        return <UnifiedExamEngineView initialStage="INTERVIEW" />;
       case 'learn':
         return <LearnView />;
       case 'ai-tutor':
@@ -188,7 +289,15 @@ const MainContent: React.FC = () => {
       case 'mock-pyq':
       case 'mock-custom':
       case 'mock-attempts':
-        return <MockTestView />;
+        return (
+          <MockTestView
+            initialTestId={activeTestParams?.testId || null}
+            initialSeriesId={activeTestParams?.seriesId || activeTestSeriesId || null}
+            forceNew={activeTestParams?.forceNew || false}
+            onClearInitialTest={handleClearActiveTest}
+            onBackToSeries={handleBackToSeries}
+          />
+        );
       case 'revision':
       case 'bookmarks':
         return <RevisionView />;
@@ -265,15 +374,13 @@ const MainContent: React.FC = () => {
         return <LearnerPurchasesView />;
       case 'test-series':
       case 'test-series-marketplace':
-        return <TestSeriesMarketplaceView onStartMockTest={(mockTestId) => setActiveSection('mock-tests')} />;
+        return (
+          <TestSeriesMarketplaceView
+            initialSeriesId={activeTestSeriesId || undefined}
+            onStartMockTest={handleStartMockTestFromSeries}
+          />
+        );
       case 'superadmin-console':
-      case 'super-admin':
-      case 'super-admin-dashboard':
-      case 'super-admin-users':
-      case 'super-admin-admins':
-      case 'super-admin-permissions':
-      case 'super-admin-audit':
-      case 'super-admin-settings':
         return <SuperAdminConsoleView />;
       case 'admin-ai':
         return <AdminView />;
@@ -296,11 +403,7 @@ const MainContent: React.FC = () => {
       <MobileNav />
       <GlobalSearchModal />
       <OnboardingModal />
-      <AppUpdateModal
-        isOpen={isUpdateModalOpen}
-        updateInfo={updateInfo}
-        onDismiss={dismissUpdateModal}
-      />
+      <GlobalCallManager />
     </div>
   );
 };
@@ -311,6 +414,7 @@ export default function App() {
       <AuthProvider>
         <LearnerProvider>
           <MainContent />
+          <AndroidUpdateGateway />
         </LearnerProvider>
       </AuthProvider>
     </ErrorBoundary>

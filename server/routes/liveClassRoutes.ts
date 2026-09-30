@@ -59,6 +59,55 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
     }
   });
 
+  // 3b. Instant Group Call Room (Any authenticated user can create/host a group study call)
+  router.post(['/group-calls', '/classes/instant-group'], requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { title, topic, exam, maxParticipants, description } = req.body;
+      const groupData = {
+        title: title || `${user.name || 'Scholar'}'s Group Call Room`,
+        topic: topic || 'Group Study & Doubts',
+        exam: exam || 'ALL',
+        meetingType: 'GROUP_STUDY' as const,
+        status: 'LIVE' as const,
+        isPublished: true,
+        maxParticipants: maxParticipants || 25,
+        description: description || 'Real-time peer collaborative audio/video room with screen share and interactive whiteboard.',
+        recordingEnabled: true,
+        chatEnabled: true,
+        studentMicAllowed: true,
+        studentCameraAllowed: true,
+        waitingRoomEnabled: false,
+        screenSharingAllowed: true,
+        fileSharingAllowed: true,
+      };
+
+      const created = await liveClassRepository.createLiveClass(groupData, user);
+      // Immediately activate the live class so participants enter live room directly
+      const started = await liveClassRepository.startClass(created.id);
+      res.status(201).json(started || created);
+    } catch (err: any) {
+      console.error('[LiveAPI] createGroupCall error:', err);
+      res.status(500).json({ error: err.message || 'Failed to initialize group call room' });
+    }
+  });
+
+  // 3c. Lookup meeting by human-readable meeting ID (e.g. IK-GRP-7A41 or IK-UPSC-8B12)
+  router.get(['/meetings/:meetingId', '/classes/meeting/:meetingId'], requireAuth, async (req, res) => {
+    try {
+      const { meetingId } = req.params;
+      const cleanId = meetingId.trim().toUpperCase();
+      const liveClass = await liveClassRepository.getLiveClassById(cleanId);
+      if (!liveClass) {
+        return res.status(404).json({ error: `Meeting room '${cleanId}' not found. Please check the Meeting ID.` });
+      }
+      res.json(liveClass);
+    } catch (err: any) {
+      console.error('[LiveAPI] getMeetingById error:', err);
+      res.status(500).json({ error: 'Failed to look up meeting room' });
+    }
+  });
+
   // 4. Update Class
   router.patch('/classes/:id', requireAuth, async (req, res) => {
     try {
@@ -201,11 +250,19 @@ export function createLiveClassRouter(requireAuth: express.RequestHandler, requi
         return res.status(404).json({ error: 'Live class not found' });
       }
 
+      if (liveClass.status === 'CANCELLED') {
+        return res.status(400).json({ error: 'Cannot join a cancelled live session' });
+      }
+
+      if (liveClass.status === 'COMPLETED') {
+        return res.status(400).json({ error: 'This live session has already ended' });
+      }
+
       if (liveClass.isLocked && liveClass.teacherId !== user.id && user.role !== 'ADMIN') {
         return res.status(403).json({ error: 'This live session is locked by the instructor' });
       }
 
-      const isTeacher = liveClass.teacherId === user.id || user.role === 'TEACHER';
+      const isTeacher = liveClass.teacherId === user.id || user.role === 'TEACHER' || user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
       const participant = await liveClassRepository.recordJoin(liveClass.id, user, isTeacher);
 
       // Generate deterministic, non-guessable room identifier without exposing raw URLs

@@ -110,7 +110,7 @@ export class QuestionSegmenterV2 {
               isNewQuestion = true;
             }
           } else {
-            const currentQ = currentUnit.qNum;
+            const currentQ: number = currentUnit.qNum ?? 0;
             // The next question should be currentQ + 1, or skip of at most 3
             if (candidateQNum > currentQ && candidateQNum <= currentQ + 3) {
               isNewQuestion = true;

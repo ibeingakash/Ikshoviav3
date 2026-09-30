@@ -8,7 +8,7 @@ export const VALID_CANONICAL_ORIGINS: readonly CanonicalSourceOrigin[] = [
 
 /**
  * Derives the canonical source_origin for a question from its existing database provenance.
- *
+ * 
  * Rules:
  * 1. Derives exclusively from canonical question metadata (source_type, source_origin, source, source_job_id).
  * 2. Strictly adheres to the 3 canonical origins:

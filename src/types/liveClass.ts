@@ -1,11 +1,12 @@
 export type LiveClassRole = 'STUDENT' | 'TEACHER' | 'ADMIN';
 
-export type MeetingType =
-  | 'LECTURE'
-  | 'DOUBT_CLEARING'
-  | 'ESSAY_EVALUATION'
-  | 'MENTORSHIP'
-  | 'ANSWER_WRITING';
+export type MeetingType = 
+  | 'LECTURE' 
+  | 'DOUBT_CLEARING' 
+  | 'ESSAY_EVALUATION' 
+  | 'MENTORSHIP' 
+  | 'ANSWER_WRITING'
+  | 'GROUP_STUDY';
 
 export type LiveClassStatus = 'DRAFT' | 'PUBLISHED' | 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'ENDED' | 'CANCELLED' | 'DELETED';
 
@@ -33,7 +34,7 @@ export interface LiveClass {
   title: string;
   description?: string;
   subject?: string;
-  exam: 'UPSC' | 'BPSC' | 'ALL';
+  exam: 'UPSC' | 'BPSC' | 'ALL' | 'BOTH';
   topic?: string;
   teacherId?: string | null;
   teacherName: string;
@@ -49,6 +50,7 @@ export interface LiveClass {
   maxParticipants?: number;
   meetingType?: MeetingType;
   status: LiveClassStatus;
+  isInstant?: boolean;
   isPublished?: boolean;
   isDeleted?: boolean;
   deletedAt?: string;
@@ -83,6 +85,7 @@ export interface LiveClassParticipant {
   userId: string;
   role: LiveClassRole;
   displayName: string;
+  userName?: string;
   avatarUrl?: string;
   isRegistered: boolean;
   registeredAt?: string;
@@ -126,10 +129,11 @@ export interface LiveClassQuestion {
   liveClassId: string;
   studentId: string;
   studentName: string;
+  authorName?: string;
   question: string;
   upvotes: number;
   upvotedBy: string[]; // userIds
-  status: 'PENDING' | 'ANSWERING' | 'ANSWERED' | 'DISMISSED';
+  status: 'PENDING' | 'ANSWERING' | 'ANSWERED' | 'DISMISSED' | 'UNANSWERED';
   isPinned: boolean;
   answer?: string;
   answeredAt?: string;
@@ -168,10 +172,11 @@ export interface LiveClassPoll {
   liveClassId: string;
   createdBy: string;
   question: string;
-  options: { id: string; text: string; votes?: number }[];
+  options: { id: string; text: string; votes?: number; voteCount?: number }[];
   isAnonymous: boolean;
   durationSeconds: number;
   status: 'ACTIVE' | 'CLOSED';
+  isClosed?: boolean;
   totalVotes?: number;
   userVotedOptionId?: string | null;
   createdAt: string;

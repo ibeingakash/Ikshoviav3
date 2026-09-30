@@ -119,6 +119,14 @@ export interface CurrentAffairSourceRecord {
   lastError?: string;
 }
 
+export function normalizeSourceUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, '');
+  return withoutTrailingSlash.toLowerCase();
+}
+
 const CA_BASE_COLUMNS = `
   id, title, summary, why_in_news, what_happened, background, category,
   subtopic, source, source_url, source_domain, source_type, date, article_type,
@@ -128,6 +136,16 @@ const CA_BASE_COLUMNS = `
   related_subject, prelims_relevance, mains_relevance, exam_relevance, bihar_relevance,
   keywords, gs_paper, prelims_pointers, mains_dimensions, related_concept_ids,
   source_provenance, verification_status, quality_status, created_at, updated_at
+`;
+
+const CA_LIST_COLUMNS = `
+  id, title, summary, why_in_news, what_happened, background, category,
+  subtopic, source, source_url, source_domain, source_type, date, article_type,
+  editorial_source, editorial_analysis, topic_cluster_id, topic_cluster_title,
+  key_facts, why_it_matters, implications, is_bihar_special, is_editorial,
+  related_subject, prelims_relevance, mains_relevance, exam_relevance, bihar_relevance,
+  keywords, gs_paper, prelims_pointers, mains_dimensions,
+  verification_status, quality_status, created_at, updated_at
 `;
 
 export class CurrentAffairsRepository {
@@ -336,10 +354,11 @@ export class CurrentAffairsRepository {
 
     const isBiharSpecial = Boolean(data.isBiharSpecial || data.biharRelevance || (data.category && data.category.toLowerCase().includes('bihar')));
     const isEditorial = Boolean(data.isEditorial || data.articleType === 'EDITORIAL' || data.articleType === 'OPINION' || data.articleType === 'EXPLAINER');
+    const normalizedSourceUrl = normalizeSourceUrl(sourceUrl);
 
     const query = `
       INSERT INTO public.current_affairs (
-        id, title, summary, background, category, subtopic, source, source_url, source_domain, source_type,
+        id, title, summary, background, category, subtopic, source, source_url, normalized_source_url, source_domain, source_type,
         date, related_subject, prelims_relevance, mains_relevance, exam_relevance, bihar_relevance,
         keywords, key_facts, prelims_pointers, mains_dimensions, important_facts,
         related_concept_ids, raw_content, source_provenance, verification_status, quality_status,
@@ -352,16 +371,16 @@ export class CurrentAffairsRepository {
         published_at, retrieved_at, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16,
-        $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb,
-        $22::jsonb, $23, $24::jsonb, $25, $26,
-        $27, $28, $29, $30, $31,
-        $32, $33, $34, $35,
-        $36, $37, $38, $39, $40,
-        $41, $42::jsonb, $43, $44,
-        $45::jsonb, $46::jsonb, $47::jsonb,
-        $48, $49, $50, $51,
-        COALESCE($52::timestamptz, NOW()), NOW(), NOW(), NOW()
+        $11, $12, $13, $14, $15, $16, $17,
+        $18::jsonb, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb,
+        $23::jsonb, $24, $25::jsonb, $26, $27,
+        $28, $29, $30, $31, $32,
+        $33, $34, $35, $36,
+        $37, $38, $39, $40, $41,
+        $42, $43::jsonb, $44, $45,
+        $46::jsonb, $47::jsonb, $48::jsonb,
+        $49, $50, $51, $52,
+        COALESCE($53::timestamptz, NOW()), NOW(), NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         title = EXCLUDED.title,
@@ -373,6 +392,7 @@ export class CurrentAffairsRepository {
         subtopic = EXCLUDED.subtopic,
         source = EXCLUDED.source,
         source_url = EXCLUDED.source_url,
+        normalized_source_url = EXCLUDED.normalized_source_url,
         source_domain = EXCLUDED.source_domain,
         source_type = EXCLUDED.source_type,
         date = EXCLUDED.date,
@@ -415,11 +435,11 @@ export class CurrentAffairsRepository {
         is_bihar_special = EXCLUDED.is_bihar_special,
         is_editorial = EXCLUDED.is_editorial,
         updated_at = NOW()
-      RETURNING *;
+      RETURNING id, created_at, updated_at;
     `;
 
     const values = [
-      id, title, summary, background, category, subtopic, source, sourceUrl, sourceDomain, sourceType,
+      id, title, summary, background, category, subtopic, source, sourceUrl, normalizedSourceUrl, sourceDomain, sourceType,
       date, relatedSubject, prelimsRelevance, mainsRelevance, examRelevance, biharRelevance,
       keywords, keyFacts, prelimsPointers, mainsDimensions, importantFacts,
       relatedConceptIds, rawContent, sourceProvenance, verificationStatus, qualityStatus,
@@ -433,13 +453,17 @@ export class CurrentAffairsRepository {
     ];
 
     const res = await pool.query(query, values);
-    return this.mapRowToRecord(res.rows[0]);
+    const row = res.rows[0];
+    return {
+      ...data,
+      id: row?.id || id,
+      sourceUrl,
+      createdAt: row?.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      updatedAt: row?.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
+    } as CurrentAffairRecord;
   }
 
   async updateArticle(id: string, updates: Partial<CurrentAffairRecord>): Promise<CurrentAffairRecord | null> {
-    const existing = await this.getArticleById(id);
-    if (!existing) return null;
-
     const setClauses: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -452,7 +476,12 @@ export class CurrentAffairsRepository {
     if (updates.category !== undefined) { setClauses.push(`category = $${idx++}`); values.push(updates.category); }
     if (updates.subtopic !== undefined) { setClauses.push(`subtopic = $${idx++}`); values.push(updates.subtopic); }
     if (updates.source !== undefined) { setClauses.push(`source = $${idx++}`); values.push(updates.source); }
-    if (updates.sourceUrl !== undefined) { setClauses.push(`source_url = $${idx++}`); values.push(updates.sourceUrl); }
+    if (updates.sourceUrl !== undefined) {
+      setClauses.push(`source_url = $${idx++}`);
+      values.push(updates.sourceUrl);
+      setClauses.push(`normalized_source_url = $${idx++}`);
+      values.push(normalizeSourceUrl(updates.sourceUrl));
+    }
     if (updates.date !== undefined) { setClauses.push(`date = $${idx++}`); values.push(updates.date); }
     if (updates.gsPaper !== undefined) { setClauses.push(`gs_paper = $${idx++}`); values.push(updates.gsPaper); }
     if (updates.status !== undefined) { setClauses.push(`status = $${idx++}`); values.push(updates.status); }
@@ -463,9 +492,11 @@ export class CurrentAffairsRepository {
     if (updates.verificationStatus !== undefined) { setClauses.push(`verification_status = $${idx++}`); values.push(updates.verificationStatus); }
     if (updates.relevanceScore !== undefined) { setClauses.push(`relevance_score = $${idx++}`); values.push(updates.relevanceScore); }
 
+    if (setClauses.length === 0) return this.getArticleById(id);
+
     setClauses.push(`updated_at = NOW()`);
 
-    const query = `UPDATE public.current_affairs SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *;`;
+    const query = `UPDATE public.current_affairs SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING ${CA_BASE_COLUMNS};`;
     values.push(id);
 
     const res = await pool.query(query, values);
@@ -530,19 +561,20 @@ export class CurrentAffairsRepository {
   }
 
   async findDuplicateByUrlOrTitle(sourceUrl?: string, title?: string, date?: string): Promise<CurrentAffairRecord | null> {
-    if (sourceUrl) {
+    const normUrl = normalizeSourceUrl(sourceUrl);
+    if (normUrl) {
       const resUrl = await pool.query(
-        `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE LOWER(TRIM(source_url)) = LOWER(TRIM($1)) LIMIT 1;`,
-        [sourceUrl]
+        `SELECT id FROM public.current_affairs WHERE normalized_source_url = $1 LIMIT 1;`,
+        [normUrl]
       );
-      if (resUrl.rows[0]) return this.mapRowToRecord(resUrl.rows[0]);
+      if (resUrl.rows[0]) return { id: resUrl.rows[0].id } as CurrentAffairRecord;
     }
     if (title && date) {
       const resTitle = await pool.query(
-        `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE LOWER(TRIM(title)) = LOWER(TRIM($1)) AND date = $2 LIMIT 1;`,
+        `SELECT id FROM public.current_affairs WHERE LOWER(TRIM(title)) = LOWER(TRIM($1)) AND date = $2 LIMIT 1;`,
         [title, date]
       );
-      if (resTitle.rows[0]) return this.mapRowToRecord(resTitle.rows[0]);
+      if (resTitle.rows[0]) return { id: resTitle.rows[0].id } as CurrentAffairRecord;
     }
     return null;
   }
@@ -605,16 +637,23 @@ export class CurrentAffairsRepository {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    const defaultPageSize = 25;
+    const maxPageSize = 100;
+    const limit = filters.limit ? Math.min(Math.max(1, filters.limit), maxPageSize) : defaultPageSize;
+    const offset = Math.max(0, filters.offset || 0);
+
     const query = `
-      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
+      SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs
       ${whereClause}
-      ORDER BY
-        CASE
-          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1
-          ELSE 2
+      ORDER BY 
+        CASE 
+          WHEN id IN ('ca_isro_gaganyaan_2026', 'ca_rbi_mpc_rate_2026', 'ca_kosi_mechi_bihar_2026') THEN 1 
+          ELSE 2 
         END,
-        date DESC, relevance_score DESC, created_at DESC;
+        date DESC, relevance_score DESC, created_at DESC
+      LIMIT $${idx++} OFFSET $${idx++};
     `;
+    values.push(limit, offset);
 
     const res = await pool.query(query, values);
     let allRecords = res.rows.map(row => this.mapRowToRecord(row));
@@ -637,11 +676,12 @@ export class CurrentAffairsRepository {
 
     allRecords = allRecords.filter(r => !isGenericHomepage(r.title, r.sourceUrl));
 
-    // Also fetch valid knowledge base resources if no date/status filter blocks it
-    if (!filters.date && !filters.status) {
+    // Also fetch valid knowledge base resources if no date/status filter blocks it and on first page
+    if (!filters.date && !filters.status && offset === 0) {
       try {
         const resourceRes = await pool.query(`
-          SELECT r.*, SUBSTRING(d.clean_text FROM 1 FOR 300) AS clean_text_preview, s.name as source_name
+          SELECT r.id, r.title, r.description, r.url, r.published_at, r.created_at, r.source_id,
+                 SUBSTRING(d.clean_text FROM 1 FOR 300) AS clean_text_preview, s.name as source_name
           FROM public.data_resources r
           LEFT JOIN public.data_sources s ON r.source_id = s.id
           LEFT JOIN public.data_documents d ON d.resource_id = r.id
@@ -650,7 +690,7 @@ export class CurrentAffairsRepository {
             AND LOWER(TRIM(r.title)) NOT IN ('indian space research organisation', 'reserve bank of india', 'example domain', 'home', 'index', 'welcome')
             AND r.url NOT IN ('https://www.isro.gov.in/', 'https://www.isro.gov.in', 'https://rbi.org.in/', 'https://rbi.org.in')
           ORDER BY r.created_at DESC
-          LIMIT 100;
+          LIMIT 5;
         `);
 
         const bridged: CurrentAffairRecord[] = resourceRes.rows
@@ -717,12 +757,7 @@ export class CurrentAffairsRepository {
       }
     }
 
-    if (filters.limit) {
-      const offset = filters.offset || 0;
-      return allRecords.slice(offset, offset + filters.limit);
-    }
-
-    return allRecords;
+    return allRecords.slice(0, limit);
   }
 
   scoreArticleRelevance(article: CurrentAffairRecord, targetExam?: string): number {
@@ -1020,11 +1055,11 @@ export class CurrentAffairsRepository {
     const totalCount = parseInt(countRes.rows[0].count) || 0;
 
     const page = Math.max(1, filter.page || 1);
-    const limit = Math.max(1, filter.limit || 50);
+    const limit = Math.min(Math.max(1, filter.limit || 50), 100);
     const offset = filter.offset !== undefined ? filter.offset : (page - 1) * limit;
 
     const query = `
-      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
+      SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, relevance_score DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1109,11 +1144,11 @@ export class CurrentAffairsRepository {
     const totalCount = parseInt(countRes.rows[0].count) || 0;
 
     const page = Math.max(1, params.page || 1);
-    const limit = Math.max(1, params.limit || 10);
+    const limit = Math.min(Math.max(1, params.limit || 10), 100);
     const offset = (page - 1) * limit;
 
     const query = `
-      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
+      SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1204,11 +1239,11 @@ export class CurrentAffairsRepository {
     const totalCount = parseInt(countRes.rows[0].count) || 0;
 
     const page = Math.max(1, params.page || 1);
-    const limit = Math.max(1, params.limit || 12);
+    const limit = Math.min(Math.max(1, params.limit || 12), 100);
     const offset = (page - 1) * limit;
 
     const query = `
-      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
+      SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1};
@@ -1400,7 +1435,7 @@ export class CurrentAffairsRepository {
              latest_discovered_article, latest_published_article, latest_article_date,
              last_attempted_run, last_successful_run, failure_count, freshness_status,
              last_error, created_at, updated_at
-      FROM public.source_freshness
+      FROM public.source_freshness 
       ORDER BY updated_at DESC;
     `;
     const res = await pool.query(query);
@@ -1409,7 +1444,7 @@ export class CurrentAffairsRepository {
 
   async getTopicClusterDetails(clusterId: string): Promise<any | null> {
     const res = await pool.query(
-      `SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs WHERE topic_cluster_id = $1 ORDER BY date DESC;`,
+      `SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs WHERE topic_cluster_id = $1 ORDER BY date DESC LIMIT 50;`,
       [clusterId]
     );
     if (res.rows.length === 0) return null;
@@ -1546,18 +1581,16 @@ export class CurrentAffairsRepository {
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
-    let limitClause = '';
-    if (filter.limit) {
-      limitClause = `LIMIT ${filter.limit}`;
-      if (filter.offset) limitClause += ` OFFSET ${filter.offset}`;
-    }
+    const limit = filter.limit ? Math.min(Math.max(1, filter.limit), 100) : 25;
+    const offset = Math.max(0, filter.offset || 0);
 
     const query = `
-      SELECT ${CA_BASE_COLUMNS} FROM public.current_affairs
+      SELECT ${CA_LIST_COLUMNS} FROM public.current_affairs
       ${whereClause}
       ORDER BY date DESC, relevance_score DESC, created_at DESC
-      ${limitClause};
+      LIMIT $${idx++} OFFSET $${idx++};
     `;
+    values.push(limit, offset);
     const res = await pool.query(query, values);
     return res.rows.map(r => this.mapRowToRecord(r));
   }

@@ -38,7 +38,7 @@ export interface YptStudySession {
   subject: string;
   durationSeconds: number;
   startedAt: string;
-  endedAt: string;
+  endedAt?: string;
   sessionDate: string;
   createdAt: string;
 }
@@ -141,6 +141,8 @@ export interface UserProfile {
   onboarding?: UserOnboardingData;
   preferredLanguage?: 'en' | 'hi';
   createdAt: string;
+  status?: 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
+  isSuspended?: boolean;
 }
 
 export interface Subject {
@@ -158,6 +160,7 @@ export interface Topic {
   id: string;
   subjectId: string;
   name: string;
+  title?: string;
   description: string;
   order: number;
   conceptsCount: number;
@@ -261,7 +264,8 @@ export type FieldConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 export interface FieldConfidence {
   question: FieldConfidenceLevel;
   options: FieldConfidenceLevel;
-  answer: FieldConfidenceLevel;
+  answer?: FieldConfidenceLevel;
+  correctAnswer?: FieldConfidenceLevel;
   explanation: FieldConfidenceLevel;
 }
 
@@ -347,12 +351,12 @@ export interface PyqCompletenessValidation {
   status: 'COMPLETE' | 'INCOMPLETE' | 'SOURCE_UNAVAILABLE';
 }
 
-export type QuestionFormatType =
-  | 'SINGLE_CHOICE'
-  | 'MULTIPLE_CHOICE'
-  | 'STATEMENT_BASED'
-  | 'MATCH_FOLLOWING'
-  | 'ASSERTION_REASON'
+export type QuestionFormatType = 
+  | 'SINGLE_CHOICE' 
+  | 'MULTIPLE_CHOICE' 
+  | 'STATEMENT_BASED' 
+  | 'MATCH_FOLLOWING' 
+  | 'ASSERTION_REASON' 
   | 'COMPREHENSION'
   | 'PASSAGE_BASED'
   | 'NUMERICAL_CSAT'
@@ -404,7 +408,7 @@ export interface Question {
   statements_hi?: QuestionStatementItem[];
   matchData?: QuestionMatchData;
   matchData_hi?: QuestionMatchData;
-  options?: QuestionOption[];
+  options?: (QuestionOption | string)[];
   correctAnswer: string; // Option ID or exact text
   explanation: string;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD' | 'INTERMEDIATE' | 'BEGINNER' | 'ADVANCED';
@@ -454,8 +458,8 @@ export interface Question {
   // Bilingual Support
   question_en?: string;
   question_hi?: string;
-  options_en?: QuestionOption[];
-  options_hi?: QuestionOption[];
+  options_en?: (QuestionOption | string)[];
+  options_hi?: (QuestionOption | string)[];
   explanation_en?: string;
   explanation_hi?: string;
   availableLanguages?: ('en' | 'hi')[];
@@ -463,11 +467,14 @@ export interface Question {
 
   // Visual content, figures & corrections
   imageUrl?: string;
+  image_url?: string;
   imageCaption?: string;
+  image_caption?: string;
   figureStatus?: 'FIGURE_VERIFIED' | 'FIGURE_REVIEW_REQUIRED' | 'FIGURE_MISSING' | 'FIGURE_NOT_REQUIRED';
   originalOcrText?: string;
-  originalOptions?: QuestionOption[];
+  originalOptions?: (QuestionOption | string)[];
   correctionsCount?: number;
+  corrections_count?: number;
   lastCorrectedAt?: string;
   lastCorrectedBy?: string;
   createdAt?: string;
@@ -509,6 +516,7 @@ export interface MockTest {
   totalQuestions: number;
   totalMarks: number;
   negativeMarkingRate: number;
+  instructions?: string | string[];
   isPublished: boolean;
   sourceType?: ContentSourceType;
   isDeleted?: boolean;
@@ -517,6 +525,13 @@ export interface MockTest {
   attemptCount?: number;
   actualQuestionCount?: number;
   createdAt?: string;
+  isLocked?: boolean;
+  isFree?: boolean;
+  isFreePreview?: boolean;
+  testSeriesId?: string;
+  testSeriesName?: string;
+  message?: string;
+  salePrice?: number;
 }
 
 export interface MockAttempt {
@@ -661,6 +676,7 @@ export interface CurrentAffairArticle {
   relatedConceptIds?: string[];
   keywords?: string[];
   content?: string;
+  isBookmarked?: boolean;
   tags?: string[];
   mainsQuestions?: string[];
   isTopStory?: boolean;
@@ -716,6 +732,8 @@ export interface LearningResource {
   description?: string;
   resource_type?: ResourceType;
   type: ResourceType;
+  category?: string;
+  format?: string;
   subject?: string;
   subjectId: string;
   topic?: string;
@@ -740,6 +758,12 @@ export interface LearningResource {
   mime_type?: string;
   page_count?: number;
   status?: ResourceStatus;
+  is_published?: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string;
+  deleted_by?: string;
+  course_id?: string;
+  source_type?: string;
   visibility?: ResourceVisibility;
   uploaded_by?: string;
   url: string;
@@ -768,6 +792,9 @@ export interface StudyGoal {
 }
 
 export interface AiContextData {
+  exam?: string;
+  stage?: string;
+  contextSummary?: string;
   subjectName?: string;
   topicName?: string;
   conceptId?: string;
@@ -797,6 +824,7 @@ export interface ChatConversation {
   userId: string;
   title: string;
   createdAt: string;
+  updatedAt?: string;
   messages: ChatMessage[];
 }
 
@@ -823,10 +851,14 @@ export interface NotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'REVISION' | 'STREAK' | 'INSIGHT' | 'GOAL';
-  timestamp: string;
+  type: string;
+  timestamp?: string;
+  createdAt?: string;
   isRead: boolean;
   actionUrl?: string;
+  deepLink?: string;
+  priority?: string;
+  metadata?: Record<string, any>;
 }
 
 export type PlatformFeatureCode =
@@ -905,7 +937,7 @@ export interface Entitlement {
   updatedAt: string;
 }
 
-export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FLAT';
 
 export interface Coupon {
   id: string;
@@ -923,6 +955,8 @@ export interface Coupon {
   usageLimit?: number | null;
   perUserLimit: number;
   timesUsed: number;
+  usageCount?: number;
+  totalDiscountGiven?: number;
   isActive: boolean;
   createdBy?: string | null;
   createdByName?: string | null;
@@ -948,7 +982,14 @@ export interface CommercialDashboardMetrics {
   activeEntitlements: number;
   expiringSoon7Days: number;
   expiringSoon30Days: number;
+  expiringNext7Days?: number;
+  expiringNext30Days?: number;
   totalVerifiedRevenue: number;
+  totalRevenue?: number;
+  totalOrders?: number;
+  averageOrderValue?: number;
+  totalDiscountGiven?: number;
+  activeCouponsCount?: number;
   thisMonthRevenue: number;
   last30DaysRevenue: number;
   refundsAmount: number;
@@ -963,22 +1004,28 @@ export interface RevenueAnalyticsMetrics {
   paidOrdersCount: number;
   successfulEnrollments: number;
   averageOrderValue: number;
+  dailyBreakdown?: { date: string; revenue: number; orders?: number }[];
 }
 
 export interface CourseSalesAnalytics {
   courseId: string;
   courseName: string;
   exam: string;
+  courseType?: string;
   paidOrders: number;
+  unitsSold?: number;
   grossRevenue: number;
   refunds: number;
   netRevenue: number;
+  totalDiscount?: number;
   activeStudents: number;
+  activeEntitlementsCount?: number;
 }
 
 export interface ManagedUser extends UserProfile {
   targetExam?: string;
-  accountStatus: 'ACTIVE' | 'SUSPENDED';
+  accountStatus: 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
+  status?: 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
   is_suspended?: boolean;
   isSuspended?: boolean;
   courses: {
@@ -991,6 +1038,8 @@ export interface ManagedUser extends UserProfile {
   latestExpiry?: string | null;
   paymentStatus: 'PAID' | 'COMPLIMENTARY' | 'NONE';
   entitlementsCount: number;
+  activeEntitlementsCount?: number;
+  enrolledCourseNames?: string[];
 }
 
 export const ADMIN_PERMISSIONS = {
@@ -998,6 +1047,8 @@ export const ADMIN_PERMISSIONS = {
   USERS_VIEW: 'USERS_VIEW',
   USERS_EDIT: 'USERS_EDIT',
   USERS_SUSPEND: 'USERS_SUSPEND',
+  USERS_REMOVE: 'USERS_REMOVE',
+  USERS_RESTORE: 'USERS_RESTORE',
   USERS_GRANT_ACCESS: 'USERS_GRANT_ACCESS',
   USERS_REVOKE_ACCESS: 'USERS_REVOKE_ACCESS',
   USERS_ROLE_MANAGE: 'USERS_ROLE_MANAGE',
@@ -1057,6 +1108,161 @@ export const ADMIN_PERMISSIONS = {
 } as const;
 
 export type AdminPermissionCode = keyof typeof ADMIN_PERMISSIONS;
+
+export const TEACHER_PERMISSIONS = {
+  TEACHER_VIEW_DASHBOARD: 'TEACHER_VIEW_DASHBOARD',
+  TEACHER_VIEW_STUDENTS: 'TEACHER_VIEW_STUDENTS',
+  TEACHER_VIEW_ASSIGNED_STUDENTS: 'TEACHER_VIEW_ASSIGNED_STUDENTS',
+  TEACHER_CREATE_CLASS: 'TEACHER_CREATE_CLASS',
+  TEACHER_EDIT_CLASS: 'TEACHER_EDIT_CLASS',
+  TEACHER_VIEW_CLASS: 'TEACHER_VIEW_CLASS',
+  TEACHER_MANAGE_CLASS_MEMBERS: 'TEACHER_MANAGE_CLASS_MEMBERS',
+  TEACHER_CREATE_ASSIGNMENT: 'TEACHER_CREATE_ASSIGNMENT',
+  TEACHER_EDIT_ASSIGNMENT: 'TEACHER_EDIT_ASSIGNMENT',
+  TEACHER_PUBLISH_ASSIGNMENT: 'TEACHER_PUBLISH_ASSIGNMENT',
+  TEACHER_VIEW_SUBMISSIONS: 'TEACHER_VIEW_SUBMISSIONS',
+  TEACHER_EVALUATE_ANSWERS: 'TEACHER_EVALUATE_ANSWERS',
+  TEACHER_GIVE_FEEDBACK: 'TEACHER_GIVE_FEEDBACK',
+  TEACHER_ASSIGN_MARKS: 'TEACHER_ASSIGN_MARKS',
+  TEACHER_CREATE_QUIZ: 'TEACHER_CREATE_QUIZ',
+  TEACHER_ASSIGN_QUIZ: 'TEACHER_ASSIGN_QUIZ',
+  TEACHER_VIEW_QUIZ_RESULTS: 'TEACHER_VIEW_QUIZ_RESULTS',
+  TEACHER_CREATE_NOTES: 'TEACHER_CREATE_NOTES',
+  TEACHER_UPLOAD_RESOURCES: 'TEACHER_UPLOAD_RESOURCES',
+  TEACHER_SHARE_RESOURCES: 'TEACHER_SHARE_RESOURCES',
+  TEACHER_CREATE_LIVE_CLASS: 'TEACHER_CREATE_LIVE_CLASS',
+  TEACHER_MANAGE_LIVE_CLASS: 'TEACHER_MANAGE_LIVE_CLASS',
+  TEACHER_VIEW_LIVE_ATTENDANCE: 'TEACHER_VIEW_LIVE_ATTENDANCE',
+  TEACHER_VIEW_STUDENT_ANALYTICS: 'TEACHER_VIEW_STUDENT_ANALYTICS',
+  TEACHER_SEND_ANNOUNCEMENT: 'TEACHER_SEND_ANNOUNCEMENT',
+  TEACHER_VIEW_OWN_PROFILE: 'TEACHER_VIEW_OWN_PROFILE',
+} as const;
+
+export type TeacherPermissionCode = keyof typeof TEACHER_PERMISSIONS;
+
+// Teacher Workspace Interfaces
+export interface TeacherClass {
+  id: string;
+  name: string;
+  description?: string;
+  exam: string;
+  subject: string;
+  topic?: string;
+  teacherId: string;
+  teacherName?: string;
+  schedule?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  enrolledCount?: number;
+  students?: TeacherClassStudent[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeacherClassStudent {
+  id: string;
+  classId: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  targetExam?: string;
+  course?: string;
+  status: 'ENROLLED' | 'DROPPED';
+  joinedAt: string;
+  lastActivity?: string;
+  attendanceRate?: number;
+  submissionsCount?: number;
+  avgScore?: number;
+}
+
+export interface TeacherAssignment {
+  id: string;
+  teacherId: string;
+  classId?: string;
+  className?: string;
+  title: string;
+  description?: string;
+  subject?: string;
+  topic?: string;
+  instructions?: string;
+  dueDate?: string;
+  totalMarks: number;
+  durationMinutes?: number;
+  questions: any[];
+  status: 'DRAFT' | 'PUBLISHED' | 'OPEN' | 'CLOSED' | 'ARCHIVED';
+  submissionsCount?: number;
+  evaluatedCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeacherSubmission {
+  id: string;
+  assignmentId: string;
+  assignmentTitle?: string;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  classId?: string;
+  answers: any[];
+  submittedAt: string;
+  status: 'SUBMITTED' | 'LATE' | 'EVALUATED';
+  marksObtained?: number;
+  totalMarks?: number;
+  feedback?: string;
+  strengths?: string;
+  weaknesses?: string;
+  suggestions?: string;
+  evaluatedBy?: string;
+  evaluatorName?: string;
+  evaluatedAt?: string;
+  evaluationHistory?: any[];
+}
+
+export interface TeacherQuiz {
+  id: string;
+  teacherId: string;
+  teacherName?: string;
+  classId?: string;
+  className?: string;
+  title: string;
+  description?: string;
+  subject?: string;
+  questionIds: string[];
+  origin: 'TEACHER_CREATED' | 'OFFICIAL_COMMISSION' | 'IKSHOVIA_CREATED';
+  scheduledAt?: string;
+  durationMinutes: number;
+  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeacherAnnouncement {
+  id: string;
+  teacherId: string;
+  teacherName?: string;
+  classId?: string;
+  className?: string;
+  title: string;
+  message: string;
+  targetStudentIds?: string[];
+  publishedAt: string;
+  createdAt: string;
+}
+
+export interface TeacherDashboardStats {
+  totalAssignedStudents: number;
+  activeStudents: number;
+  pendingEvaluations: number;
+  assignmentsDue: number;
+  classesToday: number;
+  avgStudentPerformance: number;
+  todayClasses?: TeacherClass[];
+  upcomingClasses?: TeacherClass[];
+  pendingEvaluationsList?: TeacherSubmission[];
+  recentAssignments?: TeacherAssignment[];
+  recentSubmissions?: TeacherSubmission[];
+  recentAnnouncements?: TeacherAnnouncement[];
+}
 
 // ==========================================
 // SHORT NOTES ARCHITECTURE & STRUCTURED TYPES
@@ -1285,5 +1491,298 @@ export interface AppVersionResponse {
   platform: string;
   packageId: string;
   release?: AppRelease | null;
+}
+
+// ----------------------------------------------------
+// UNIFIED PRELIMS + MAINS + INTERVIEW ENGINE TYPES
+// ----------------------------------------------------
+export type ExamStage = 'PRELIMS' | 'MAINS' | 'INTERVIEW';
+
+export type QuestionOrigin =
+  | 'OFFICIAL_COMMISSION'
+  | 'ADMIN_IMPORTED'
+  | 'IKSHOVIA_CREATED'
+  | 'TEACHER_CREATED'
+  | 'AI_GENERATED';
+
+export interface ExamPaper {
+  id: string;
+  examId: string;
+  name: string;
+  code: string;
+  totalMarks: number;
+  stage: ExamStage;
+  description?: string;
+  orderNum?: number;
+}
+
+export interface MainsRubricDimension {
+  name: string;
+  maxMarks: number;
+  description: string;
+}
+
+export interface MainsQuestionItem {
+  id: string;
+  subjectId: string;
+  topicId: string;
+  conceptId: string;
+  type: string;
+  stage: ExamStage;
+  exam: string;
+  paper: string;
+  pyqYear?: number;
+  questionNumber?: number;
+  marks: number;
+  wordLimit?: number;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  origin: QuestionOrigin;
+  source?: string;
+  isPyq?: boolean;
+  verifiedStatus?: string;
+  question: string;
+  explanation?: string;
+  rubric?: {
+    dimensions?: string[];
+  };
+  modelStructure?: {
+    intro?: string;
+    body?: string;
+    conclusion?: string;
+  };
+  modelAnswer?: string;
+}
+
+export type MainsSubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'EVALUATED' | 'ARCHIVED';
+export type MainsSubmissionType = 'TYPED' | 'HANDWRITTEN_IMAGE' | 'HANDWRITTEN_PDF' | 'HYBRID';
+export type MainsEvaluatorType = 'NONE' | 'AI' | 'TEACHER' | 'SELF' | 'PEER';
+
+export interface MainsEvaluationBreakdown {
+  marksObtained: number;
+  maxMarks: number;
+  dimensions?: {
+    content?: number;
+    structure?: number;
+    analysis?: number;
+    relevance?: number;
+    factualAccuracy?: number;
+    examplesData?: number;
+    multidimensionality?: number;
+    presentation?: number;
+    conclusion?: number;
+  };
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
+  missingDimensions: string[];
+  actionableImprovement: string;
+  evaluatorType: MainsEvaluatorType;
+  evaluatedAt: string;
+}
+
+export interface MainsSubmissionItem {
+  id: string;
+  userId: string;
+  questionId: string;
+  paperId?: string;
+  paper?: string;
+  subjectId?: string;
+  topicId?: string;
+  conceptId?: string;
+  attemptNumber: number;
+  status: MainsSubmissionStatus;
+  submissionType: MainsSubmissionType;
+  answerText?: string;
+  attachmentUrl?: string;
+  attachmentType?: string;
+  wordCount: number;
+  timeSpentSeconds: number;
+  ocrExtractedText?: string;
+  marksObtained?: number;
+  maxMarks: number;
+  percentage?: number;
+  feedback?: string;
+  strengths?: string;
+  weaknesses?: string;
+  missingDimensions?: string[];
+  actionableImprovement?: string;
+  evaluation?: MainsEvaluationBreakdown;
+  evaluatorType?: MainsEvaluatorType;
+  evaluatedBy?: string;
+  evaluatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt?: string;
+  question?: MainsQuestionItem;
+}
+
+export interface InterviewProfile {
+  userId: string;
+  targetExam: string;
+  graduationDegree?: string;
+  graduationSubject?: string;
+  optionalSubject?: string;
+  hometown?: string;
+  homeState?: string;
+  workExperience?: string;
+  hobbiesInterests?: string;
+  achievements?: string;
+  cadrePreferences?: string[];
+  servicePreferences?: string[];
+  dafSummary?: string;
+  updatedAt?: string;
+}
+
+export type InterviewCategory =
+  | 'DAF_PROFILE'
+  | 'EDUCATION'
+  | 'HOMETOWN'
+  | 'STATE'
+  | 'CURRENT_AFFAIRS'
+  | 'GOVERNANCE'
+  | 'ECONOMY'
+  | 'SOCIETY'
+  | 'ETHICS'
+  | 'SITUATIONAL'
+  | 'OPINION_ANALYSIS';
+
+export interface InterviewQuestionItem {
+  id: string;
+  exam: string;
+  category: InterviewCategory;
+  topic: string;
+  question: string;
+  source?: string;
+  origin: QuestionOrigin;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  suggestedDimensions?: string[];
+  expectedCounterArguments?: string[];
+  parentQuestionId?: string;
+}
+
+export interface InterviewTranscriptItem {
+  step: number;
+  speaker: 'PANEL' | 'CANDIDATE';
+  questionId?: string;
+  questionText?: string;
+  answerText?: string;
+  followUpToStep?: number;
+  feedback?: string;
+  timestamp: string;
+}
+
+export interface InterviewSessionEvaluation {
+  overallScore: number;
+  maxScore: number;
+  marksBreakdown: {
+    articulation?: number;
+    factualDepth?: number;
+    balanceOfOpinion?: number;
+    situationalJudgment?: number;
+    poiseAndEthics?: number;
+  };
+  strengths: string[];
+  weaknesses: string[];
+  bodyLanguageTips?: string[];
+  actionableFeedback: string;
+}
+
+export interface InterviewSessionItem {
+  id: string;
+  userId: string;
+  exam: string;
+  boardName: string;
+  mode: 'DAF_BASED' | 'TOPIC_BASED' | 'MOCK_BOARD' | 'CURRENT_AFFAIRS';
+  status: 'CREATED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  startedAt: string;
+  completedAt?: string;
+  currentStep: number;
+  transcript: InterviewTranscriptItem[];
+  evaluation?: InterviewSessionEvaluation;
+}
+
+export interface PrelimsStagePerformance {
+  hasSufficientData: boolean;
+  message?: string;
+  totalAttempts: number;
+  completedTests: number;
+  accuracy: number | null;
+  averageScore: number | null;
+  attemptRate: number | null;
+  timeEfficiencySeconds: number | null;
+  negativeMarkImpact: number | null;
+  subjectAccuracy: { subject: string; accuracy: number; attempts: number }[];
+  topicAccuracy: { topic: string; subject: string; accuracy: number; attempts: number }[];
+  strongestAreas: string[];
+  weakestAreas: string[];
+  recentTrend: { date: string; score: number; maxScore: number; accuracy: number }[];
+}
+
+export interface MainsStagePerformance {
+  hasSufficientData: boolean;
+  message?: string;
+  totalAnswersWritten: number;
+  evaluatedCount: number;
+  draftsCount: number;
+  averageScore: number | null;
+  subjectPerformance: { subject: string; submitted: number; averageMarks: number }[];
+  rubricAverages: {
+    structure: number | null;
+    analysis: number | null;
+    relevance: number | null;
+    factsAndData: number | null;
+    presentation: number | null;
+  };
+  strengths: string[];
+  weaknesses: string[];
+}
+
+export interface InterviewStagePerformance {
+  hasSufficientData: boolean;
+  message?: string;
+  sessionsCompleted: number;
+  averageBoardScore: number | null;
+  maxBoardScore: number;
+  categoryPerformance: { category: string; sessionCount: number; rating: number }[];
+  topStrengths: string[];
+  growthAreas: string[];
+}
+
+export interface CorrelatedSubjectProgress {
+  subject: string;
+  prelimsAccuracy: number | null;
+  mainsAverageScore: number | null;
+  interviewGovernanceScore: number | null;
+  readinessLevel: 'NEEDS_FOCUS' | 'DEVELOPING' | 'STRONG' | 'EXEMPLARY' | 'INSUFFICIENT_DATA';
+}
+
+export interface UnifiedLearnerPerformance {
+  userId: string;
+  targetExam: string;
+  lastUpdated: string;
+  prelims: PrelimsStagePerformance;
+  mains: MainsStagePerformance;
+  interview: InterviewStagePerformance;
+  correlatedSubjects?: CorrelatedSubjectProgress[];
+  overallReadiness?: {
+    score: number | null;
+    label: string;
+    summary: string;
+  };
+  crossStageInsights: {
+    recurringGaps: {
+      subjectOrTheme: string;
+      evidence: {
+        prelims?: string;
+        mains?: string;
+        interview?: string;
+      };
+      actionableRemedy: string;
+    }[];
+    confirmedStrengths: {
+      subjectOrTheme: string;
+      evidence: string;
+    }[];
+  };
 }
 

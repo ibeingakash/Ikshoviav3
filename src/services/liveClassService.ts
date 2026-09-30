@@ -10,7 +10,7 @@ import {
   LiveClassAnalytics,
   DirectVideoCall
 } from '../types/liveClass.js';
-import { apiUrl, getAuthHeaders } from '../lib/api.js';
+import { apiFetch, getAuthHeaders } from '../lib/api.js';
 
 const liveFetch = async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
   const authHeaders = getAuthHeaders();
@@ -18,7 +18,7 @@ const liveFetch = async (endpoint: string, options: RequestInit = {}): Promise<R
     ...authHeaders,
     ...(options.headers || {})
   };
-  return fetch(apiUrl(endpoint), {
+  return apiFetch(endpoint, {
     ...options,
     headers
   });
@@ -33,17 +33,22 @@ export const liveClassService = {
     tab?: string;
     adminView?: boolean;
   }): Promise<LiveClass[]> {
-    const params = new URLSearchParams();
-    if (filters?.exam) params.append('exam', filters.exam);
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.teacherId) params.append('teacherId', filters.teacherId);
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.tab) params.append('tab', filters.tab);
-    if (filters?.adminView) params.append('adminView', 'true');
+    try {
+      const params = new URLSearchParams();
+      if (filters?.exam) params.append('exam', filters.exam);
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.teacherId) params.append('teacherId', filters.teacherId);
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.tab) params.append('tab', filters.tab);
+      if (filters?.adminView) params.append('adminView', 'true');
 
-    const res = await liveFetch(`/api/live/classes?${params.toString()}`);
-    if (!res.ok) throw new Error('Failed to fetch live classes');
-    return res.json();
+      const res = await liveFetch(`/api/live/classes?${params.toString()}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
 
   async getClassById(id: string): Promise<LiveClass> {
@@ -63,6 +68,52 @@ export const liveClassService = {
       throw new Error(err.error || 'Failed to create live class');
     }
     return res.json();
+  },
+
+  async createGroupCall(data: { title: string; topic?: string; exam?: string; maxParticipants?: number; description?: string }): Promise<LiveClass> {
+    const res = await liveFetch('/api/live/group-calls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      if (res.status === 404) {
+        // Fallback for servers that create instant group rooms through standard classes
+        return this.createClass({
+          title: data.title,
+          description: data.topic || data.description || 'Live Peer Study Room',
+          exam: (data.exam as any) || 'BOTH',
+          subject: data.topic || 'General Discussion',
+          scheduledStartIso: new Date().toISOString(),
+          durationMinutes: 90,
+          maxParticipants: data.maxParticipants || 25,
+          isInstant: true,
+          isPublished: true,
+        });
+      }
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to initialize group call room');
+    }
+    return res.json();
+  },
+
+  async getMeetingById(meetingId: string): Promise<LiveClass> {
+    const cleanId = meetingId.trim().toUpperCase();
+    const res = await liveFetch(`/api/live/meetings/${encodeURIComponent(cleanId)}`);
+    if (res.ok) {
+      return res.json();
+    }
+    if (res.status === 404) {
+      // Fallback: search classes list by meetingId or id
+      const classes = await this.getClasses();
+      const match = classes.find(c =>
+        c.meetingId?.toUpperCase() === cleanId ||
+        c.id === meetingId.trim()
+      );
+      if (match) return match;
+    }
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Meeting '${meetingId}' not found`);
   },
 
   async updateClass(id: string, updates: Partial<LiveClass>): Promise<LiveClass> {
@@ -283,10 +334,15 @@ export const liveClassService = {
   },
 
   async getRecordings(classId?: string): Promise<LiveClassRecording[]> {
-    const url = classId ? `/api/live/recordings?classId=${classId}` : '/api/live/recordings';
-    const res = await liveFetch(url);
-    if (!res.ok) return [];
-    return res.json();
+    try {
+      const url = classId ? `/api/live/recordings?classId=${classId}` : '/api/live/recordings';
+      const res = await liveFetch(url);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
 
   async addRecording(id: string, recordingData: {

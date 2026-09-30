@@ -122,6 +122,11 @@ export const AdminResourceStudioView: React.FC = () => {
   const [groundingAnswer, setGroundingAnswer] = useState<string>('');
   const [testingGrounding, setTestingGrounding] = useState<boolean>(false);
 
+  // Delete Resource Modal State
+  const [resourceToDelete, setResourceToDelete] = useState<LearningResource | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // OAuth Diagnostic & Error States
   const [oauthErrorMessage, setOauthErrorMessage] = useState<{ title: string; desc: string } | null>(null);
   const [showOAuthDiagnostics, setShowOAuthDiagnostics] = useState<boolean>(false);
@@ -402,20 +407,34 @@ export const AdminResourceStudioView: React.FC = () => {
 
   const handleStatusChange = async (resource: LearningResource, newStatus: ResourceStatus) => {
     try {
-      await api.updateResource(resource.id, { status: newStatus });
+      const isPublished = newStatus === 'PUBLISHED';
+      await api.updateResource(resource.id, { 
+        status: newStatus,
+        is_published: isPublished,
+      } as any);
       fetchResources();
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
     }
   };
 
-  const handleDeleteResource = async (resource: LearningResource) => {
-    if (!window.confirm(`Are you sure you want to delete "${resource.title}"? This will also remove the file from Google Drive.`)) return;
+  const handleDeleteResource = (resource: LearningResource) => {
+    setDeleteError(null);
+    setResourceToDelete(resource);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!resourceToDelete) return;
+    setIsDeleting(true);
+    setDeleteError(null);
     try {
-      await api.deleteResource(resource.id);
-      fetchResources();
+      await api.deleteResource(resourceToDelete.id);
+      setResourceToDelete(null);
+      await fetchResources();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete resource');
+      setDeleteError(err.message || 'Failed to delete resource');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1779,6 +1798,75 @@ export const AdminResourceStudioView: React.FC = () => {
                 className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-xl transition cursor-pointer"
               >
                 Close Diagnostics
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {resourceToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="p-2.5 bg-red-100 rounded-xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-stone-900">Delete Resource</h3>
+                <p className="text-xs text-stone-500">Platform Removal</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-stone-600 leading-relaxed mb-4">
+              Are you sure you want to delete <span className="font-semibold text-stone-900">"{resourceToDelete.title}"</span>?
+            </p>
+
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-600 space-y-1.5 mb-5">
+              <p className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                <Shield className="w-4 h-4 shrink-0" /> Original file in Google Drive will remain safe and untouched.
+              </p>
+              <p className="text-stone-500">
+                This resource will be archived, tombstoned, and immediately removed from the platform and Learner Library.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setResourceToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl transition shadow-sm flex items-center gap-2 cursor-pointer"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete Resource
+                  </>
+                )}
               </button>
             </div>
           </div>

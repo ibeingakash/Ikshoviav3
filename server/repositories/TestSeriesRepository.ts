@@ -132,9 +132,9 @@ export class TestSeriesRepository {
       const entRes = await pool.query(`
         SELECT DISTINCT test_series_id, metadata->>'testSeriesId' as meta_id
         FROM public.entitlements
-        WHERE user_id = $1
-          AND status = 'ACTIVE'
-          AND starts_at <= NOW()
+        WHERE user_id = $1 
+          AND status = 'ACTIVE' 
+          AND starts_at <= NOW() 
           AND (expires_at IS NULL OR expires_at > NOW());
       `, [options.userId]);
 
@@ -166,10 +166,10 @@ export class TestSeriesRepository {
     if (userId) {
       const entRes = await pool.query(`
         SELECT id FROM public.entitlements
-        WHERE user_id = $1
+        WHERE user_id = $1 
           AND (test_series_id = $2 OR metadata->>'testSeriesId' = $2 OR product_id = $2)
-          AND status = 'ACTIVE'
-          AND starts_at <= NOW()
+          AND status = 'ACTIVE' 
+          AND starts_at <= NOW() 
           AND (expires_at IS NULL OR expires_at > NOW())
         LIMIT 1;
       `, [userId, id]);
@@ -178,7 +178,7 @@ export class TestSeriesRepository {
 
     // Fetch tests linked to this series
     const testsQuery = `
-      SELECT
+      SELECT 
         tst.id as link_id,
         tst.test_series_id,
         tst.mock_test_id,
@@ -324,7 +324,7 @@ export class TestSeriesRepository {
 
     const query = `
       UPDATE public.test_series
-      SET
+      SET 
         name = COALESCE($2, name),
         slug = COALESCE($3, slug),
         description = COALESCE($4, description),
@@ -468,7 +468,7 @@ export class TestSeriesRepository {
 
   async recalculateSeriesCounts(seriesId: string): Promise<void> {
     const statsRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(tst.id) as total_tests,
         COALESCE(SUM(CASE WHEN mt.is_published = true AND (mt.is_deleted IS NULL OR mt.is_deleted = false) THEN 1 ELSE 0 END), 0) as published_test_count,
         COALESCE(SUM(mt.total_questions), 0) as total_questions,
@@ -517,7 +517,7 @@ export class TestSeriesRepository {
 
   async getExamsSummary(): Promise<{ code: string; name: string; seriesCount: number }[]> {
     const query = `
-      SELECT
+      SELECT 
         e.code,
         e.name,
         COUNT(ts.id) as series_count
@@ -537,10 +537,10 @@ export class TestSeriesRepository {
   async checkUserSeriesEntitlement(userId: string, seriesId: string): Promise<boolean> {
     const res = await pool.query(`
       SELECT id FROM public.entitlements
-      WHERE user_id = $1
+      WHERE user_id = $1 
         AND (test_series_id = $2 OR metadata->>'testSeriesId' = $2 OR product_id = $2)
-        AND status = 'ACTIVE'
-        AND starts_at <= NOW()
+        AND status = 'ACTIVE' 
+        AND starts_at <= NOW() 
         AND (expires_at IS NULL OR expires_at > NOW())
       LIMIT 1;
     `, [userId, seriesId]);

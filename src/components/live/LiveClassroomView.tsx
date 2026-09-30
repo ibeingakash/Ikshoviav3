@@ -75,7 +75,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   onLeave,
 }) => {
   const { user } = useAuth();
-  const isTeacher = user?.role === 'TEACHER' || user?.role === 'ADMIN' || liveClass.teacherId === user?.id;
+  const isTeacher = user?.role === 'TEACHER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || liveClass.teacherId === user?.id;
 
   // Video Meeting Provider & Container Ref
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -136,8 +136,8 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
         if (!mounted) return;
 
-        // Initialize provider abstraction
-        const provider = createVideoMeetingProvider('jitsi');
+        // Initialize native IKSHOVIA WebRTC provider
+        const provider = createVideoMeetingProvider('ikshovia');
         providerRef.current = provider;
 
         // Hook provider events
@@ -167,7 +167,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
             name: displayName,
             email: user?.email,
             avatarUrl: user?.avatarUrl,
-            role: isTeacher ? 'TEACHER' : 'STUDENT',
+            role: isTeacher ? (user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' ? 'ADMIN' : 'TEACHER') : 'STUDENT',
           },
           container: videoContainerRef.current,
           initialAudioMuted,
@@ -575,10 +575,10 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#070A13] text-stone-100 flex flex-col overflow-hidden select-none font-sans">
-
+      
       {/* 1. TOP BAR */}
       <div className="h-14 px-4 sm:px-6 bg-[#0B0F19] border-b border-stone-800 flex items-center justify-between z-20 shrink-0">
-
+        
         {/* Left: Brand Identity, Class Title, Subject & Status */}
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo
@@ -654,10 +654,10 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
       {/* 2. MAIN WORKSPACE (Video Stage + Side Panel) */}
       <div className="flex-1 flex overflow-hidden relative">
-
+        
         {/* VIDEO CONFERENCING STAGE */}
         <div className="flex-1 relative flex flex-col items-center justify-center bg-[#070A13] overflow-hidden">
-
+          
           {/* Video Mount Container for Jitsi / Fallback */}
           <div
             ref={videoContainerRef}
@@ -699,7 +699,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
         {/* 3. SIDE PANEL (Collapsible Tabs) */}
         {activeTab && (
           <div className="w-80 sm:w-96 bg-[#0B0F19] border-l border-stone-800 flex flex-col z-20 shrink-0">
-
+            
             {/* Tab Selector Header */}
             <div className="h-12 border-b border-stone-800 px-3 flex items-center justify-between bg-[#111728]">
               <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar text-xs">
@@ -937,11 +937,11 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center font-bold text-stone-200 text-xs">
-                          {p.userName.substring(0, 2).toUpperCase()}
+                          {String(p.userName || 'Scholar').substring(0, 2).toUpperCase()}
                         </div>
                         <div>
                           <div className="font-medium text-stone-100 flex items-center gap-1.5">
-                            <span>{p.userName}</span>
+                            <span>{p.userName || 'Scholar'}</span>
                             {p.role === 'TEACHER' && (
                               <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                                 Faculty
@@ -966,7 +966,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
                         {isTeacher && p.userId !== user?.id && (
                           <button
-                            onClick={() => handleKickParticipant(p.userId, p.userName)}
+                            onClick={() => handleKickParticipant(p.userId, p.userName || 'Student')}
                             className="p-1 rounded-md text-stone-500 hover:text-rose-400 transition-colors"
                             title="Remove student"
                           >
@@ -1058,7 +1058,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
                           <div className="space-y-2">
                             {poll.options.map(opt => {
-                              const pct = totalVotes > 0 ? Math.round((opt.voteCount / totalVotes) * 100) : 0;
+                              const pct = totalVotes > 0 ? Math.round(((opt.voteCount || 0) / totalVotes) * 100) : 0;
                               return (
                                 <button
                                   key={opt.id}
@@ -1127,7 +1127,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
       {/* 4. BOTTOM FLOATING CONTROL DOCK (Meet / Teams Quality) */}
       <div className="h-20 bg-[#0B0F19] border-t border-stone-800 px-4 flex items-center justify-center gap-2 sm:gap-3 z-30 shrink-0">
-
+        
         {/* Microphone Toggle */}
         <button
           onClick={toggleAudio}

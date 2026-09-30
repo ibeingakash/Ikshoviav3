@@ -222,7 +222,7 @@ async function generateAll() {
       .toFile(destPath);
     console.log(`✓ Generated ${asset.filename} (${asset.width}x${asset.height})`);
   }
-
+  
   // Also copy favicon to public/favicon.ico
   const faviconSrc = path.join(outputDir, '04_IKSHOVIA_Favicon.png');
   const faviconDest = path.join(process.cwd(), 'public', 'favicon.ico');

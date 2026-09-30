@@ -27,7 +27,9 @@ import {
   Flame,
   FolderArchive,
   Eye,
-  Play
+  Play,
+  Lock,
+  ShoppingBag
 } from 'lucide-react';
 import { useLearner } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
@@ -40,8 +42,25 @@ import { queueMockAnswer, queueMockSubmission } from '../../lib/offlineQueue.js'
 import { ExamExitModal } from '../common/ExamExitModal.js';
 import { WifiOff } from 'lucide-react';
 
-export const MockTestView: React.FC = () => {
+export interface MockTestViewProps {
+  initialTestId?: string | null;
+  initialSeriesId?: string | null;
+  forceNew?: boolean;
+  onClearInitialTest?: () => void;
+  onBackToSeries?: (seriesId: string) => void;
+}
+
+export const MockTestView: React.FC<MockTestViewProps> = ({
+  initialTestId,
+  initialSeriesId,
+  forceNew = false,
+  onClearInitialTest,
+  onBackToSeries,
+}) => {
   const { refreshLearnerData, setActiveSection, askTutorWithContext, activeSection } = useLearner();
+
+  const [seriesContextId, setSeriesContextId] = useState<string | null>(initialSeriesId || null);
+  const launchedTestRef = React.useRef<string | null>(null);
 
   // Active Category Tab: 'ALL' | 'FULL' | 'SUBJECT' | 'QUICK' | 'HISTORY'
   const [activeCategory, setActiveCategory] = useState<'ALL' | 'FULL' | 'SUBJECT' | 'QUICK' | 'HISTORY'>('ALL');
@@ -91,6 +110,19 @@ export const MockTestView: React.FC = () => {
   const [testEndTimestamp, setTestEndTimestamp] = useState<number | null>(null);
   const [showExitModal, setShowExitModal] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  // Commercial / Test Series Entitlement Locked Modal State
+  const [accessLockedModal, setAccessLockedModal] = useState<{
+    isOpen: boolean;
+    testTitle: string;
+    testSeries?: {
+      id: string;
+      name: string;
+      targetExam?: string;
+      salePrice?: number;
+    };
+    message?: string;
+  } | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -156,6 +188,19 @@ export const MockTestView: React.FC = () => {
     }
   }, [activeSection]);
 
+  useEffect(() => {
+    if (initialSeriesId) {
+      setSeriesContextId(initialSeriesId);
+    }
+  }, [initialSeriesId]);
+
+  useEffect(() => {
+    if (initialTestId && launchedTestRef.current !== `${initialTestId}_${forceNew}`) {
+      launchedTestRef.current = `${initialTestId}_${forceNew}`;
+      handleStartStandardTest({ id: initialTestId } as MockTest, forceNew);
+    }
+  }, [initialTestId, forceNew]);
+
   const loadInitialData = async () => {
     setLoading(true);
     try {
@@ -163,7 +208,12 @@ export const MockTestView: React.FC = () => {
         api.getMockTests(),
         api.getSubjects(),
       ]);
-      setMockTests(Array.isArray(testsRes) ? testsRes : []);
+      const allFetchedTests = Array.isArray(testsRes) ? testsRes : [];
+      // FIX 2: Exclude test series tests from standalone mock tests view
+      const standaloneOnly = allFetchedTests.filter(
+        t => !t.testSeriesId && !(t as any).test_series_id && !(t as any).series_id
+      );
+      setMockTests(standaloneOnly);
       setAllSubjects(Array.isArray(subsRes) ? subsRes : []);
 
       try {
@@ -192,82 +242,124 @@ export const MockTestView: React.FC = () => {
   };
 
   // Launch Standard or Custom Mock Test (with optional forceNew to retake fresh)
-  const handleStartStandardTest = async (test: MockTest, forceNew = false) => {
-    const displayTitle = getMockDisplayTitle(test);
-    const isBpsc = displayTitle.toLowerCase().includes('bpsc') || (test.title || '').toLowerCase().includes('bpsc');
-    const marksPerCorrect = isBpsc ? 1.0 : 2.0;
-    const penaltyPerWrong = isBpsc ? 0.33 : test.negativeMarkingRate || 0.66;
-    const duration = test.durationMinutes || (test.totalQuestions >= 50 ? 120 : 25);
-
-    setActiveTestMeta({
-      id: test.id,
-      title: displayTitle,
-      type: test.type,
-      durationMinutes: duration,
-      totalQuestions: test.totalQuestions || 20,
-      marksPerCorrect,
-      penaltyPerWrong,
-      sourceType: test.sourceType,
-    });
-
+  const handleStartStandardTest = async (test: MockTest | { id: string; title?: string }, forceNew = false) => {
     setLoading(true);
     try {
-      const testDetails = await api.getMockTest(test.id);
-      let qs: Question[] = [];
-      if (testDetails && Array.isArray(testDetails.questions) && testDetails.questions.length > 0) {
-        qs = testDetails.questions;
-      } else {
-        const count = test.totalQuestions || 20;
-        qs = await api.getPracticeQuestions(test.subjectIds?.[0], undefined, count);
+      // 1. First start the attempt server-side to enforce strict entitlement verification
+      let startRes: any = null;
+      try {
+        startRes = await api.startMockAttempt(test.id, forceNew);
+      } catch (err: any) {
+        if (err.status === 403 || err.code === 'ACCESS_LOCKED' || err.testSeries) {
+          setAccessLockedModal({
+            isOpen: true,
+            testTitle: (test as any).title || err.testSeries?.name || 'Mock Test',
+            testSeries: err.testSeries || {
+              id: seriesContextId || (test as any).testSeriesId || '',
+              name: (test as any).testSeriesName || 'Test Series',
+            },
+            message: err.message,
+          });
+          setLoading(false);
+          return;
+        }
+        throw err;
       }
+
+      // 2. Fetch questions from startRes or authorized getMockTest
+      let qs: Question[] = [];
+      let canonicalTest: MockTest = startRes?.test || (test as MockTest);
+
+      if (startRes && Array.isArray(startRes.questions) && startRes.questions.length > 0) {
+        qs = startRes.questions;
+      } else {
+        const testDetails = await api.getMockTest(test.id);
+        if (testDetails?.isLocked) {
+          setAccessLockedModal({
+            isOpen: true,
+            testTitle: testDetails.title || (test as any).title || 'Mock Test',
+            testSeries: {
+              id: testDetails.testSeriesId || seriesContextId || '',
+              name: testDetails.testSeriesName || 'Test Series',
+            },
+            message: testDetails.message,
+          });
+          setLoading(false);
+          return;
+        }
+        if (testDetails && Array.isArray(testDetails.questions) && testDetails.questions.length > 0) {
+          qs = testDetails.questions;
+        }
+        if (testDetails && testDetails.title) {
+          canonicalTest = { ...canonicalTest, ...testDetails };
+        }
+      }
+
+      if (!qs || qs.length === 0) {
+        alert('No questions found for this test. Please try another test.');
+        setLoading(false);
+        return;
+      }
+
+      const displayTitle = getMockDisplayTitle(canonicalTest);
+      const isBpsc = displayTitle.toLowerCase().includes('bpsc') || (canonicalTest.title || '').toLowerCase().includes('bpsc');
+      const marksPerCorrect = isBpsc ? 1.0 : 2.0;
+      const penaltyPerWrong = isBpsc ? 0.33 : canonicalTest.negativeMarkingRate || 0.66;
+      const duration = canonicalTest.durationMinutes || (qs.length >= 50 ? 120 : 25);
+
+      setActiveTestMeta({
+        id: canonicalTest.id || test.id,
+        title: displayTitle,
+        type: canonicalTest.type || (qs.length >= 50 ? 'FULL' : 'SUBJECT'),
+        durationMinutes: duration,
+        totalQuestions: qs.length || canonicalTest.totalQuestions || 20,
+        marksPerCorrect,
+        penaltyPerWrong,
+        sourceType: canonicalTest.sourceType || 'ADMIN_IMPORTED',
+      });
+
       setTestQuestions(qs);
       setCurrentQuestionIndex(0);
       setUserAnswers({});
       setMarkedForReview({});
       let remainingSec = duration * 60;
-      setTestEndTimestamp(Date.now() + (remainingSec * 1000));
+
+      if (startRes?.attempt?.id) {
+        setCurrentAttemptId(startRes.attempt.id);
+
+        // If resuming an ongoing attempt, calculate remaining time accurately
+        if (!forceNew && startRes.attempt.startedAt) {
+          const elapsed = Math.floor((Date.now() - new Date(startRes.attempt.startedAt).getTime()) / 1000);
+          remainingSec = Math.max(10, (duration * 60) - elapsed);
+        }
+
+        // Restore previously saved answers if resuming an in-progress attempt
+        if (Array.isArray(startRes.answers) && startRes.answers.length > 0) {
+          const restoredAnswers: Record<string, string> = {};
+          const restoredMarked: Record<string, boolean> = {};
+          startRes.answers.forEach((ans: any) => {
+            if (ans.questionId && ans.userAnswer) {
+              restoredAnswers[ans.questionId] = ans.userAnswer;
+            }
+            if (ans.questionId && ans.markedForReview) {
+              restoredMarked[ans.questionId] = true;
+            }
+          });
+          setUserAnswers(restoredAnswers);
+          setMarkedForReview(restoredMarked);
+        }
+      } else {
+        setCurrentAttemptId(null);
+      }
+
       setTimeRemainingSeconds(remainingSec);
+      setTestEndTimestamp(Date.now() + (remainingSec * 1000));
       setInTest(true);
       setInReviewMode(false);
       setSubmittedResult(null);
-
-      // Attempt to start or resume a tracked session on the backend
-      try {
-        const startRes = await api.startMockAttempt(test.id, forceNew);
-        if (startRes?.attempt?.id) {
-          setCurrentAttemptId(startRes.attempt.id);
-
-          // If resuming an ongoing attempt, calculate remaining time accurately
-          if (!forceNew && startRes.attempt.startedAt) {
-            const elapsed = Math.floor((Date.now() - new Date(startRes.attempt.startedAt).getTime()) / 1000);
-            remainingSec = Math.max(10, (duration * 60) - elapsed);
-            setTimeRemainingSeconds(remainingSec);
-            setTestEndTimestamp(Date.now() + (remainingSec * 1000));
-          }
-
-          // Restore previously saved answers if resuming an in-progress attempt
-          if (Array.isArray(startRes.answers) && startRes.answers.length > 0) {
-            const restoredAnswers: Record<string, string> = {};
-            const restoredMarked: Record<string, boolean> = {};
-            startRes.answers.forEach((ans: any) => {
-              if (ans.questionId && ans.userAnswer) {
-                restoredAnswers[ans.questionId] = ans.userAnswer;
-              }
-              if (ans.questionId && ans.markedForReview) {
-                restoredMarked[ans.questionId] = true;
-              }
-            });
-            setUserAnswers(restoredAnswers);
-            setMarkedForReview(restoredMarked);
-          }
-        } else {
-          setCurrentAttemptId(null);
-        }
-      } catch {
-        setCurrentAttemptId(null);
-      }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error starting test:', e);
+      alert(e?.message || 'Unable to start test at this time.');
     } finally {
       setLoading(false);
     }
@@ -443,7 +535,13 @@ export const MockTestView: React.FC = () => {
           const correctUpper = String(q.correctAnswer).trim().toUpperCase();
           
           // BPSC Option E "Not Attempted" safe skip rule
-          const optionsList = q.options || [];
+          const optionsList = (q.options || []).map((o, idx) => {
+            if (typeof o === 'string') {
+              const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+              return { id: letters[idx] || String(idx + 1), text: o };
+            }
+            return o;
+          });
           const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
           const isOptENotAttempted = optE && (
             (optE.text || '').toLowerCase().includes('not attempted') ||
@@ -782,6 +880,10 @@ export const MockTestView: React.FC = () => {
             setShowExitModal(false);
             setInTest(false);
             setActiveTestMeta(null);
+            if (onClearInitialTest) onClearInitialTest();
+            if (seriesContextId && onBackToSeries) {
+              onBackToSeries(seriesContextId);
+            }
           }}
         />
       </div>
@@ -1068,15 +1170,35 @@ export const MockTestView: React.FC = () => {
               onClick={() => {
                 setSubmittedResult(null);
                 setInReviewMode(false);
-                loadInitialData();
+                if (onClearInitialTest) onClearInitialTest();
+                if (seriesContextId && onBackToSeries) {
+                  onBackToSeries(seriesContextId);
+                } else {
+                  loadInitialData();
+                }
               }}
               className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-2"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>Return to Mock Test Catalog</span>
+              <span>{seriesContextId ? 'Return to Test Series' : 'Return to Mock Test Catalog'}</span>
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // If launching an initial test directly, render a clean examination loader instead of the catalog
+  if (initialTestId && loading && !inTest && !accessLockedModal?.isOpen) {
+    return (
+      <div className="max-w-3xl mx-auto py-24 text-center space-y-4">
+        <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        <h2 className="text-base font-bold text-stone-900 font-serif-editorial">
+          Preparing Examination Environment...
+        </h2>
+        <p className="text-xs text-stone-500">
+          Loading test questions, verifying security tokens, and synchronizing commission parameters.
+        </p>
       </div>
     );
   }
@@ -1118,9 +1240,9 @@ export const MockTestView: React.FC = () => {
 
           <button
             onClick={() => setActiveSection('test-series')}
-            className="px-4 py-2 bg-[#35156B] hover:bg-[#250e4d] text-white text-xs font-bold rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
+            className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 text-xs font-bold rounded-xl shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
           >
-            <Layers className="w-3.5 h-3.5" />
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
             <span>Exam Test Series Packs</span>
           </button>
 
@@ -1299,7 +1421,7 @@ export const MockTestView: React.FC = () => {
                           {formatAttemptDuration(h.timeTakenSeconds)}
                         </td>
                         <td className="py-3 px-4 text-stone-400">
-                          {new Date(h.completedAt || h.startedAt).toLocaleDateString()}
+                          {new Date(h.completedAt || h.startedAt || Date.now()).toLocaleDateString()}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -1388,6 +1510,17 @@ export const MockTestView: React.FC = () => {
                     <span className="text-[10px] font-bold font-mono text-stone-500 uppercase tracking-wider">
                       {isFull ? 'Full Mock' : isSubject ? 'Sectional' : 'Rapid Sprint'}
                     </span>
+
+                    {(test as any).isLocked ? (
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded border bg-amber-50 text-amber-800 border-amber-200 flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-amber-600" />
+                        <span>LOCKED</span>
+                      </span>
+                    ) : (test as any).isFreePreview ? (
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded border bg-emerald-50 text-emerald-800 border-emerald-200">
+                        FREE PREVIEW
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Title */}
@@ -1428,14 +1561,86 @@ export const MockTestView: React.FC = () => {
                 {/* Launch Button */}
                 <button
                   onClick={() => handleStartStandardTest(test)}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className={`w-full py-2.5 font-bold text-xs rounded-xl shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                    (test as any).isLocked
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  }`}
                 >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Start Mock Test</span>
+                  {(test as any).isLocked ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Unlock Test Series</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>Start Mock Test</span>
+                    </>
+                  )}
                 </button>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Access Locked Modal */}
+      {accessLockedModal?.isOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-xl max-w-md w-full p-6 space-y-4 animate-fade-in font-sans-editorial">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-bold text-stone-900 font-serif-editorial">
+                Premium Test Series Required
+              </h3>
+              <p className="text-xs text-stone-600 leading-relaxed">
+                {accessLockedModal.message || `"${accessLockedModal.testTitle}" is part of an exclusive commercial test series and requires active enrollment to access.`}
+              </p>
+              {accessLockedModal.testSeries?.name && (
+                <div className="mt-3 p-3 bg-stone-50 border border-stone-200 rounded-xl text-left">
+                  <p className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">Test Series</p>
+                  <p className="text-sm font-bold text-stone-900">{accessLockedModal.testSeries.name}</p>
+                  {accessLockedModal.testSeries.salePrice !== undefined && accessLockedModal.testSeries.salePrice > 0 && (
+                    <p className="text-xs font-bold text-emerald-700 mt-0.5">₹{accessLockedModal.testSeries.salePrice}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setAccessLockedModal(null);
+                  if (onClearInitialTest) onClearInitialTest();
+                  if (seriesContextId && onBackToSeries) {
+                    onBackToSeries(seriesContextId);
+                  } else {
+                    setActiveSection('test-series');
+                  }
+                }}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>View in Test Series Store</span>
+              </button>
+              <button
+                onClick={() => {
+                  setAccessLockedModal(null);
+                  if (onClearInitialTest) onClearInitialTest();
+                  if (seriesContextId && onBackToSeries) {
+                    onBackToSeries(seriesContextId);
+                  }
+                }}
+                className="w-full py-2 text-stone-600 hover:text-stone-900 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,15 +1,14 @@
 {
-  "id": "rel_android_2_1789460099424",
-  "platform": "android",
-  "version_name": "1.1",
-  "version_code": 2,
-  "min_supported_version_code": 1,
-  "apk_url": "https://github.com/ikshovia/ikshovia/releases/download/v1.1/app-debug.apk",
-  "sha256_checksum": "30a97db96538142058f3b99b3e228098b65a7f18be347d969e2ddebb6eb87d63",
-  "file_size_bytes": 14522269,
-  "file_size_mb": "13.85",
-  "release_notes": "- Automated CI Production Build v1.1 (build 2)\n- Synchronized with https://ikshovia.onrender.com backend\n- Native Capacitor 8 offline-ready engine and live update system",
-  "is_mandatory": false,
-  "status": "PUBLISHED",
-  "created_at": "2026-09-15T08:14:59.424Z"
+  "versionName": "3.0",
+  "versionCode": 9,
+  "minSupportedVersionCode": 8,
+  "releaseDate": "2026-09-30T08:07:29.977Z",
+  "fileSizeBytes": 7263122,
+  "sha256Checksum": "7cd7e821bf6edc9c1818d40d55f4a6044eba0b97f06ec1d84691b308de0c25e7",
+  "certificateSha256": "36:0A:C2:B8:ED:91:49:C4:01:76:7C:F2:28:3F:C7:B3:5A:13:C1:C8:C4:0D:94:FD:CB:05:DE:F9:9E:B6:C1:99",
+  "signingIdentity": "permanent_release_v2",
+  "downloadUrl": "https://ikshoviacse.onrender.com/api/app/download/latest",
+  "apkUrl": "https://ikshoviacse.onrender.com/api/app/download/latest",
+  "updateType": "OPTIONAL",
+  "releaseNotes": "IKSHOVIA v3.0 Official Production Release (Build 9) with Permanent Signing Identity.\n\n• Complete Phase 1, Phase 2, and Phase 3 unified learning intelligence platform.\n• Unified Prelims → Mains → Interview Preparation Engine.\n• Personalized Study Planner with syllabus-linked schedules & dynamic completion queues.\n• SM-2 Smart Revision Engine with deterministic interval tracking & retention curves.\n• Topic & Concept Mastery Engine powered by real question attempt telemetry.\n• Current Affairs Intelligence linking real-time news to syllabus themes and PYQs.\n• Mains Answer Improvement Loop with multi-attempt trajectory and rubric breakdown.\n• Cross-stage learner analytics and personalized AI Tutor context.\n• Verified in-place upgrade from v2.2 Build 8 under permanent signing key."
 }

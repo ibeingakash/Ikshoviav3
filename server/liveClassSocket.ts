@@ -6,9 +6,12 @@ interface ClientConnection {
   ws: WebSocket;
   userId: string;
   userName: string;
-  role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+  role: 'STUDENT' | 'TEACHER' | 'ADMIN' | 'MODERATOR' | 'PARTICIPANT';
   classId: string;
 }
+
+const isHostOrModerator = (role: string) =>
+  role === 'TEACHER' || role === 'ADMIN' || role === 'MODERATOR';
 
 export function setupLiveClassWebSocket(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -163,7 +166,7 @@ export function setupLiveClassWebSocket(server: Server) {
           });
         } else if (type === 'QUESTION_ANSWER') {
           const conn = clientMap.get(ws);
-          if (!conn || (conn.role !== 'TEACHER' && conn.role !== 'ADMIN')) return;
+          if (!conn || !isHostOrModerator(conn.role)) return;
 
           const updated = await liveClassRepository.updateQuestion(
             conn.classId,
@@ -182,7 +185,7 @@ export function setupLiveClassWebSocket(server: Server) {
           });
         } else if (type === 'POLL_CREATE') {
           const conn = clientMap.get(ws);
-          if (!conn || (conn.role !== 'TEACHER' && conn.role !== 'ADMIN')) return;
+          if (!conn || !isHostOrModerator(conn.role)) return;
 
           const poll = await liveClassRepository.createPoll(
             conn.classId,
@@ -216,7 +219,7 @@ export function setupLiveClassWebSocket(server: Server) {
           });
         } else if (type === 'MUTE_ALL') {
           const conn = clientMap.get(ws);
-          if (!conn || (conn.role !== 'TEACHER' && conn.role !== 'ADMIN')) return;
+          if (!conn || !isHostOrModerator(conn.role)) return;
 
           broadcastToRoom(conn.classId, {
             type: 'MUTE_ALL_TRIGGERED',
@@ -225,7 +228,7 @@ export function setupLiveClassWebSocket(server: Server) {
           });
         } else if (type === 'KICK_PARTICIPANT') {
           const conn = clientMap.get(ws);
-          if (!conn || (conn.role !== 'TEACHER' && conn.role !== 'ADMIN')) return;
+          if (!conn || !isHostOrModerator(conn.role)) return;
 
           await liveClassRepository.updateParticipantState(conn.classId, payload.targetUserId, {
             status: 'REMOVED',
@@ -238,7 +241,7 @@ export function setupLiveClassWebSocket(server: Server) {
           });
         } else if (type === 'END_CLASS_FOR_ALL') {
           const conn = clientMap.get(ws);
-          if (!conn || (conn.role !== 'TEACHER' && conn.role !== 'ADMIN')) return;
+          if (!conn || !isHostOrModerator(conn.role)) return;
 
           await liveClassRepository.endClass(conn.classId);
 

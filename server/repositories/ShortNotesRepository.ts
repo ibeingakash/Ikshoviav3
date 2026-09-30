@@ -335,7 +335,7 @@ export class ShortNotesRepository {
           SELECT id, resource_id, document_id, title, exam, subject, topic, tags,
                  description, year, language, visibility, status, page_count,
                  raw_ocr_text, source_file_url, reviewed_by, reviewed_at, created_at, updated_at
-          FROM short_notes
+          FROM short_notes 
           WHERE id = $1
         `, [id]);
         if (res.rows.length > 0) {
@@ -344,8 +344,8 @@ export class ShortNotesRepository {
             `SELECT id, short_note_id, resource_id, document_id, page_number, order_index,
                     type, text, level, items, table_data, fact_box, comparison, timeline,
                     important_points, created_at
-             FROM short_note_blocks
-             WHERE short_note_id = $1
+             FROM short_note_blocks 
+             WHERE short_note_id = $1 
              ORDER BY order_index ASC`,
             [id]
           );
@@ -493,7 +493,7 @@ export class ShortNotesRepository {
           : `LEFT JOIN (SELECT 0 AS progress_percentage, false AS is_reviewed, NULL::text AS short_note_id) p ON 1=0`;
 
         const countQuery = `
-          SELECT COUNT(DISTINCT sn.id)
+          SELECT COUNT(DISTINCT sn.id) 
           FROM short_notes sn
           ${joinBookmarks}
           ${joinProgress}

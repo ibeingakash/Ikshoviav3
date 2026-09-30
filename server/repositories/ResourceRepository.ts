@@ -43,6 +43,12 @@ export interface DbResource {
   is_bookmarked?: boolean;
   last_page?: number;
   progress_percentage?: number;
+  is_published: boolean;
+  is_deleted?: boolean;
+  deleted_at?: Date | string | null;
+  deleted_by?: string | null;
+  course_id?: string | null;
+  source_type?: string;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -52,7 +58,9 @@ const RESOURCE_BASE_COLUMNS = `
   topic, concept_id, exam, exam_tag, edition, publication_year, publisher, language,
   isbn, license_status, cover_image_url, tags, source_attribution, storage_provider,
   file_hash, drive_file_id, drive_folder_id, file_name, file_size, mime_type,
-  page_count, status, visibility, uploaded_by, url, read_time_minutes, created_at, updated_at
+  page_count, status, visibility, uploaded_by, url, read_time_minutes,
+  is_published, is_deleted, deleted_at, deleted_by, course_id, source_type,
+  created_at, updated_at
 `;
 
 const RESOURCE_ALIAS_COLUMNS = `
@@ -60,7 +68,9 @@ const RESOURCE_ALIAS_COLUMNS = `
   r.topic, r.concept_id, r.exam, r.exam_tag, r.edition, r.publication_year, r.publisher, r.language,
   r.isbn, r.license_status, r.cover_image_url, r.tags, r.source_attribution, r.storage_provider,
   r.file_hash, r.drive_file_id, r.drive_folder_id, r.file_name, r.file_size, r.mime_type,
-  r.page_count, r.status, r.visibility, r.uploaded_by, r.url, r.read_time_minutes, r.created_at, r.updated_at
+  r.page_count, r.status, r.visibility, r.uploaded_by, r.url, r.read_time_minutes,
+  r.is_published, r.is_deleted, r.deleted_at, r.deleted_by, r.course_id, r.source_type,
+  r.created_at, r.updated_at
 `;
 
 export class ResourceRepository {
@@ -77,6 +87,7 @@ export class ResourceRepository {
 
   async findAll(filters?: {
     status?: ResourceStatus | ResourceStatus[];
+    isPublished?: boolean;
     visibility?: ResourceVisibility | ResourceVisibility[];
     subject?: string;
     topic?: string;
@@ -93,6 +104,11 @@ export class ResourceRepository {
     const conditions: string[] = ['(r.is_deleted IS NULL OR r.is_deleted = FALSE)'];
     const whereValues: any[] = [];
     let paramIndex = 1;
+
+    if (filters?.isPublished !== undefined) {
+      conditions.push(`r.is_published = $${paramIndex++}`);
+      whereValues.push(filters.isPublished);
+    }
 
     if (filters?.status) {
       if (Array.isArray(filters.status)) {
@@ -157,13 +173,13 @@ export class ResourceRepository {
     if (filters?.search && filters.search.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(`(
-        r.title ILIKE $${paramIndex} OR
-        r.author ILIKE $${paramIndex} OR
-        r.description ILIKE $${paramIndex} OR
-        r.topic ILIKE $${paramIndex} OR
-        r.subject ILIKE $${paramIndex} OR
-        r.summary ILIKE $${paramIndex} OR
-        r.exam ILIKE $${paramIndex} OR
+        r.title ILIKE $${paramIndex} OR 
+        r.author ILIKE $${paramIndex} OR 
+        r.description ILIKE $${paramIndex} OR 
+        r.topic ILIKE $${paramIndex} OR 
+        r.subject ILIKE $${paramIndex} OR 
+        r.summary ILIKE $${paramIndex} OR 
+        r.exam ILIKE $${paramIndex} OR 
         r.resource_type ILIKE $${paramIndex}
       )`);
       whereValues.push(q);
@@ -227,7 +243,7 @@ export class ResourceRepository {
 
     const res = await pool.query(query, queryValues);
     return {
-      resources: res.rows.map(this.mapRowToResource),
+      resources: res.rows.map((r) => this.mapRowToResource(r)),
       total,
     };
   }
@@ -252,7 +268,8 @@ export class ResourceRepository {
     });
   }
 
-  async findById(id: string, userId?: string): Promise<DbResource | null> {
+  async findById(id: string, userId?: string, includeDeleted: boolean = false): Promise<DbResource | null> {
+    const deletedCond = includeDeleted ? '1=1' : '(r.is_deleted IS NULL OR r.is_deleted = FALSE)';
     if (userId) {
       const res = await pool.query(
         `SELECT ${RESOURCE_ALIAS_COLUMNS},
@@ -262,15 +279,16 @@ export class ResourceRepository {
         FROM public.resources r
         LEFT JOIN public.learner_resource_progress p ON p.resource_id = r.id AND p.user_id = $2
         LEFT JOIN public.learner_resource_bookmarks b ON b.resource_id = r.id AND b.user_id = $2
-        WHERE r.id = $1 AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)`,
+        WHERE r.id = $1 AND ${deletedCond}`,
         [id, userId]
       );
       if (res.rows.length === 0) return null;
       return this.mapRowToResource(res.rows[0]);
     }
 
+    const baseDeletedCond = includeDeleted ? '1=1' : '(is_deleted IS NULL OR is_deleted = FALSE)';
     const res = await pool.query(
-      `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE)`,
+      `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources WHERE id = $1 AND ${baseDeletedCond}`,
       [id]
     );
     if (res.rows.length === 0) return null;
@@ -311,10 +329,10 @@ export class ResourceRepository {
       if (author && author.trim()) {
         const cleanAuthor = author.trim().toLowerCase();
         const normRes = await pool.query(
-          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources
-           WHERE LOWER(TRIM(title)) = $1
-             AND LOWER(TRIM(author)) = $2
-             AND ($3::text IS NULL OR id != $3)
+          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources 
+           WHERE LOWER(TRIM(title)) = $1 
+             AND LOWER(TRIM(author)) = $2 
+             AND ($3::text IS NULL OR id != $3) 
            LIMIT 1`,
           [cleanTitle, cleanAuthor, excludeId || null]
         );
@@ -323,9 +341,9 @@ export class ResourceRepository {
         }
       } else {
         const titleRes = await pool.query(
-          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources
-           WHERE LOWER(TRIM(title)) = $1
-             AND ($2::text IS NULL OR id != $2)
+          `SELECT ${RESOURCE_BASE_COLUMNS} FROM public.resources 
+           WHERE LOWER(TRIM(title)) = $1 
+             AND ($2::text IS NULL OR id != $2) 
            LIMIT 1`,
           [cleanTitle, excludeId || null]
         );
@@ -360,10 +378,10 @@ export class ResourceRepository {
 
     if (!validatedSubjectId && validatedSubjectName) {
       const match = await pool.query(
-        `SELECT id, name FROM public.subjects
-         WHERE LOWER(name) = LOWER($1)
-            OR LOWER(code) = LOWER($1)
-            OR name ILIKE $2
+        `SELECT id, name FROM public.subjects 
+         WHERE LOWER(name) = LOWER($1) 
+            OR LOWER(code) = LOWER($1) 
+            OR name ILIKE $2 
          ORDER BY id ASC LIMIT 1`,
         [validatedSubjectName.trim(), `%${validatedSubjectName.trim()}%`]
       );
@@ -383,6 +401,7 @@ export class ResourceRepository {
       }
     }
 
+    const isPublished = data.status === 'PUBLISHED' || Boolean(data.is_published);
     const query = `
       INSERT INTO public.resources (
         id, title, author, description, resource_type, type,
@@ -391,7 +410,8 @@ export class ResourceRepository {
         license_status, cover_image_url, tags, source_attribution,
         storage_provider, file_hash,
         drive_file_id, drive_folder_id, file_name, file_size,
-        mime_type, page_count, status, visibility, uploaded_by,
+        mime_type, page_count, status, visibility, is_published, is_deleted,
+        course_id, source_type, uploaded_by,
         url, summary, read_time_minutes, created_at, updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
@@ -400,8 +420,9 @@ export class ResourceRepository {
         $18, $19, $20, $21,
         $22, $23,
         $24, $25, $26, $27,
-        $28, $29, $30, $31, $32,
-        $33, $34, $35, $36, $37
+        $28, $29, $30, $31, $32, $33,
+        $34, $35, $36,
+        $37, $38, $39, $40, $41
       )
       RETURNING *
     `;
@@ -440,8 +461,12 @@ export class ResourceRepository {
       data.file_size || 0,
       data.mime_type || 'application/pdf',
       data.page_count || 0,
-      data.status || 'DRAFT',
+      data.status || (isPublished ? 'PUBLISHED' : 'DRAFT'),
       data.visibility || 'PUBLIC',
+      isPublished,
+      false, // is_deleted
+      data.course_id || null,
+      data.source_type || 'OFFICIAL_COMMISSION',
       data.uploaded_by || 'admin',
       data.url || `/api/resources/${id}/stream`,
       data.summary || data.description || '',
@@ -453,30 +478,57 @@ export class ResourceRepository {
     return this.mapRowToResource(res.rows[0]);
   }
 
-  async update(id: string, updates: Partial<DbResource>): Promise<DbResource | null> {
-    const existing = await this.findById(id);
+  async update(id: string, updates: any): Promise<DbResource | null> {
+    const existing = await this.findById(id, undefined, true);
     if (!existing) return null;
 
     const fields: string[] = [];
     const values: any[] = [];
     let idx = 1;
 
-    const allowedFields: (keyof DbResource)[] = [
+    // Harmonize is_published and status
+    let newStatus = updates.status;
+    let newIsPublished = updates.is_published !== undefined ? updates.is_published : updates.isPublished;
+
+    if (newStatus !== undefined && newIsPublished === undefined) {
+      newIsPublished = newStatus === 'PUBLISHED';
+    } else if (newIsPublished !== undefined && newStatus === undefined) {
+      if (newIsPublished === true) {
+        newStatus = 'PUBLISHED';
+      } else if (existing.status === 'PUBLISHED') {
+        newStatus = 'READY';
+      }
+    }
+
+    if (newStatus !== undefined) {
+      fields.push(`status = $${idx++}`);
+      values.push(newStatus);
+    }
+    if (newIsPublished !== undefined) {
+      fields.push(`is_published = $${idx++}`);
+      values.push(Boolean(newIsPublished));
+    }
+
+    const otherFields = [
       'title', 'author', 'description', 'resource_type', 'type',
       'subject', 'subject_id', 'topic', 'concept_id', 'exam', 'exam_tag',
       'edition', 'publication_year', 'publisher', 'language', 'isbn',
       'license_status', 'cover_image_url', 'tags', 'source_attribution',
       'storage_provider', 'file_hash',
       'drive_file_id', 'drive_folder_id', 'file_name', 'file_size',
-      'mime_type', 'page_count', 'status', 'visibility', 'summary',
-      'read_time_minutes', 'url',
+      'mime_type', 'page_count', 'visibility', 'summary',
+      'read_time_minutes', 'url', 'course_id', 'source_type',
     ];
 
-    for (const key of allowedFields) {
+    for (const key of otherFields) {
       if (updates[key] !== undefined) {
         fields.push(`${key} = $${idx++}`);
         values.push(updates[key]);
       }
+    }
+
+    if (fields.length === 0) {
+      return existing;
     }
 
     fields.push(`updated_at = NOW()`);
@@ -494,26 +546,39 @@ export class ResourceRepository {
     return this.mapRowToResource(res.rows[0]);
   }
 
-  async delete(id: string): Promise<boolean> {
-    const existing = await this.findById(id);
+  async delete(id: string, deletedBy: string = 'ADMIN'): Promise<boolean> {
+    const existing = await this.findById(id, undefined, true);
     if (existing) {
       // Record in tombstone table so auto-seeding/rescan cannot resurrect it
       await pool.query(
-        `INSERT INTO public.deleted_resources_tombstone (id, file_name, file_hash, title, deleted_by)
-         VALUES ($1, $2, $3, $4, 'ADMIN')
-         ON CONFLICT (id) DO UPDATE SET deleted_at = NOW()`,
-        [id, existing.file_name || null, existing.file_hash || null, existing.title || null]
-      );
+        `INSERT INTO public.deleted_resources_tombstone (id, resource_id, file_name, file_hash, title, url, deleted_by, deleted_at)
+         VALUES ($1, $1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (id) DO UPDATE SET deleted_at = NOW(), deleted_by = EXCLUDED.deleted_by`,
+        [id, existing.file_name || null, existing.file_hash || null, existing.title || null, existing.url || null, deletedBy]
+      ).catch((err) => {
+        console.warn('[ResourceRepository.delete] Tombstone warning:', err.message);
+      });
     }
 
     const res = await pool.query(
-      `UPDATE public.resources SET is_deleted = TRUE, deleted_at = NOW(), status = 'ARCHIVED' WHERE id = $1`,
-      [id]
+      `UPDATE public.resources 
+       SET is_deleted = TRUE, 
+           deleted_at = NOW(), 
+           deleted_by = $2, 
+           status = 'ARCHIVED', 
+           is_published = FALSE,
+           updated_at = NOW() 
+       WHERE id = $1`,
+      [id, deletedBy]
     );
     return (res.rowCount || 0) > 0;
   }
 
   private mapRowToResource(row: any): DbResource {
+    const isPublished = row.is_published !== undefined && row.is_published !== null
+      ? Boolean(row.is_published)
+      : (row.status || '').toUpperCase() === 'PUBLISHED';
+
     return {
       id: row.id,
       title: row.title,
@@ -544,8 +609,14 @@ export class ResourceRepository {
       file_size: Number(row.file_size || 0),
       mime_type: row.mime_type || 'application/pdf',
       page_count: Number(row.page_count || 0),
-      status: (row.status || 'READY').toUpperCase() as ResourceStatus,
+      status: (row.status || (isPublished ? 'PUBLISHED' : 'READY')).toUpperCase() as ResourceStatus,
       visibility: (row.visibility || 'PUBLIC').toUpperCase() as ResourceVisibility,
+      is_published: isPublished,
+      is_deleted: Boolean(row.is_deleted),
+      deleted_at: row.deleted_at,
+      deleted_by: row.deleted_by,
+      course_id: row.course_id,
+      source_type: row.source_type || 'OFFICIAL_COMMISSION',
       uploaded_by: row.uploaded_by,
       url: row.url || `/api/resources/${row.id}/stream`,
       summary: row.summary || row.description,

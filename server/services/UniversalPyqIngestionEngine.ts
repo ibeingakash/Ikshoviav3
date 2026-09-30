@@ -457,7 +457,7 @@ export class UniversalPyqIngestionEngine {
 
       // 3. Extract Questions (using existing verified dataset if registered, or deterministic parser)
       let questions: ExtractedQuestion[] = [];
-
+      
       // Check if dataset exists in repository / catalog
       if (!isDryRun) {
         const existingQsRes = await pool.query(`
@@ -466,8 +466,8 @@ export class UniversalPyqIngestionEngine {
                  solution, solution_source, subject, subject_id, topic, gs_paper,
                  prelims_area, difficulty, question_type, statements, statements_hi,
                  match_data, match_data_hi, verification_status
-          FROM public.pyq_questions
-          WHERE paper_id = $1
+          FROM public.pyq_questions 
+          WHERE paper_id = $1 
           ORDER BY question_number ASC
         `, [paperId]);
         if (existingQsRes.rows.length >= paper.expectedQuestionCount && !options.forceReingest) {
@@ -504,7 +504,7 @@ export class UniversalPyqIngestionEngine {
           }));
         }
       }
-
+      
       if (questions.length === 0 && pdfResult.buffer) {
         const rawText = pdfResult.buffer.toString('utf-8');
         questions = this.parseQuestionContent(rawText, {

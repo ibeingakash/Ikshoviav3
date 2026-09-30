@@ -1,4 +1,4 @@
-export type MeetingConnectionState =
+export type MeetingConnectionState = 
   | 'IDLE'
   | 'LOADING'
   | 'CONNECTING'
@@ -17,7 +17,7 @@ export interface ProviderParticipant {
   isVideoMuted: boolean;
   isScreenSharing: boolean;
   isDominantSpeaker: boolean;
-  role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+  role: 'MODERATOR' | 'PARTICIPANT' | 'STUDENT' | 'TEACHER' | 'ADMIN';
 }
 
 export interface JoinMeetingOptions {
@@ -29,7 +29,7 @@ export interface JoinMeetingOptions {
     name: string;
     email?: string;
     avatarUrl?: string;
-    role: 'STUDENT' | 'TEACHER' | 'ADMIN';
+    role: 'MODERATOR' | 'PARTICIPANT' | 'STUDENT' | 'TEACHER' | 'ADMIN';
   };
   container: HTMLElement;
   initialAudioMuted?: boolean;

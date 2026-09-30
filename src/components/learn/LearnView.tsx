@@ -79,8 +79,8 @@ export const LearnView: React.FC = () => {
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <BookOpen className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <BookOpen className="w-6 h-6 text-amber-800" />
             <span>Interactive Concept Learning Engine</span>
           </h1>
           <p className="text-stone-600 text-xs mt-0.5 font-medium">
@@ -90,7 +90,7 @@ export const LearnView: React.FC = () => {
 
         <button
           onClick={() => setActiveSection('practice')}
-          className="px-4 py-2 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 self-start cursor-pointer border border-amber-500/30"
+          className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-2 self-start cursor-pointer border border-amber-500/30"
         >
           <span>Practice Questions for this Concept</span>
           <ArrowRight className="w-4 h-4" />
@@ -105,7 +105,7 @@ export const LearnView: React.FC = () => {
             onClick={() => setActiveSubjectId(s.id)}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 border cursor-pointer ${
               activeSubjectId === s.id
-                ? 'bg-[#35156B] border-[#35156B] text-amber-300 shadow-2xs'
+                ? 'bg-[#1C1917] border-[#1C1917] text-amber-300 shadow-2xs'
                 : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
             }`}
           >
@@ -122,7 +122,7 @@ export const LearnView: React.FC = () => {
         <div className="lg:col-span-4 bg-white border border-stone-200 rounded-2xl p-4 space-y-4 max-h-[75vh] overflow-y-auto shadow-2xs">
           <div className="text-xs font-bold text-stone-500 uppercase tracking-wider font-mono flex items-center justify-between border-b border-stone-100 pb-2">
             <span>Syllabus Hierarchy</span>
-            <span className="text-[10px] text-[#35156B] font-mono font-bold">{(Array.isArray(concepts) ? concepts : []).length} Concepts</span>
+            <span className="text-[10px] text-amber-800 font-mono font-bold">{(Array.isArray(concepts) ? concepts : []).length} Concepts</span>
           </div>
 
           {(Array.isArray(topics) ? topics : []).map(t => {
@@ -130,8 +130,8 @@ export const LearnView: React.FC = () => {
             const topicConcepts = safeConcepts.filter(c => c && c.topicId === t.id);
             return (
               <div key={t.id} className="space-y-1.5">
-                <div className="text-xs font-bold text-[#111426] flex items-center gap-1.5 pt-1">
-                  <ChevronRight className="w-3.5 h-3.5 text-[#35156B] shrink-0" />
+                <div className="text-xs font-bold text-stone-900 flex items-center gap-1.5 pt-1">
+                  <ChevronRight className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                   <span>{t.name}</span>
                 </div>
 
@@ -144,7 +144,7 @@ export const LearnView: React.FC = () => {
                         onClick={() => setSelectedConceptId(c.id)}
                         className={`w-full text-left p-2.5 rounded-xl text-xs transition-all flex items-center justify-between border cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-50 border-amber-300 text-[#35156B] font-bold shadow-2xs'
+                            ? 'bg-amber-50 border-amber-300 text-amber-900 font-bold shadow-2xs'
                             : 'bg-stone-50 border-stone-200/80 text-stone-700 hover:bg-stone-100'
                         }`}
                       >
@@ -187,7 +187,7 @@ export const LearnView: React.FC = () => {
                   )}
                 </div>
 
-                <h2 className="text-xl sm:text-2xl font-serif-editorial font-bold text-[#111426]">
+                <h2 className="text-xl sm:text-2xl font-serif-editorial font-bold text-stone-900">
                   {activeConcept.title}
                 </h2>
 
@@ -211,7 +211,7 @@ export const LearnView: React.FC = () => {
                         'EXPLAIN'
                       );
                     }}
-                    className="px-3.5 py-1.5 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer border border-amber-500/30"
+                    className="px-3.5 py-1.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer border border-amber-500/30"
                   >
                     <Bot className="w-4 h-4 text-amber-300" />
                     <span>Ask AI Tutor to Explain in Depth</span>
@@ -231,7 +231,7 @@ export const LearnView: React.FC = () => {
                     }}
                     className="px-3.5 py-1.5 border border-stone-200 font-bold text-xs rounded-xl flex items-center gap-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 transition-all cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-[#35156B]" />
+                    <Sparkles className="w-3.5 h-3.5 text-amber-800" />
                     <span>Simplify Topic</span>
                   </button>
                 </div>
@@ -239,7 +239,7 @@ export const LearnView: React.FC = () => {
 
               {/* Detailed Explanation */}
               <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#35156B] font-mono">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 font-mono">
                   Comprehensive Civil Services Explanation
                 </h3>
                 <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-line p-4 rounded-xl border border-stone-200 bg-stone-50/50 text-stone-800 font-medium">
@@ -306,7 +306,7 @@ export const LearnView: React.FC = () => {
                       onClick={() => handleRateConfidence(rating)}
                       className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                         confidenceRated === rating
-                          ? 'bg-[#35156B] border-[#35156B] text-amber-300 shadow-2xs'
+                          ? 'bg-amber-800 border-amber-800 text-white shadow-2xs'
                           : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -335,13 +335,13 @@ export const LearnView: React.FC = () => {
                   onClick={() => setActiveSection('ai-tutor')}
                   className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 border border-stone-200 text-stone-800 font-bold text-xs rounded-xl flex items-center gap-2 transition-all cursor-pointer"
                 >
-                  <Bot className="w-4 h-4 text-[#35156B]" />
+                  <Bot className="w-4 h-4 text-amber-800" />
                   <span>Ask AI Tutor to Explain or Simplify</span>
                 </button>
 
                 <button
                   onClick={() => setActiveSection('practice')}
-                  className="px-5 py-2.5 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer border border-amber-500/30"
+                  className="px-5 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold text-xs rounded-xl shadow-2xs flex items-center gap-2 transition-all cursor-pointer border border-amber-500/30"
                 >
                   <span>Attempt Practice MCQs</span>
                   <ArrowRight className="w-4 h-4" />
@@ -359,7 +359,7 @@ export const LearnView: React.FC = () => {
                       <button
                         key={p.id}
                         onClick={() => navigateToConcept(p.id)}
-                        className="w-full text-left p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-[#35156B] font-medium hover:underline block truncate cursor-pointer"
+                        className="w-full text-left p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-amber-800 font-medium hover:underline block truncate cursor-pointer"
                       >
                         ← {p.title}
                       </button>
@@ -376,7 +376,7 @@ export const LearnView: React.FC = () => {
                       <button
                         key={r.id}
                         onClick={() => navigateToConcept(r.id)}
-                        className="w-full text-left p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-[#35156B] font-medium hover:underline block truncate cursor-pointer"
+                        className="w-full text-left p-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-amber-800 font-medium hover:underline block truncate cursor-pointer"
                       >
                         → {r.title}
                       </button>

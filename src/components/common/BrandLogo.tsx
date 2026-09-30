@@ -105,3 +105,35 @@ export const DashboardLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) 
 export const LoginLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) => {
   return <BrandLogo variant="login" {...props} />;
 };
+
+/**
+ * Dedicated PDF Report / Diagnostic Scorecard Logo.
+ * Uses 07_IKSHOVIA_PDF_Report_Logo.
+ */
+export const PdfReportLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) => {
+  return <BrandLogo variant="pdf" {...props} />;
+};
+
+/**
+ * Dedicated Certificate / Official Voucher Logo.
+ * Uses 08_IKSHOVIA_Certificate_Logo.
+ */
+export const CertificateLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) => {
+  return <BrandLogo variant="certificate" {...props} />;
+};
+
+/**
+ * Dedicated Monochrome Dark Logo for paper archives, printouts, and official commission stamps.
+ * Uses 10_IKSHOVIA_Monochrome_Dark.
+ */
+export const MonochromeDarkLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) => {
+  return <BrandLogo variant="monochrome-dark" {...props} />;
+};
+
+/**
+ * Dedicated Monochrome Light Logo for dark mode cards, footers, and inverted banners.
+ * Uses 09_IKSHOVIA_Monochrome_Light.
+ */
+export const MonochromeLightLogo: React.FC<Omit<BrandLogoProps, 'variant'>> = (props) => {
+  return <BrandLogo variant="monochrome-light" {...props} />;
+};

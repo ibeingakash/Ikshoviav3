@@ -223,7 +223,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
           email: user?.email || '',
         },
         theme: {
-          color: '#35156B',
+          color: '#1C1917',
         },
         modal: {
           ondismiss: () => {
@@ -298,9 +298,9 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
           </button>
           <button
             onClick={() => setActiveTab('purchases')}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-[#35156B] text-amber-300 shadow-2xs"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-[#1C1917] text-amber-300 shadow-2xs border border-amber-500/20"
           >
-            <Receipt className="w-4 h-4" />
+            <Receipt className="w-4 h-4 text-amber-400" />
             <span>My Purchases & Receipts</span>
           </button>
         </div>
@@ -315,8 +315,8 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
       {/* Top Header & Tab Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <Package className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <Package className="w-6 h-6 text-amber-700" />
             <span>Comprehensive Civil Services Programs</span>
           </h1>
           <p className="text-xs text-stone-500 mt-0.5 font-medium">
@@ -328,16 +328,16 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
         <div className="flex items-center gap-2 self-start sm:self-center">
           <button
             onClick={() => setActiveTab('catalog')}
-            className="px-4 py-2 bg-[#35156B] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs"
+            className="px-4 py-2 bg-[#1C1917] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs border border-amber-500/20"
           >
-            <Tag className="w-3.5 h-3.5" />
+            <Tag className="w-3.5 h-3.5 text-amber-400" />
             <span>Curated Plans</span>
           </button>
           <button
             onClick={() => setActiveTab('purchases')}
             className="px-4 py-2 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200/90 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
           >
-            <Receipt className="w-3.5 h-3.5 text-[#35156B]" />
+            <Receipt className="w-3.5 h-3.5 text-amber-700" />
             <span>My Purchases</span>
           </button>
         </div>
@@ -347,7 +347,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-full py-16 text-center text-stone-400">
-            <Clock className="w-6 h-6 animate-spin mx-auto mb-2 text-[#35156B]" />
+            <Clock className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-700" />
             <p className="text-xs">Loading official curriculum catalog...</p>
           </div>
         ) : courses.length === 0 ? (
@@ -383,7 +383,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
 
                   {/* Course Title & Description */}
                   <div>
-                    <h3 className="font-serif-editorial font-bold text-lg text-[#111426] leading-snug group-hover:text-[#35156B] transition-colors">
+                    <h3 className="font-serif-editorial font-bold text-lg text-stone-900 leading-snug group-hover:text-amber-800 transition-colors">
                       {course.name}
                     </h3>
                     <p className="text-xs text-stone-600 mt-1.5 line-clamp-3 leading-relaxed">
@@ -468,9 +468,9 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                   ) : (
                     <button
                       onClick={() => handleOpenCheckout(course)}
-                      className="w-full py-2.5 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                      className="w-full py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
-                      <Tag className="w-3.5 h-3.5" />
+                      <Tag className="w-3.5 h-3.5 text-amber-400" />
                       <span>View Details & Enroll</span>
                     </button>
                   )}
@@ -539,10 +539,10 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                       setShowCheckoutModal(false);
                       setActiveSection('pyq-practice');
                     }}
-                    className="px-6 py-2.5 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 font-bold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-md"
+                    className="px-6 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-md border border-amber-500/30"
                   >
                     <span>Start Learning Now</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-4 h-4 text-amber-400" />
                   </button>
                 </div>
               </div>
@@ -609,7 +609,7 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                         type="button"
                         onClick={handleApplyCoupon}
                         disabled={isValidatingCoupon || !couponCodeInput.trim()}
-                        className="px-3 py-1.5 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors disabled:opacity-50 border border-amber-500/20"
                       >
                         {isValidatingCoupon ? 'Checking...' : 'Apply'}
                       </button>
@@ -731,10 +731,10 @@ export const CourseCatalogView: React.FC<CourseCatalogViewProps> = ({ initialTab
                     className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-2xs ${
                       !gatewayConfig?.isConfigured
                         ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                        : 'bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 border border-amber-500/30'
+                        : 'bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/30'
                     }`}
                   >
-                    <CreditCard className="w-4 h-4" />
+                    <CreditCard className="w-4 h-4 text-amber-400" />
                     <span>
                       {isProcessingCheckout
                         ? 'Connecting to Gateway...'

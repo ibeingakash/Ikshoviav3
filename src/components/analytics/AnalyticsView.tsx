@@ -34,16 +34,21 @@ import {
 export const AnalyticsView: React.FC = () => {
   const { learnerModel, setActiveSection } = useLearner();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [unifiedPerf, setUnifiedPerf] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getAnalytics().then(data => {
-      setAnalyticsData(data);
+    Promise.all([
+      api.getAnalytics().catch(() => null),
+      api.getUnifiedPerformance().catch(() => null),
+    ]).then(([analytics, unified]) => {
+      setAnalyticsData(analytics);
+      setUnifiedPerf(unified);
       setLoading(false);
     });
   }, []);
 
-  const COLORS = ['#35156B', '#C9953C', '#6B3FD4', '#10B981', '#E0B35D', '#F43F5E'];
+  const COLORS = ['#D97706', '#92400E', '#B45309', '#15803D', '#C2410C', '#1C1917'];
 
   const activeModel = analyticsData?.model || learnerModel;
 
@@ -63,8 +68,8 @@ export const AnalyticsView: React.FC = () => {
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-amber-700" />
             <span>Learner Intelligence Analytics</span>
           </h1>
           <p className="text-stone-600 text-xs mt-0.5 font-medium">
@@ -82,15 +87,15 @@ export const AnalyticsView: React.FC = () => {
 
       {loading && (
         <div className="py-16 text-center text-stone-500 text-xs flex items-center justify-center gap-2 font-medium">
-          <Sparkles className="w-4 h-4 animate-spin text-[#35156B]" />
+          <Sparkles className="w-4 h-4 animate-spin text-amber-700" />
           Aggregating intelligence metrics...
         </div>
       )}
 
       {!loading && analyticsData?.hasEnoughData === false && (
         <div className="bg-white border border-stone-200 p-8 rounded-2xl text-center space-y-4 my-8 shadow-2xs">
-          <BarChart2 className="w-10 h-10 text-[#35156B] mx-auto" />
-          <h2 className="text-lg font-serif-editorial font-bold text-[#111426]">
+          <BarChart2 className="w-10 h-10 text-amber-700 mx-auto" />
+          <h2 className="text-lg font-serif-editorial font-bold text-stone-900">
             No activity recorded yet
           </h2>
           <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
@@ -99,14 +104,14 @@ export const AnalyticsView: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               onClick={() => setActiveSection('practice')}
-              className="px-4 py-2 bg-[#35156B] hover:bg-[#250d4f] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-amber-500/20"
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span>Launch Daily Quiz</span>
             </button>
             <button
               onClick={() => setActiveSection('mock')}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               <FileCheck2 className="w-3.5 h-3.5" />
               <span>Take Full Mock Test</span>
@@ -117,14 +122,84 @@ export const AnalyticsView: React.FC = () => {
 
       {!loading && analyticsData?.hasEnoughData !== false && (
         <div className="space-y-6">
+          {/* Unified Cross-Stage Readiness Overview */}
+          {unifiedPerf && (
+            <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white p-5 sm:p-6 rounded-3xl border border-stone-800 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono uppercase">
+                      {unifiedPerf.targetExam || 'UPSC CSE'}
+                    </span>
+                    <span className="text-xs text-stone-400 font-mono">• Cross-Stage Readiness Index</span>
+                  </div>
+                  <h3 className="text-lg font-bold font-serif-editorial text-amber-100">
+                    Comprehensive Prelims → Mains → Interview Readiness
+                  </h3>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-2xl font-bold font-mono text-amber-300">
+                    {unifiedPerf.overallReadiness?.readinessScore != null ? `${unifiedPerf.overallReadiness.readinessScore}%` : 'Calibrating'}
+                  </div>
+                  <span className="text-[10px] text-stone-400 font-mono uppercase block">
+                    Composite Commission Index
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Stages Quick Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-stone-800/80 rounded-2xl border border-stone-700/70 space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono">
+                    <span>1. Prelims Stage</span>
+                    <span className="text-amber-400 font-bold">{unifiedPerf.prelims?.accuracy != null ? `${unifiedPerf.prelims.accuracy}%` : 'No data'}</span>
+                  </div>
+                  <div className="text-xs font-bold text-stone-200">
+                    {unifiedPerf.prelims?.totalAttempted || 0} Questions Attempted
+                  </div>
+                  <div className="text-[10px] text-stone-400">
+                    {unifiedPerf.prelims?.weakAreas?.length ? `Focus: ${unifiedPerf.prelims.weakAreas.slice(0, 2).map((w: any) => w.subject).join(', ')}` : 'Sufficient baseline'}
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-stone-800/80 rounded-2xl border border-stone-700/70 space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono">
+                    <span>2. Mains Stage</span>
+                    <span className="text-emerald-400 font-bold">{unifiedPerf.mains?.averageScore != null ? `${unifiedPerf.mains.averageScore}/10` : 'No data'}</span>
+                  </div>
+                  <div className="text-xs font-bold text-stone-200">
+                    {unifiedPerf.mains?.totalAnswersWritten || 0} Answers Written
+                  </div>
+                  <div className="text-[10px] text-stone-400">
+                    {unifiedPerf.mains?.evaluatedCount || 0} Evaluated on Rubric
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-stone-800/80 rounded-2xl border border-stone-700/70 space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono">
+                    <span>3. Interview Board</span>
+                    <span className="text-indigo-400 font-bold">{unifiedPerf.interview?.averageBoardScore != null ? `${unifiedPerf.interview.averageBoardScore}/275` : 'No data'}</span>
+                  </div>
+                  <div className="text-xs font-bold text-stone-200">
+                    {unifiedPerf.interview?.totalSessionsCompleted || 0} Board Simulations
+                  </div>
+                  <div className="text-[10px] text-stone-400">
+                    DAF Status: {unifiedPerf.interview?.dafCompleted ? 'Completed' : 'Draft'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Top Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
               <div className="text-xs font-bold text-stone-500 flex items-center gap-1">
-                <Target className="w-3.5 h-3.5 text-[#35156B] shrink-0" />
+                <Target className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                 <span className="truncate">Understanding Score</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426]">
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900">
                 {activeModel?.overallScore ?? 0}%
               </div>
             </div>
@@ -151,10 +226,10 @@ export const AnalyticsView: React.FC = () => {
 
             <div className="bg-white border border-stone-200 p-4 sm:p-5 rounded-2xl shadow-2xs space-y-1">
               <div className="text-xs font-bold text-stone-500 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-[#35156B] shrink-0" />
+                <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                 <span className="truncate">Avg Speed / Q</span>
               </div>
-              <div className="text-2xl font-serif-editorial font-bold text-[#111426] font-mono">
+              <div className="text-2xl font-serif-editorial font-bold text-stone-900 font-mono">
                 {activeModel?.avgTimePerQuestionSeconds ? `${activeModel.avgTimePerQuestionSeconds}s` : '45s'}
               </div>
             </div>
@@ -164,7 +239,7 @@ export const AnalyticsView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Confidence Bias Alignment</div>
-              <div className="text-sm font-bold text-[#35156B] uppercase font-mono mt-1">
+              <div className="text-sm font-bold text-amber-900 uppercase font-mono mt-1">
                 {activeModel?.confidenceBias || 'BALANCED'}
               </div>
             </div>
@@ -178,7 +253,7 @@ export const AnalyticsView: React.FC = () => {
 
             <div className="bg-white border border-stone-200 p-4 rounded-2xl space-y-1 shadow-2xs">
               <div className="text-xs font-bold text-stone-500">Total Practice Attempts</div>
-              <div className="text-sm font-bold text-[#111426] font-mono mt-1">
+              <div className="text-sm font-bold text-stone-900 font-mono mt-1">
                 {activeModel?.totalAttempts ?? activeModel?.totalQuestionsAttempted ?? 0} Questions
               </div>
             </div>
@@ -187,8 +262,8 @@ export const AnalyticsView: React.FC = () => {
           {/* Subject Mastery Bar Chart */}
           <div className="bg-white border border-stone-200 p-4 sm:p-6 rounded-2xl shadow-2xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-[#35156B]" />
+              <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-amber-700" />
                 <span>Subject Mastery Index (%)</span>
               </h2>
               <span className="text-[11px] text-stone-500 font-mono">Calibrated via Practice & Mocks</span>
@@ -222,7 +297,7 @@ export const AnalyticsView: React.FC = () => {
                         fontSize: '12px',
                       }}
                     />
-                    <Bar dataKey="mastery" fill="#35156B" radius={[0, 6, 6, 0]} barSize={18} />
+                    <Bar dataKey="mastery" fill="#D97706" radius={[0, 6, 6, 0]} barSize={18} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -235,10 +310,10 @@ export const AnalyticsView: React.FC = () => {
                 </p>
                 <button
                   onClick={() => setActiveSection('practice')}
-                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#35156B] text-white text-xs font-bold hover:bg-[#2a1055] transition-colors cursor-pointer"
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 text-xs font-bold transition-colors cursor-pointer"
                 >
                   <span>Start Practice</span>
-                  <ArrowRight className="w-3 h-3" />
+                  <ArrowRight className="w-3 h-3 text-amber-400" />
                 </button>
               </div>
             )}
@@ -247,8 +322,8 @@ export const AnalyticsView: React.FC = () => {
           {/* Mistake Breakdown Pie Chart & AI Advice */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white border border-stone-200 p-6 rounded-2xl shadow-2xs space-y-4">
-              <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-                <PieChart className="w-4 h-4 text-[#35156B]" />
+              <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                <PieChart className="w-4 h-4 text-amber-700" />
                 <span>Mistake Category Distribution</span>
               </h2>
 
@@ -313,13 +388,13 @@ export const AnalyticsView: React.FC = () => {
           {recentMockAttempts.length > 0 && (
             <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-2xs space-y-4">
               <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-                  <FileCheck2 className="w-4 h-4 text-[#35156B]" />
+                <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider font-mono flex items-center gap-2">
+                  <FileCheck2 className="w-4 h-4 text-amber-700" />
                   <span>Recent Mock Test Submissions</span>
                 </h2>
                 <button
                   onClick={() => setActiveSection('mock-tests')}
-                  className="text-xs font-bold text-[#35156B] hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-bold text-amber-800 hover:text-amber-900 hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <span>View All Mocks</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -363,7 +438,7 @@ export const AnalyticsView: React.FC = () => {
                             sessionStorage.setItem('review_attempt_id', attempt.id);
                             setActiveSection('mock-tests');
                           }}
-                          className="px-2.5 py-1 text-xs font-bold text-[#35156B] bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
+                          className="px-2.5 py-1 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors cursor-pointer"
                         >
                           Review
                         </button>

@@ -58,7 +58,9 @@ export class LearnerResourceRepository {
 
     const safeLastPage = Math.max(1, lastPage || 1);
     const safeTotalPages = Math.max(1, totalPages || 1);
-    const id = `prog_${userId.substring(0, 8)}_${resourceId.substring(0, 16)}`;
+    const safeUserId = String(userId || 'anon');
+    const safeResourceId = String(resourceId || 'res');
+    const id = `prog_${safeUserId.substring(0, 8)}_${safeResourceId.substring(0, 16)}`;
 
     const res = await pool.query(
       `INSERT INTO public.learner_resource_progress (
@@ -82,7 +84,7 @@ export class LearnerResourceRepository {
   public async getProgress(userId: string, resourceId: string): Promise<LearnerReadingProgress | null> {
     const res = await pool.query(
       `SELECT id, user_id, resource_id, last_page, total_pages, progress_percentage, created_at, updated_at
-       FROM public.learner_resource_progress
+       FROM public.learner_resource_progress 
        WHERE user_id = $1 AND resource_id = $2`,
       [userId, resourceId]
     );
@@ -94,7 +96,7 @@ export class LearnerResourceRepository {
    */
   public async getContinueReading(userId: string, limit: number = 6): Promise<any[]> {
     const res = await pool.query(
-      `SELECT
+      `SELECT 
         p.id AS progress_id,
         p.last_page,
         p.total_pages,
@@ -108,8 +110,10 @@ export class LearnerResourceRepository {
       FROM public.learner_resource_progress p
       JOIN public.resources r ON p.resource_id = r.id
       LEFT JOIN public.learner_resource_bookmarks b ON b.user_id = p.user_id AND b.resource_id = p.resource_id
-      WHERE p.user_id = $1
-        AND r.status IN ('READY', 'PUBLISHED')
+      WHERE p.user_id = $1 
+        AND r.is_published = TRUE
+        AND r.status = 'PUBLISHED'
+        AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)
         AND r.visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
       ORDER BY p.updated_at DESC
       LIMIT $2`,
@@ -122,7 +126,9 @@ export class LearnerResourceRepository {
    * Add bookmark
    */
   public async addBookmark(userId: string, resourceId: string, notes?: string): Promise<{ success: boolean; isBookmarked: boolean }> {
-    const id = `bm_${userId.substring(0, 8)}_${resourceId.substring(0, 16)}`;
+    const safeUserId = String(userId || 'anon');
+    const safeResourceId = String(resourceId || 'res');
+    const id = `bm_${safeUserId.substring(0, 8)}_${safeResourceId.substring(0, 16)}`;
     await pool.query(
       `INSERT INTO public.learner_resource_bookmarks (id, user_id, resource_id, notes, created_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -175,13 +181,17 @@ export class LearnerResourceRepository {
     const countRes = await pool.query(
       `SELECT COUNT(*) FROM public.learner_resource_bookmarks b
        JOIN public.resources r ON b.resource_id = r.id
-       WHERE b.user_id = $1 AND r.status IN ('READY', 'PUBLISHED') AND r.visibility NOT IN ('ADMIN_ONLY')`,
+       WHERE b.user_id = $1 
+         AND r.is_published = TRUE 
+         AND r.status = 'PUBLISHED' 
+         AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)
+         AND r.visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')`,
       [userId]
     );
     const total = parseInt(countRes.rows[0]?.count || '0', 10);
 
     const res = await pool.query(
-      `SELECT
+      `SELECT 
         b.id AS bookmark_id,
         b.notes,
         b.created_at AS bookmarked_at,
@@ -195,9 +205,11 @@ export class LearnerResourceRepository {
       FROM public.learner_resource_bookmarks b
       JOIN public.resources r ON b.resource_id = r.id
       LEFT JOIN public.learner_resource_progress p ON p.user_id = b.user_id AND p.resource_id = b.resource_id
-      WHERE b.user_id = $1
-        AND r.status IN ('READY', 'PUBLISHED')
-        AND r.visibility NOT IN ('ADMIN_ONLY')
+      WHERE b.user_id = $1 
+        AND r.is_published = TRUE
+        AND r.status = 'PUBLISHED'
+        AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)
+        AND r.visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
       ORDER BY b.created_at DESC
       LIMIT $2 OFFSET $3`,
       [userId, limit, offset]
@@ -212,32 +224,44 @@ export class LearnerResourceRepository {
   public async getFilterMeta(): Promise<ResourceFilterMeta> {
     try {
       const subjectsRes = await pool.query(
-        `SELECT DISTINCT subject FROM public.resources
-         WHERE subject IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
+        `SELECT DISTINCT subject FROM public.resources 
+         WHERE subject IS NOT NULL 
+           AND is_published = TRUE
+           AND status = 'PUBLISHED'
+           AND (is_deleted IS NULL OR is_deleted = FALSE)
+           AND visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
          ORDER BY subject ASC`
       );
 
       const topicsRes = await pool.query(
-        `SELECT DISTINCT topic FROM public.resources
-         WHERE topic IS NOT NULL AND status IN ('READY', 'PUBLISHED') AND visibility NOT IN ('ADMIN_ONLY')
+        `SELECT DISTINCT topic FROM public.resources 
+         WHERE topic IS NOT NULL 
+           AND is_published = TRUE
+           AND status = 'PUBLISHED'
+           AND (is_deleted IS NULL OR is_deleted = FALSE)
+           AND visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
          ORDER BY topic ASC`
       );
 
       const typesRes = await pool.query(
-        `SELECT DISTINCT resource_type FROM public.resources
-         WHERE resource_type IS NOT NULL
+        `SELECT DISTINCT resource_type FROM public.resources 
+         WHERE resource_type IS NOT NULL 
            AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
-           AND status IN ('READY', 'PUBLISHED')
-           AND visibility NOT IN ('ADMIN_ONLY')
+           AND is_published = TRUE
+           AND status = 'PUBLISHED'
+           AND (is_deleted IS NULL OR is_deleted = FALSE)
+           AND visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
          ORDER BY resource_type ASC`
       );
 
       const examsRes = await pool.query(
-        `SELECT DISTINCT exam FROM public.resources
-         WHERE exam IS NOT NULL
+        `SELECT DISTINCT exam FROM public.resources 
+         WHERE exam IS NOT NULL 
            AND resource_type NOT IN ('SYLLABUS', 'SHORT_NOTE', 'PYQ_PAPER', 'PYQ')
-           AND status IN ('READY', 'PUBLISHED')
-           AND visibility NOT IN ('ADMIN_ONLY')
+           AND is_published = TRUE
+           AND status = 'PUBLISHED'
+           AND (is_deleted IS NULL OR is_deleted = FALSE)
+           AND visibility NOT IN ('ADMIN_ONLY', 'ARCHIVED')
          ORDER BY exam ASC`
       );
 

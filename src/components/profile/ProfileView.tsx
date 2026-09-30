@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
+import { ChangePasswordSection } from './ChangePasswordSection.js';
 
 export const ProfileView: React.FC = () => {
   const { user, saveOnboarding } = useAuth();
@@ -57,7 +58,7 @@ export const ProfileView: React.FC = () => {
       {/* Header Banner */}
       <div className="bg-white border border-stone-200/90 p-6 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div className="flex items-center gap-4 min-w-0 max-w-full">
-          <div className="w-16 h-16 rounded-2xl bg-[#0C1024] text-amber-300 border border-amber-500/30 flex items-center justify-center font-bold text-2xl shadow-2xs shrink-0 font-serif-editorial">
+          <div className="w-16 h-16 rounded-2xl bg-[#1C1917] text-amber-300 border border-amber-500/30 flex items-center justify-center font-bold text-2xl shadow-2xs shrink-0 font-serif-editorial">
             {user?.avatarUrl ? (
               <img src={user.avatarUrl} alt={user.name} className="w-full h-full rounded-2xl object-cover" />
             ) : (
@@ -67,9 +68,9 @@ export const ProfileView: React.FC = () => {
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] truncate">{user?.name || 'IKSHOVIA User'}</h1>
+              <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 truncate">{user?.name || 'IKSHOVIA User'}</h1>
               <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border font-mono shrink-0 ${
-                user?.role === 'ADMIN' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-purple-50 text-[#35156B] border-purple-200'
+                user?.role === 'ADMIN' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-amber-50 text-amber-900 border-amber-300'
               }`}>
                 {user?.role || 'STUDENT'}
               </span>
@@ -78,7 +79,7 @@ export const ProfileView: React.FC = () => {
               <Mail className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <span className="truncate">{user?.email}</span>
             </div>
-            <div className="text-xs text-[#35156B] font-bold mt-1 truncate">
+            <div className="text-xs text-amber-800 font-bold mt-1 truncate">
               Target: {user?.onboarding?.targetExam || 'UPSC CSE 2026'}
             </div>
           </div>
@@ -103,7 +104,7 @@ export const ProfileView: React.FC = () => {
       {/* Edit Form Modal/Drawer */}
       {isEditing && (
         <form onSubmit={handleSave} className="bg-white border border-stone-200/90 p-6 rounded-2xl shadow-2xs space-y-4 animate-fade-in">
-          <h2 className="text-base font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+          <h2 className="text-base font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-600" />
             <span>Update Personal Target Settings</span>
           </h2>
@@ -115,7 +116,7 @@ export const ProfileView: React.FC = () => {
                 type="text"
                 value={targetExam}
                 onChange={e => setTargetExam(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
                 placeholder="e.g. UPSC CSE 2026, State PSC"
               />
             </div>
@@ -126,7 +127,7 @@ export const ProfileView: React.FC = () => {
                 type="number"
                 value={dailyGoalMinutes}
                 onChange={e => setDailyGoalMinutes(Number(e.target.value))}
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
                 min={30}
                 max={720}
               />
@@ -136,8 +137,8 @@ export const ProfileView: React.FC = () => {
               <label className="block text-xs font-bold text-stone-700 mb-1 font-mono">Preparation Stage</label>
               <select
                 value={experienceLevel}
-                onChange={e => setExperienceLevel(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                onChange={e => setExperienceLevel(e.target.value as 'Beginner' | 'Intermediate' | 'Advanced')}
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
               >
                 <option value="Beginner">Beginner (First Attempt)</option>
                 <option value="Intermediate">Intermediate (Syllabus Covered Once)</option>
@@ -151,7 +152,7 @@ export const ProfileView: React.FC = () => {
                 type="text"
                 value={goalStatement}
                 onChange={e => setGoalStatement(e.target.value)}
-                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-[#35156B]"
+                className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs text-stone-900 focus:outline-none focus:border-amber-700"
                 placeholder="Your motivation or focus target"
               />
             </div>
@@ -167,7 +168,7 @@ export const ProfileView: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 rounded-xl text-xs font-bold shadow-2xs cursor-pointer border border-amber-500/30"
+              className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 rounded-xl text-xs font-bold shadow-2xs cursor-pointer border border-amber-500/30"
             >
               Save Changes
             </button>
@@ -182,17 +183,17 @@ export const ProfileView: React.FC = () => {
             <Flame className="w-5 h-5 fill-amber-500" />
           </div>
           <div>
-            <div className="text-xl font-bold text-[#111426] font-serif-editorial">{learnerModel?.currentStreak ?? 0} Days</div>
+            <div className="text-xl font-bold text-stone-900 font-serif-editorial">{learnerModel?.currentStreak ?? 0} Days</div>
             <div className="text-[11px] text-stone-500 font-medium">Daily Learning Streak</div>
           </div>
         </div>
 
         <div className="bg-white border border-stone-200/90 p-4 rounded-2xl flex items-center gap-3 shadow-2xs">
-          <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-[#35156B]">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-[#111426] font-serif-editorial">{learnerModel?.overallScore ?? 0}%</div>
+            <div className="text-xl font-bold text-stone-900 font-serif-editorial">{learnerModel?.overallScore ?? 0}%</div>
             <div className="text-[11px] text-stone-500 font-medium">Overall Concept Mastery</div>
           </div>
         </div>
@@ -202,17 +203,17 @@ export const ProfileView: React.FC = () => {
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-[#111426] font-serif-editorial">{user?.onboarding?.dailyGoalMinutes ?? 120} m/day</div>
+            <div className="text-xl font-bold text-stone-900 font-serif-editorial">{user?.onboarding?.dailyGoalMinutes ?? 120} m/day</div>
             <div className="text-[11px] text-stone-500 font-medium">Target Daily Study Time</div>
           </div>
         </div>
 
         <div className="bg-white border border-stone-200/90 p-4 rounded-2xl flex items-center gap-3 shadow-2xs">
-          <div className="p-3 bg-stone-100 border border-stone-200 rounded-xl text-[#35156B]">
+          <div className="p-3 bg-stone-100 border border-stone-200 rounded-xl text-stone-700">
             <Target className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-[#111426] font-serif-editorial">{learnerModel?.dueRevisionCount ?? 0} Items</div>
+            <div className="text-xl font-bold text-stone-900 font-serif-editorial">{learnerModel?.dueRevisionCount ?? 0} Items</div>
             <div className="text-[11px] text-stone-500 font-medium">Due in Revision Queue</div>
           </div>
         </div>
@@ -220,8 +221,8 @@ export const ProfileView: React.FC = () => {
 
       {/* Badges and Achievements */}
       <div className="bg-white border border-stone-200/90 p-6 rounded-2xl space-y-4 shadow-2xs">
-        <h2 className="text-sm font-bold text-[#111426] uppercase tracking-wider font-mono flex items-center gap-2">
-          <Award className="w-4 h-4 text-[#35156B]" />
+        <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wider font-mono flex items-center gap-2">
+          <Award className="w-4 h-4 text-amber-700" />
           <span>Learner Achievements & Badges</span>
         </h2>
 
@@ -241,6 +242,11 @@ export const ProfileView: React.FC = () => {
         </div>
       </div>
 
+      {/* Security & Password */}
+      <div id="security-password" className="pt-2">
+        <ChangePasswordSection />
+      </div>
+
       {/* Android Mobile App Card */}
       <div className="bg-[#FAF8F5] border border-amber-200/80 p-6 rounded-2xl shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
@@ -248,7 +254,7 @@ export const ProfileView: React.FC = () => {
             <Smartphone className="w-6 h-6 text-amber-700" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-sm font-bold text-[#111426] font-serif-editorial">IKSHOVIA for Android</h3>
+            <h3 className="text-sm font-bold text-stone-900 font-serif-editorial">IKSHOVIA for Android</h3>
             <p className="text-xs text-stone-600">
               Practice timed prelims MCQs, access daily current affairs, and consult your personal AI Tutor wherever you are.
             </p>
@@ -257,7 +263,7 @@ export const ProfileView: React.FC = () => {
 
         <button
           onClick={() => setActiveSection('download')}
-          className="w-full sm:w-auto px-4 py-2.5 bg-[#0C1024] hover:bg-[#1B2144] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all shrink-0 cursor-pointer"
+          className="w-full sm:w-auto px-4 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all shrink-0 cursor-pointer"
         >
           <span>Get Android App</span>
           <ArrowRight className="w-3.5 h-3.5 text-amber-400" />

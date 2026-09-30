@@ -10,6 +10,7 @@ import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
 import { api } from '../../lib/api.js';
 import { ChatConversation, ChatMessage } from '../../types/index.js';
+import { BrandSymbol } from '../common/BrandLogo.js';
 
 const parseInlineText = (text: string): React.ReactNode[] => {
   const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
@@ -35,7 +36,7 @@ const FormattedMarkdownMessage: React.FC<{ text: string }> = ({ text }) => {
           const lines = block.slice(3, -3).trim().split('\n');
           const code = lines.join('\n');
           return (
-            <pre key={`code-${idx}`} className="bg-[#0B132B] text-amber-200 p-3.5 rounded-xl overflow-x-auto text-xs font-mono border border-slate-800 my-2">
+            <pre key={`code-${idx}`} className="bg-[#181614] text-amber-200 p-3.5 rounded-xl overflow-x-auto text-xs font-mono border border-stone-800 my-2 shadow-2xs">
               <code>{code}</code>
             </pre>
           );
@@ -365,10 +366,10 @@ export const AITutorView: React.FC = () => {
               </span>
               <button
                 onClick={handleNewConversation}
-                className="p-1 rounded-lg bg-[#0B132B] text-amber-400 hover:bg-[#121D3B] border border-amber-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                className="p-1.5 rounded-xl bg-[#1C1917] text-amber-300 hover:bg-[#292524] border border-amber-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
                 title="New Session"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-3.5 h-3.5 text-amber-400" />
                 <span>New</span>
               </button>
             </div>
@@ -382,7 +383,7 @@ export const AITutorView: React.FC = () => {
                     onClick={() => setActiveConvId(c.id)}
                     className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer border ${
                       isActive
-                        ? 'bg-amber-50 border-amber-200 text-amber-900 font-bold'
+                        ? 'bg-amber-50 border-amber-200 text-amber-950 font-bold shadow-2xs'
                         : 'bg-white border-transparent text-stone-600 hover:bg-stone-50'
                     }`}
                   >
@@ -419,7 +420,7 @@ export const AITutorView: React.FC = () => {
                     <div
                       className={`max-w-[85%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
                         isUser
-                          ? 'bg-[#0B132B] text-white rounded-br-2xs shadow-2xs'
+                          ? 'bg-[#1C1917] text-stone-100 rounded-br-2xs shadow-2xs border border-stone-800'
                           : 'bg-[#FBF9F5] border border-stone-200/90 text-stone-800 rounded-bl-2xs shadow-2xs'
                       }`}
                     >
@@ -449,12 +450,12 @@ export const AITutorView: React.FC = () => {
               })
             ) : (
               <div className="text-center py-16 space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto">
-                  <Bot className="w-6 h-6" />
+                <div className="flex items-center justify-center mx-auto">
+                  <BrandSymbol size="md" />
                 </div>
-                <h3 className="text-base font-serif-editorial font-bold text-stone-900">IKSHOVIA Personal Learning Tutor</h3>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900">IKSHOVIA Socratic Tutor</h3>
                 <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-                  Start your first learning session. Ask any question about Polity, Economy, History, or Current Affairs.
+                  Start your learning session. Ask any concept query about Polity, Economy, History, or Current Affairs.
                 </p>
               </div>
             )}
@@ -504,9 +505,9 @@ export const AITutorView: React.FC = () => {
               <button
                 onClick={() => handleSendMessage()}
                 disabled={sending || !inputPrompt.trim()}
-                className="p-2.5 bg-[#0B132B] hover:bg-[#121D3B] disabled:opacity-50 text-amber-400 rounded-lg transition-all cursor-pointer"
+                className="p-2.5 bg-[#1C1917] hover:bg-[#292524] disabled:opacity-50 text-amber-300 rounded-lg transition-all cursor-pointer border border-amber-500/20"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-4 h-4 text-amber-400" />
               </button>
             </div>
 

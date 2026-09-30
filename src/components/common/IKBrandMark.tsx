@@ -18,3 +18,4 @@ export const IKBrandMark: React.FC<IKBrandMarkProps> = ({
     />
   );
 };
+

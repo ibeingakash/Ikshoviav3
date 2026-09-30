@@ -103,11 +103,11 @@ export const MobileNav: React.FC = () => {
               }}
               className={`flex-1 min-w-0 max-w-[76px] flex flex-col items-center justify-center gap-1 min-h-[44px] py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                 isActive
-                  ? 'text-[#35156B] font-extrabold bg-amber-100/60 border border-amber-300'
+                  ? 'text-amber-900 font-extrabold bg-amber-100/70 border border-amber-300'
                   : 'text-stone-500 hover:text-stone-900'
               }`}
             >
-              <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${isActive ? 'text-[#35156B]' : 'text-stone-400'}`} />
+              <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${isActive ? 'text-amber-800' : 'text-stone-400'}`} />
               <span className="leading-none truncate w-full text-center">{item.label}</span>
             </button>
           );
@@ -118,11 +118,11 @@ export const MobileNav: React.FC = () => {
           onClick={() => setIsMoreOpen(prev => !prev)}
           className={`flex-1 min-w-0 max-w-[76px] flex flex-col items-center justify-center gap-1 min-h-[44px] py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
             isMoreOpen || (isMoreActive && !PRIMARY_MOBILE_ITEMS.some(i => i.id === activeSection))
-              ? 'text-[#35156B] font-extrabold bg-amber-100/60 border border-amber-300'
+              ? 'text-amber-900 font-extrabold bg-amber-100/70 border border-amber-300'
               : 'text-stone-500 hover:text-stone-900'
           }`}
         >
-          <Menu className={`w-4 h-4 sm:w-5 sm:h-5 ${isMoreOpen || isMoreActive ? 'text-[#35156B]' : 'text-stone-400'}`} />
+          <Menu className={`w-4 h-4 sm:w-5 sm:h-5 ${isMoreOpen || isMoreActive ? 'text-amber-800' : 'text-stone-400'}`} />
           <span className="leading-none truncate w-full text-center">More</span>
         </button>
       </nav>
@@ -132,12 +132,12 @@ export const MobileNav: React.FC = () => {
         <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-[#0C1024]/60 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs transition-opacity"
             onClick={() => setIsMoreOpen(false)}
           />
 
           {/* Slide-Up Bottom Drawer */}
-          <div className="relative w-full max-w-full bg-[#FAF7F0] border-t border-amber-500/30 rounded-t-3xl p-4 sm:p-5 text-[#111426] max-h-[85vh] overflow-y-auto overflow-x-hidden shadow-2xl space-y-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-slide-up">
+          <div className="relative w-full max-w-full bg-[#FAF8F5] border-t border-amber-500/30 rounded-t-3xl p-4 sm:p-5 text-stone-900 max-h-[85vh] overflow-y-auto overflow-x-hidden shadow-2xl space-y-6 pb-[max(2rem,env(safe-area-inset-bottom))] animate-slide-up">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-stone-200 pb-3">
               <DashboardLogo
@@ -174,19 +174,19 @@ export const MobileNav: React.FC = () => {
                           onClick={() => handleSelectSection(item.id)}
                           className={`w-full min-h-[48px] px-4 py-3 rounded-2xl flex items-center justify-between transition-all cursor-pointer border text-xs font-semibold ${
                             isActive
-                              ? 'bg-[#35156B] text-amber-300 border-[#35156B] font-bold shadow-2xs'
+                              ? 'bg-[#1C1917] text-amber-300 border-[#1C1917] font-bold shadow-2xs'
                               : 'bg-white hover:bg-stone-50 text-stone-800 border-stone-200'
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <Icon className={`w-4 h-4 ${isActive ? 'text-amber-300' : 'text-[#35156B]'}`} />
+                            <Icon className={`w-4 h-4 ${isActive ? 'text-amber-300' : 'text-amber-800'}`} />
                             <span>{item.label}</span>
                           </div>
 
                           <div className="flex items-center gap-2">
                             {badgeText && (
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                                isActive ? 'bg-[#121027] text-amber-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
+                                isActive ? 'bg-[#292524] text-amber-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
                               }`}>
                                 {badgeText}
                               </span>

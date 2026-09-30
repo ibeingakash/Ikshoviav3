@@ -200,6 +200,55 @@ Prioritize the facts, definitions, constitutional articles, and principles conta
     console.warn('[AI Tutor] Grounding retrieval notice:', chunkErr);
   }
 
+  // 1c. Fetch Real Learner Intelligence Context (Study Plan, Weak Areas, Overdue Revisions, Recent Mains)
+  let learnerIntelligenceStr = '';
+  try {
+    const [weakRes, revRes, planTaskRes, mainsRes] = await Promise.all([
+      pool.query(`
+        SELECT c.title, cm.accuracy, cm.retention
+        FROM public.concept_mastery cm
+        JOIN public.concepts c ON cm.concept_id = c.id
+        WHERE cm.user_id = $1 AND (cm.accuracy < 65 OR cm.retention < 65)
+        ORDER BY cm.accuracy ASC LIMIT 4
+      `, [userId]),
+      pool.query(`
+        SELECT c.title, r.retention, r.priority
+        FROM public.revision_items r
+        JOIN public.concepts c ON r.concept_id = c.id
+        WHERE r.user_id = $1 AND r.status = 'PENDING'
+        ORDER BY r.retention ASC LIMIT 3
+      `, [userId]),
+      pool.query(`
+        SELECT title, task_type, status, estimated_minutes
+        FROM public.study_plan_tasks
+        WHERE user_id = $1 AND date = CURRENT_DATE
+        ORDER BY order_num ASC LIMIT 4
+      `, [userId]),
+      pool.query(`
+        SELECT marks_obtained, max_marks, feedback, actionable_improvement
+        FROM public.mains_submissions
+        WHERE user_id = $1 AND status = 'EVALUATED'
+        ORDER BY evaluated_at DESC LIMIT 1
+      `, [userId]),
+    ]);
+
+    const weakList = weakRes.rows.map((r: any) => `${r.title} (Accuracy: ${Math.round(r.accuracy)}%, Retention: ${Math.round(r.retention)}%)`);
+    const revList = revRes.rows.map((r: any) => `${r.title} (Retention: ${Math.round(r.retention)}%, ${r.priority})`);
+    const taskList = planTaskRes.rows.map((r: any) => `[${r.status}] ${r.title} (${r.estimated_minutes}m)`);
+    const lastMains = mainsRes.rows[0];
+
+    learnerIntelligenceStr = `
+REAL LEARNER INTELLIGENCE & STUDY STATE:
+- Target Exam: ${targetExam} (${expLevel})
+- Weak Concepts: ${weakList.length > 0 ? weakList.join('; ') : 'All assessed concepts are above 65% accuracy'}
+- Overdue Spaced Revisions: ${revList.length > 0 ? revList.join('; ') : 'Revision schedule is currently up to date'}
+- Today's Scheduled Plan Tasks: ${taskList.length > 0 ? taskList.join(' | ') : 'No tasks scheduled for today'}
+${lastMains ? `- Recent Mains Evaluation: ${lastMains.marks_obtained}/${lastMains.max_marks} marks. Feedback: "${lastMains.actionable_improvement || lastMains.feedback || 'Good structure'}"` : ''}
+`;
+  } catch (err) {
+    console.warn('[AI Tutor] Learner intelligence retrieval notice:', err);
+  }
+
   // Construct Gemini system prompt with strict context hierarchy
   const systemContext = `You are IKSHOVIA AI, an elite civil services personal learning intelligence tutor specialized in ${targetExam} and State PSCs.
 
@@ -207,9 +256,10 @@ CONTEXT PRIORITY HIERARCHY (STRICT):
 1. EXPLICIT USER QUESTION ("${userPrompt}"): Answer this user question directly and accurately regardless of what page or concept the user is currently viewing. If the user asks about Biology (e.g. "What is a cell?"), Economics ("What is fiscal deficit?"), History, or Polity, answer THAT exact subject directly! NEVER force or redirect the answer to the active page concept if the user's prompt is about a different topic.
 2. CONVERSATION CONTEXT: Maintain flow from previous messages if relevant.
 3. CURRENT PRACTICE QUESTION / MISTAKE: ${questionContextStr ? questionContextStr : 'None'}
-4. ACTIVE CONCEPT CONTEXT: ${activeConceptTitle ? `${activeConceptTitle} (${activeConceptSummary}) [Subject: ${subjectName}, Topic: ${topicName}]` : 'None'} (Only use as primary focus if the user prompt is vague, e.g. "Explain this", "Simplify", or clicked a quick action).
-5. GROUNDED RESOURCE CONTEXT & CITATIONS: ${groundedResourceContext ? groundedResourceContext : 'None'}
-6. LEARNER PROFILE:
+4. REAL LEARNER INTELLIGENCE & STUDY PLAN: ${learnerIntelligenceStr ? learnerIntelligenceStr : 'None'}
+5. ACTIVE CONCEPT CONTEXT: ${activeConceptTitle ? `${activeConceptTitle} (${activeConceptSummary}) [Subject: ${subjectName}, Topic: ${topicName}]` : 'None'} (Only use as primary focus if the user prompt is vague, e.g. "Explain this", "Simplify", or clicked a quick action).
+6. GROUNDED RESOURCE CONTEXT & CITATIONS: ${groundedResourceContext ? groundedResourceContext : 'None'}
+7. LEARNER PROFILE:
    - Aspirant Name: ${user?.name || 'IKSHOVIA User'}
    - Target Exam: ${targetExam}
    - Experience Level: ${expLevel}
@@ -263,23 +313,28 @@ STRICT MANDATES:
   }
 
   if (ai) {
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-3.8-flash'];
     for (const model of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: promptMessage,
-          config: {
-            systemInstruction: systemContext,
-            temperature: 0.7,
-          },
-        });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) {
+            await new Promise((r) => setTimeout(r, 600 * attempt));
+          }
+          const response = await ai.models.generateContent({
+            model,
+            contents: promptMessage,
+            config: {
+              systemInstruction: systemContext,
+              temperature: 0.7,
+            },
+          });
 
-        if (response.text && response.text.trim().length > 20) {
-          return response.text.trim();
+          if (response.text && response.text.trim().length > 20) {
+            return response.text.trim();
+          }
+        } catch (err: any) {
+          console.warn(`Gemini API call attempt ${attempt + 1} throttled/failed for ${model}:`, err?.message || err);
         }
-      } catch (err: any) {
-        console.warn(`Gemini API call throttled/failed for ${model}:`, err?.message || err);
       }
     }
   }
@@ -307,7 +362,7 @@ Due Revision Count: ${learnerModel.dueRevisionCount}
 Mistakes: ${JSON.stringify(learnerModel.mistakeBreakdown)}
 `;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
         systemInstruction: 'You are IKSHOVIA AI Engine. Return a 2-sentence crisp learning health diagnosis and immediate recommended study action.',
@@ -355,7 +410,7 @@ Return JSON with exact structure:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -466,7 +521,7 @@ Return JSON strictly in this structure:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -531,7 +586,7 @@ export async function generateAIContentStudio(
     let systemInstruction = `You are IKSHOVIA AI Content Studio for UPSC CSE and State PSCs. Generate high-yield, exam-standard content.`;
     let userPrompt = `Type: ${type}\nSubject: ${subName}\nPrompt: ${promptText}\nDifficulty: ${difficulty}\n${sourceContext ? `Source Context: ${sourceContext}` : ''}`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
     let lastErr: any = null;
 
     if (type === 'MCQ') {

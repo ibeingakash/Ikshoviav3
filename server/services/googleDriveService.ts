@@ -634,7 +634,7 @@ export class GoogleDriveService {
         'Content-Length': pdfBuffer.length.toString(),
         'Content-Type': 'application/pdf',
       },
-      body: pdfBuffer,
+      body: new Uint8Array(pdfBuffer),
     });
 
     if (!uploadRes.ok) {

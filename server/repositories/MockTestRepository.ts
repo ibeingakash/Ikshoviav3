@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { MockTest, MockAttempt, Question } from '../../src/types/index.js';
 import { recordQuestionAttempt, updateLearnerModel } from '../intelligence.js';
 import { resolveCanonicalSourceOrigin } from '../utils/provenance.js';
+import { resolveSafeClassification } from '../db/taxonomyResolver.js';
 
 export interface MockAnswerRecord {
   id: string;
@@ -21,7 +22,7 @@ export class MockTestRepository {
     if (this.schemaChecked) return;
     try {
       await pool.query(`
-        ALTER TABLE public.mock_tests
+        ALTER TABLE public.mock_tests 
         ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'IKSHOVIA_CREATED',
         ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false,
         ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE,
@@ -196,8 +197,8 @@ export class MockTestRepository {
       SELECT id, title, display_name, original_source_name, type, source_type, subject_ids,
              duration_minutes, total_questions, total_marks, negative_marking_rate,
              is_published, is_deleted, deleted_at, deleted_by, created_at
-      FROM public.mock_tests
-      ${whereSql}
+      FROM public.mock_tests 
+      ${whereSql} 
       ORDER BY created_at DESC;
     `, params);
     return res.rows.map(this.mapRowToMockTest);
@@ -328,7 +329,7 @@ export class MockTestRepository {
       SELECT id, title, display_name, original_source_name, type, source_type, subject_ids,
              duration_minutes, total_questions, total_marks, negative_marking_rate,
              is_published, is_deleted, deleted_at, deleted_by, created_at
-      FROM public.mock_tests
+      FROM public.mock_tests 
       WHERE id = $1
     `, [id]);
     if (res.rows.length === 0) return null;
@@ -344,7 +345,7 @@ export class MockTestRepository {
              q.options, q.options_en, q.options_hi, q.correct_answer, q.explanation, q.explanation_en, q.explanation_hi,
              q.available_languages, q.difficulty, q.exam_tag, q.pyq_year, q.exam, q.paper, q.question_number,
              q.is_pyq, q.source_type, q.source, q.verified_status, q.is_published, q.status, q.question_type,
-             q.statements, q.statements_hi, q.match_data, q.match_data_hi, mq.order_num
+             q.statements, q.statements_hi, q.match_data, q.match_data_hi, mq.order_num 
       FROM public.mock_questions mq
       JOIN public.questions q ON mq.question_id = q.id
       WHERE mq.mock_test_id = $1
@@ -364,7 +365,7 @@ export class MockTestRepository {
              available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
              is_pyq, source_type, source, verified_status, is_published, status, question_type,
              statements, statements_hi, match_data, match_data_hi
-      FROM public.questions
+      FROM public.questions 
       WHERE is_published = true
     `;
     const queryParams: any[] = [];
@@ -493,7 +494,7 @@ export class MockTestRepository {
 
   async getAttempt(userId: string, attemptId: string): Promise<MockAttempt | null> {
     const res = await pool.query(`
-      SELECT * FROM public.mock_attempts
+      SELECT * FROM public.mock_attempts 
       WHERE id = $1 AND user_id = $2;
     `, [attemptId, userId]);
 
@@ -506,7 +507,7 @@ export class MockTestRepository {
     if (!attempt) return [];
 
     const res = await pool.query(`
-      SELECT * FROM public.mock_answers
+      SELECT * FROM public.mock_answers 
       WHERE mock_attempt_id = $1;
     `, [attemptId]);
 
@@ -772,7 +773,7 @@ export class MockTestRepository {
 
       // Load test questions
       const qRes = await client.query(`
-        SELECT q.*, mq.order_num
+        SELECT q.*, mq.order_num 
         FROM public.mock_questions mq
         JOIN public.questions q ON mq.question_id = q.id
         WHERE mq.mock_test_id = $1
@@ -789,7 +790,7 @@ export class MockTestRepository {
                  available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
                  is_pyq, source_type, source, verified_status, is_published, status, question_type,
                  statements, statements_hi, match_data, match_data_hi
-          FROM public.questions
+          FROM public.questions 
           WHERE is_published = true
         `;
         const queryParams: any[] = [];
@@ -828,7 +829,13 @@ export class MockTestRepository {
         subjectStats[subj].total += 1;
 
         const userAns = answerMap.get(q.id);
-        const optionsList = q.options || [];
+        const optionsList = (q.options || []).map((o, idx) => {
+          if (typeof o === 'string') {
+            const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+            return { id: letters[idx] || String(idx + 1), text: o };
+          }
+          return o;
+        });
         const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
         const optEText = typeof optE?.text === 'string' ? optE.text : (optE?.text ? JSON.stringify(optE.text) : '');
         const isOptENotAttempted = Boolean(optE && (
@@ -1059,14 +1066,56 @@ export class MockTestRepository {
                available_languages, difficulty, exam_tag, pyq_year, exam, paper, question_number,
                is_pyq, source_type, source, source_job_id, verified_status, is_published, status, question_type,
                statements, statements_hi, match_data, match_data_hi, corrections_count
-        FROM public.questions
+        FROM public.questions 
         WHERE id = $1
         FOR UPDATE
       `, [questionId]);
-      if (qRes.rows.length === 0) {
+      let current = qRes.rows[0];
+      if (!current) {
+        const ocrCheck = await client.query(`SELECT * FROM public.ocr_extracted_questions WHERE id = $1`, [questionId]);
+        if (ocrCheck.rows.length > 0) {
+          const ocrRow = ocrCheck.rows[0];
+          const classification = resolveSafeClassification({
+            subjectId: ocrRow.subject_id,
+            topicId: ocrRow.topic_id,
+            conceptId: ocrRow.concept_id,
+            topic: ocrRow.topic,
+          });
+
+          await client.query(`
+            INSERT INTO public.questions (
+              id, question, question_en, question_hi, options, options_en, options_hi,
+              correct_answer, explanation, explanation_en, explanation_hi, subject_id,
+              topic_id, concept_id, difficulty, source_type, source_job_id, is_published, created_at, updated_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'ADMIN_IMPORTED', $16, TRUE, NOW(), NOW()
+            )
+            ON CONFLICT (id) DO NOTHING
+          `, [
+            ocrRow.id,
+            ocrRow.question_text,
+            ocrRow.question_en || ocrRow.question_text,
+            ocrRow.question_hi || null,
+            JSON.stringify(ocrRow.options || []),
+            JSON.stringify(ocrRow.options_en || ocrRow.options || []),
+            JSON.stringify(ocrRow.options_hi || []),
+            ocrRow.correct_answer,
+            ocrRow.explanation,
+            ocrRow.explanation_en || ocrRow.explanation,
+            ocrRow.explanation_hi || null,
+            classification.subjectId,
+            classification.topicId,
+            classification.conceptId,
+            ocrRow.difficulty || 'MEDIUM',
+            ocrRow.job_id
+          ]);
+          const refetch = await client.query(`SELECT * FROM public.questions WHERE id = $1 FOR UPDATE`, [questionId]);
+          current = refetch.rows[0];
+        }
+      }
+      if (!current) {
         throw new Error(`Question with id ${questionId} not found`);
       }
-      const current = qRes.rows[0];
 
       // 2. Derive canonical source_origin server-side from canonical provenance
       const sourceOrigin = resolveCanonicalSourceOrigin(current);

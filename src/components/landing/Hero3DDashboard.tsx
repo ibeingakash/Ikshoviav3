@@ -32,12 +32,12 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
       <div className="hidden sm:block orbital-ring w-[115%] h-[115%] -top-[7.5%] -left-[7.5%] opacity-20 border-purple-500/20 pointer-events-none" />
 
       {/* Dark Purple Floating Base Shadow Platform */}
-      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[85%] h-16 bg-[#0C1024]/40 rounded-full blur-2xl pointer-events-none" />
+      <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-[85%] h-16 bg-[#1C1917]/40 rounded-full blur-2xl pointer-events-none" />
 
       {/* 3D Tilted Floating Dashboard Container */}
       <div
         onClick={onInteractiveClick}
-        className="w-full md:dashboard-3d-tilt bg-[#FBF9F4] border border-amber-500/30 rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 relative z-10 text-[#111426] cursor-pointer hover:border-amber-400 transition-all group overflow-hidden"
+        className="w-full md:dashboard-3d-tilt bg-[#FBF9F4] border border-amber-500/30 rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 relative z-10 text-stone-900 cursor-pointer hover:border-amber-400 transition-all group overflow-hidden"
       >
         {/* Top Window Glass Bar */}
         <div className="flex items-center justify-between border-b border-stone-200/80 pb-3 mb-3">
@@ -61,14 +61,14 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
         <div className="grid grid-cols-12 gap-3 sm:gap-4">
           
           {/* Left Mini Sidebar */}
-          <div className="col-span-2 sm:col-span-1 bg-[#0C1024] text-white rounded-xl p-2 flex flex-col items-center justify-between py-4 border border-amber-500/20 shadow-md">
+          <div className="col-span-2 sm:col-span-1 bg-[#1C1917] text-white rounded-xl p-2 flex flex-col items-center justify-between py-4 border border-amber-500/20 shadow-md">
             <div className="space-y-4 flex flex-col items-center">
               <div className="p-1 rounded-lg bg-amber-500/20 border border-amber-500/30">
                 <IKBrandMark size="sm" glow />
               </div>
 
               <div className="space-y-3 pt-2 text-stone-400">
-                <div className="p-1.5 rounded-lg bg-[#35156B] text-amber-300 shadow-xs">
+                <div className="p-1.5 rounded-lg bg-amber-800 text-amber-200 shadow-xs">
                   <Home className="w-4 h-4" />
                 </div>
                 <div className="p-1.5 hover:text-white transition-colors">
@@ -100,7 +100,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
             {/* Learner Greeting Header */}
             <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-stone-200/90 shadow-2xs">
               <div>
-                <div className="text-sm sm:text-base font-serif-editorial font-bold text-[#111426] flex items-center gap-1.5">
+                <div className="text-sm sm:text-base font-serif-editorial font-bold text-stone-900 flex items-center gap-1.5">
                   <span>Good Morning, Aspirant!</span>
                   <span className="text-sm">👋</span>
                 </div>
@@ -118,7 +118,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
                   <Bell className="w-4 h-4" />
                   <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
                 </div>
-                <div className="w-7 h-7 rounded-full bg-[#0C1024] text-amber-400 border border-amber-500/30 flex items-center justify-center text-xs font-bold font-serif-editorial">
+                <div className="w-7 h-7 rounded-full bg-[#1C1917] text-amber-400 border border-amber-500/30 flex items-center justify-center text-xs font-bold font-serif-editorial">
                   A
                 </div>
               </div>
@@ -128,7 +128,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-2.5 rounded-xl bg-white border border-stone-200/90 space-y-0.5">
                 <div className="text-[10px] text-stone-500 font-medium">Study Hours</div>
-                <div className="text-sm sm:text-base font-bold text-[#111426] flex items-center justify-between">
+                <div className="text-sm sm:text-base font-bold text-stone-900 flex items-center justify-between">
                   <span>24.6h</span>
                   <span className="text-[10px] text-emerald-700 font-mono font-bold">↑ 16%</span>
                 </div>
@@ -137,7 +137,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
 
               <div className="p-2.5 rounded-xl bg-white border border-stone-200/90 space-y-0.5">
                 <div className="text-[10px] text-stone-500 font-medium">Accuracy</div>
-                <div className="text-sm sm:text-base font-bold text-[#111426] flex items-center justify-between">
+                <div className="text-sm sm:text-base font-bold text-stone-900 flex items-center justify-between">
                   <span>82%</span>
                   <span className="text-[10px] text-emerald-700 font-mono font-bold">↑ 12%</span>
                 </div>
@@ -146,7 +146,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
 
               <div className="p-2.5 rounded-xl bg-white border border-stone-200/90 space-y-0.5">
                 <div className="text-[10px] text-stone-500 font-medium">Topics Mastered</div>
-                <div className="text-sm sm:text-base font-bold text-[#111426] flex items-center justify-between">
+                <div className="text-sm sm:text-base font-bold text-stone-900 flex items-center justify-between">
                   <span>128</span>
                   <span className="text-[10px] text-emerald-700 font-mono font-bold">↑ 16%</span>
                 </div>
@@ -155,7 +155,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
 
               <div className="p-2.5 rounded-xl bg-white border border-stone-200/90 space-y-0.5">
                 <div className="text-[10px] text-stone-500 font-medium">Study Streak</div>
-                <div className="text-sm sm:text-base font-bold text-[#111426] flex items-center justify-between">
+                <div className="text-sm sm:text-base font-bold text-stone-900 flex items-center justify-between">
                   <span>32</span>
                   <span className="text-xs">🔥</span>
                 </div>
@@ -234,7 +234,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
                   <div className="h-8 w-full relative pt-1">
                     <svg className="w-full h-full" viewBox="0 0 100 25" preserveAspectRatio="none">
                       <path d="M 0 5 Q 30 7, 50 16 T 100 24" fill="none" stroke="#D9A441" strokeWidth="2" />
-                      <circle cx="50" cy="16" r="3" fill="#35156B" />
+                      <circle cx="50" cy="16" r="3" fill="#92400e" />
                     </svg>
                   </div>
                 </div>
@@ -292,10 +292,10 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
                   <span className="text-[9px] font-mono text-stone-400">Connected</span>
                 </div>
 
-                <div className="h-20 bg-[#0C1024] rounded-lg p-2 relative overflow-hidden flex items-center justify-center">
+                <div className="h-20 bg-[#1C1917] rounded-lg p-2 relative overflow-hidden flex items-center justify-center">
                   <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#D9A441_1px,transparent_1px)] [background-size:12px_12px]" />
                   <div className="relative z-10 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#35156B] border border-amber-400 text-white flex items-center justify-center shadow-xs">
+                    <div className="w-8 h-8 rounded-full bg-amber-800 border border-amber-400 text-white flex items-center justify-center shadow-xs">
                       <IKBrandMark size="sm" />
                     </div>
                     <div className="text-left space-y-0.5">
@@ -307,7 +307,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
               </div>
 
               {/* Guided Next Best Action Card */}
-              <div className="p-3 rounded-xl bg-[#0C1024] text-white border border-amber-500/30 space-y-2 flex flex-col justify-between shadow-md">
+              <div className="p-3 rounded-xl bg-[#1C1917] text-white border border-amber-500/30 space-y-2 flex flex-col justify-between shadow-md">
                 <div className="space-y-1">
                   <div className="text-[9px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
                     <Scale className="w-3 h-3 text-amber-400" />
@@ -322,7 +322,7 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
                 </div>
 
                 <div className="pt-1 flex items-center justify-end">
-                  <div className="px-3 py-1.5 rounded-lg bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                  <div className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 text-amber-100 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
                     <span>Execute Guidance</span>
                     <ArrowRight className="w-3 h-3" />
                   </div>
@@ -332,12 +332,12 @@ export const Hero3DDashboard: React.FC<Hero3DDashboardProps> = ({ onInteractiveC
             </div>
 
             {/* Bottom Floating Ask AI Input */}
-            <div className="bg-[#0C1024] text-white p-2.5 rounded-xl border border-amber-500/30 flex items-center justify-between gap-2 shadow-lg">
+            <div className="bg-[#1C1917] text-white p-2.5 rounded-xl border border-amber-500/30 flex items-center justify-between gap-2 shadow-lg">
               <div className="flex items-center gap-2 text-stone-400 text-xs pl-2">
                 <Bot className="w-4 h-4 text-amber-400" />
                 <span className="text-[11px] text-stone-300">Ask AI anything about your studies...</span>
               </div>
-              <div className="p-1.5 rounded-lg bg-[#35156B] text-amber-400 hover:bg-[#4B1F78] transition-colors cursor-pointer">
+              <div className="p-1.5 rounded-lg bg-amber-800 text-amber-200 hover:bg-amber-900 transition-colors cursor-pointer">
                 <ArrowRight className="w-4 h-4" />
               </div>
             </div>

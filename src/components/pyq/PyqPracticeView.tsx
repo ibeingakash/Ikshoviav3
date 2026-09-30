@@ -261,7 +261,13 @@ export const PyqPracticeView: React.FC = () => {
         const chosenUpper = String(chosen).trim().toUpperCase();
         const correctUpper = String(q.correctAnswer).trim().toUpperCase();
 
-        const optionsList = q.options || [];
+        const optionsList = (q.options || []).map((o, idx) => {
+          if (typeof o === 'string') {
+            const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+            return { id: letters[idx] || String(idx + 1), text: o };
+          }
+          return o;
+        });
         const optE = optionsList.find(o => String(o.id).toUpperCase() === 'E');
         const isOptENotAttempted = optE && (
           (optE.text || '').toLowerCase().includes('not attempted') ||

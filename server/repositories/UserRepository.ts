@@ -1,6 +1,6 @@
 import pool from '../db/pool.js';
 import { getSupabase } from '../supabase.js';
-import { UserProfile, ManagedUser, UserRole, EntitlementStatus } from '../../src/types/index.js';
+import { UserProfile, ManagedUser, UserRole, EntitlementStatus, TEACHER_PERMISSIONS } from '../../src/types/index.js';
 
 export const DEFAULT_ADMIN_PERMISSIONS: string[] = [
   'USERS_VIEW',
@@ -54,7 +54,7 @@ export class UserRepository {
   async findById(id: string): Promise<UserProfile | null> {
     const query = `
       SELECT 
-        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.created_at,
+        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.status, u.is_suspended, u.created_at,
         p.target_exam, p.selected_subjects, p.daily_goal_minutes, p.experience_level, p.goal_statement
       FROM public.users u
       LEFT JOIN public.user_profiles p ON u.id = p.user_id
@@ -69,7 +69,7 @@ export class UserRepository {
     const cleanEmail = email.trim().toLowerCase();
     const query = `
       SELECT 
-        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.created_at,
+        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.status, u.is_suspended, u.created_at,
         p.target_exam, p.selected_subjects, p.daily_goal_minutes, p.experience_level, p.goal_statement
       FROM public.users u
       LEFT JOIN public.user_profiles p ON u.id = p.user_id
@@ -87,12 +87,23 @@ export class UserRepository {
     return res.rows[0].password_hash;
   }
 
+  async updatePassword(email: string, passwordHash: string): Promise<boolean> {
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await pool.query(
+      `INSERT INTO public.user_passwords (email, password_hash, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = NOW()`,
+      [cleanEmail, passwordHash]
+    );
+    return (res.rowCount || 0) > 0;
+  }
+
   async createUser(data: {
     id: string;
     email: string;
     name: string;
     avatarUrl?: string;
-    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+    role?: 'USER' | 'ADMIN' | 'SUPER_ADMIN' | 'TEACHER';
     isOnboarded?: boolean;
     passwordHash: string;
     onboarding?: {
@@ -108,8 +119,8 @@ export class UserRepository {
       await client.query('BEGIN');
 
       const userRes = await client.query(
-        `INSERT INTO public.users (id, email, name, avatar_url, role, is_onboarded)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO public.users (id, email, name, avatar_url, role, is_onboarded, status, is_suspended)
+         VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', false)
          RETURNING *`,
         [
           data.id,
@@ -228,6 +239,15 @@ export class UserRepository {
     if (userId === 'usr_admin') {
       return DEFAULT_ADMIN_PERMISSIONS;
     }
+    if (userId === 'usr_teacher') {
+      return Object.values(TEACHER_PERMISSIONS);
+    }
+    try {
+      const uRoleRes = await pool.query('SELECT role FROM public.users WHERE id = $1', [userId]);
+      if (uRoleRes.rows[0]?.role === 'TEACHER') {
+        return Object.values(TEACHER_PERMISSIONS);
+      }
+    } catch {}
     return [];
   }
 
@@ -278,10 +298,195 @@ export class UserRepository {
     return { isSuspended: nextState };
   }
 
+  async removeUser(
+    userId: string,
+    actorId: string,
+    actorRole: string,
+    reason?: string
+  ): Promise<{ success: boolean; message: string; previousStatus: string }> {
+    const protectedIds = new Set(['usr_superadmin', 'usr_admin', 'usr_student', 'usr_teacher']);
+    const protectedEmails = new Set(['superadmin@ikshovia.com', 'admin@ikshovia.com', 'student@ikshovia.com', 'teacher@ikshovia.com']);
+
+    if (protectedIds.has(userId)) {
+      throw new Error('Action forbidden: Protected system accounts cannot be removed.');
+    }
+
+    const targetUser = await this.findById(userId);
+    if (!targetUser) throw new Error(`User with ID ${userId} not found.`);
+
+    if (protectedEmails.has(targetUser.email.toLowerCase())) {
+      throw new Error('Action forbidden: Protected system accounts cannot be removed.');
+    }
+
+    // Role-based restrictions:
+    // Admin can remove normal USER accounts.
+    // Admin must NOT be able to remove: SUPER_ADMIN, ADMIN, TEACHER
+    if (actorRole === 'ADMIN') {
+      if (targetUser.role === 'SUPER_ADMIN' || targetUser.role === 'ADMIN' || targetUser.role === 'TEACHER') {
+        throw new Error(`Administrators are not permitted to remove ${targetUser.role} accounts. Only Super Administrators can perform higher-level account removal.`);
+      }
+    } else if (actorRole !== 'SUPER_ADMIN') {
+      throw new Error('Access denied: Administrative authority required.');
+    }
+
+    if (targetUser.role === 'SUPER_ADMIN') {
+      throw new Error('Action forbidden: Super Admin account cannot be removed.');
+    }
+
+    const previousStatus = targetUser.status || (targetUser.isSuspended ? 'SUSPENDED' : 'ACTIVE');
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Mark account as REMOVED and suspended
+      await client.query(
+        `UPDATE public.users 
+         SET status = 'REMOVED', is_suspended = true, updated_at = NOW() 
+         WHERE id = $1`,
+        [userId]
+      );
+
+      // 2. Safely revoke active entitlements to cut access immediately without destroying historical payment/course records
+      await client.query(
+        `UPDATE public.entitlements 
+         SET status = 'REVOKED', updated_at = NOW() 
+         WHERE user_id = $1 AND status = 'ACTIVE'`,
+        [userId]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        message: `Account for ${targetUser.name} (${targetUser.email}) removed successfully. Active access and sessions revoked.`,
+        previousStatus,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async restoreUser(
+    userId: string,
+    actorId: string,
+    actorRole: string
+  ): Promise<{ success: boolean; message: string }> {
+    const targetUser = await this.findById(userId);
+    if (!targetUser) throw new Error(`User with ID ${userId} not found.`);
+
+    // Role-based restrictions:
+    // Admin can restore normal USER accounts.
+    // Admin must NOT be able to restore: SUPER_ADMIN, ADMIN, TEACHER
+    if (actorRole === 'ADMIN') {
+      if (targetUser.role !== 'USER') {
+        throw new Error(`Administrators are only permitted to restore USER accounts. Only Super Administrators can restore ${targetUser.role} accounts.`);
+      }
+    } else if (actorRole !== 'SUPER_ADMIN') {
+      throw new Error('Access denied: Administrative authority required.');
+    }
+
+    if (targetUser.status !== 'REMOVED' && (targetUser as any).accountStatus !== 'REMOVED') {
+      throw new Error(`Account for ${targetUser.name} (${targetUser.email}) is not in REMOVED status.`);
+    }
+
+    await pool.query(
+      `UPDATE public.users 
+       SET status = 'ACTIVE', is_suspended = false, updated_at = NOW() 
+       WHERE id = $1`,
+      [userId]
+    );
+
+    return {
+      success: true,
+      message: `Account for ${targetUser.name} (${targetUser.email}) restored to ACTIVE status.`,
+    };
+  }
+
+  async permanentDeleteUser(
+    userId: string,
+    actorId: string,
+    actorRole: string,
+    confirmationText: string
+  ): Promise<{ success: boolean; message: string; deletedEmail: string; deletedName: string }> {
+    if (actorRole !== 'SUPER_ADMIN') {
+      throw new Error('Access denied: Only Super Administrators have authority to permanently delete accounts.');
+    }
+
+    if (confirmationText !== 'PERMANENT DELETE') {
+      throw new Error('Invalid confirmation text. You must type "PERMANENT DELETE" to execute permanent deletion.');
+    }
+
+    if (userId === actorId) {
+      throw new Error('Action forbidden: Super Administrators cannot permanently delete their own account.');
+    }
+
+    const protectedIds = new Set(['usr_superadmin', 'usr_admin', 'usr_student', 'usr_teacher']);
+    const protectedEmails = new Set(['superadmin@ikshovia.com', 'admin@ikshovia.com', 'student@ikshovia.com', 'teacher@ikshovia.com']);
+
+    if (protectedIds.has(userId)) {
+      throw new Error('Action forbidden: Protected system seed accounts cannot be deleted.');
+    }
+
+    const targetUser = await this.findById(userId);
+    if (!targetUser) throw new Error(`User with ID ${userId} not found.`);
+
+    if (protectedEmails.has(targetUser.email.toLowerCase())) {
+      throw new Error('Action forbidden: Protected system seed accounts cannot be deleted.');
+    }
+
+    // Safety rule: Only REMOVED accounts can be permanently deleted (not active accounts)
+    if (targetUser.status !== 'REMOVED' && (targetUser as any).accountStatus !== 'REMOVED') {
+      throw new Error('Action forbidden: Only removed accounts can be permanently deleted. Please remove the account first.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Clear references in non-cascading or audit tables
+      await client.query('UPDATE public.question_versions SET created_by = NULL WHERE created_by = $1', [userId]);
+      await client.query('DELETE FROM public.notifications WHERE recipient_user_id = $1 OR actor_user_id = $1', [userId]);
+      await client.query('DELETE FROM public.user_notification_preferences WHERE user_id = $1', [userId]);
+
+      // 2. Anonymize user in audit logs so audit trail is preserved without PII
+      await client.query(
+        `UPDATE public.audit_logs 
+         SET details = jsonb_set(
+           CASE WHEN details IS NOT NULL AND details != '' AND details ~ '^\\s*\\{' THEN details::jsonb ELSE '{}'::jsonb END,
+           '{anonymizedUserId}',
+           to_jsonb($1::text)
+         )::text
+         WHERE user_id = $1`,
+        [userId]
+      );
+
+      // 3. Delete from public.users (cascades to user_profiles, entitlements, mock_attempts, teacher_submissions, etc.)
+      await client.query('DELETE FROM public.users WHERE id = $1', [userId]);
+
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        message: `Account for ${targetUser.name} (${targetUser.email}) has been permanently purged from the system.`,
+        deletedEmail: targetUser.email,
+        deletedName: targetUser.name,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async getManagedUsers(): Promise<ManagedUser[]> {
     const query = `
       SELECT 
-        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.is_suspended, u.created_at,
+        u.id, u.email, u.name, u.avatar_url, u.role, u.is_onboarded, u.status, u.is_suspended, u.created_at,
         p.target_exam, p.selected_subjects, p.daily_goal_minutes, p.experience_level, p.goal_statement,
         COALESCE(
           (SELECT json_agg(json_build_object(
@@ -333,10 +538,15 @@ export class UserRepository {
         paymentStatus = 'COMPLIMENTARY';
       }
 
+      const accountStatus = r.status === 'REMOVED'
+        ? 'REMOVED'
+        : (r.is_suspended || r.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE');
+
       return {
         ...profile,
         targetExam: r.target_exam || 'UPSC',
-        accountStatus: r.is_suspended ? 'SUSPENDED' : 'ACTIVE',
+        accountStatus,
+        status: accountStatus,
         courses,
         activeAccessCount,
         latestExpiry,
@@ -465,6 +675,7 @@ export class UserRepository {
     try {
       const accounts = [
         { id: 'usr_student', email: 'student@ikshovia.com', name: 'Akash', role: 'USER' as const, password: 'password123' },
+        { id: 'usr_teacher', email: 'teacher@ikshovia.com', name: 'Teacher Faculty', role: 'TEACHER' as const, password: 'teacher123' },
         { id: 'usr_admin', email: 'admin@ikshovia.com', name: 'Akash Singh', role: 'ADMIN' as const, password: 'admin123' },
         { id: 'usr_superadmin', email: 'superadmin@ikshovia.com', name: 'Akash Pratap Singh', role: 'SUPER_ADMIN' as const, password: 'superadmin123' },
       ];
@@ -522,6 +733,10 @@ export class UserRepository {
       }
     }
 
+    const accountStatus = row.status === 'REMOVED'
+      ? 'REMOVED'
+      : (row.is_suspended || row.status === 'SUSPENDED' ? 'SUSPENDED' : 'ACTIVE');
+
     return {
       id: row.id,
       email: row.email,
@@ -529,6 +744,8 @@ export class UserRepository {
       avatarUrl: row.avatar_url || undefined,
       role: row.role,
       isOnboarded: row.is_onboarded,
+      status: accountStatus,
+      isSuspended: accountStatus !== 'ACTIVE',
       createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
       onboarding: row.target_exam ? {
         targetExam: row.target_exam,

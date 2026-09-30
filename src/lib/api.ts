@@ -37,7 +37,7 @@ import {
   AppVersionResponse,
 } from '../types/index.js';
 
-export const PRODUCTION_API_URL = 'https://ikshovia.onrender.com';
+export const PRODUCTION_API_URL = 'https://ikshoviacse.onrender.com';
 
 /**
  * Detects if the current environment is running inside Capacitor (specifically Android native app).
@@ -58,6 +58,9 @@ export function isCapacitorNative(): boolean {
         return true;
       }
     }
+    if (win.Capacitor.platform === 'android' || win.Capacitor.platform === 'ios') {
+      return true;
+    }
   }
 
   // 2. Protocol check for native app WebView (e.g. capacitor://localhost or file:)
@@ -66,12 +69,16 @@ export function isCapacitorNative(): boolean {
     return true;
   }
 
-  // 3. In Capacitor Android APK, the origin is usually https://localhost or http://localhost
-  // We distinguish this from desktop web development by checking Android WebView user-agent or capacitor indicators.
-  const isAndroidWebView =
-    /Android.*(wv|\.apk|Version\/[\d.]+).*Chrome/i.test(navigator.userAgent || '') ||
-    /Capacitor/i.test(navigator.userAgent || '');
-  if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && isAndroidWebView) {
+  // 3. In Capacitor Android APK, the origin is https://localhost (with androidScheme: https)
+  // Check if running in an Android device on localhost
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isAndroid && isLocalhost) {
+    return true;
+  }
+
+  // In Capacitor Android with androidScheme: "https", window.location.origin is "https://localhost"
+  if (window.location.origin === 'https://localhost' && (!window.location.port || window.location.port === '443')) {
     return true;
   }
 
@@ -80,12 +87,17 @@ export function isCapacitorNative(): boolean {
 
 /**
  * Resolves the appropriate API base URL dynamically:
+ * - If running inside Capacitor Android native APK, strictly uses production backend.
  * - If VITE_API_BASE_URL is explicitly set, uses it.
  * - If runtime config (window.IKSHOVIA_CONFIG.API_URL) is set, uses it.
- * - If running inside Capacitor Android native APK, uses production backend.
  * - Otherwise (local development & web production), uses relative URL / same origin.
  */
 export function getApiBaseUrl(): string {
+  // CRITICAL: Android native app MUST always target the canonical production server
+  if (isCapacitorNative()) {
+    return PRODUCTION_API_URL;
+  }
+
   const meta = import.meta as any;
   const envUrl = (meta?.env?.VITE_API_BASE_URL as string | undefined)?.trim();
   if (envUrl) {
@@ -100,12 +112,12 @@ export function getApiBaseUrl(): string {
 
     const storedUrl = localStorage.getItem('ikshovia_api_url');
     if (storedUrl && storedUrl.trim()) {
-      return storedUrl.trim().replace(/\/+$/, '');
+      const clean = storedUrl.trim().replace(/\/+$/, '');
+      if (!clean.includes('ikshoviav3') && !clean.includes('localhost')) {
+        return clean;
+      }
+      localStorage.removeItem('ikshovia_api_url');
     }
-  }
-
-  if (isCapacitorNative()) {
-    return PRODUCTION_API_URL;
   }
 
   return '';
@@ -124,11 +136,49 @@ export function apiUrl(endpoint: string): string {
   return base ? `${base}${normalizedEndpoint}` : normalizedEndpoint;
 }
 
+// Global circuit-breaker for upstream 402 Payment Required / Egress restriction
+let isEgressRestricted = false;
+let last402NoticeTime = 0;
+
+export function isQuotaRestricted(): boolean {
+  return isEgressRestricted;
+}
+
+export function resetQuotaRestriction(): void {
+  isEgressRestricted = false;
+}
+
 /**
  * Centralized fetch wrapper ensuring all requests target the resolved base URL.
+ * Automatically halts infinite retries when encountering HTTP 402 (fair-use / quota restriction).
  */
-export const apiFetch = (endpoint: string, init?: RequestInit): Promise<Response> => {
-  return fetch(apiUrl(endpoint), init);
+export const apiFetch = async (endpoint: string, init?: RequestInit): Promise<Response> => {
+  const primaryUrl = apiUrl(endpoint);
+
+  const res = await fetch(primaryUrl, init);
+
+  // If an API request returns text/html (e.g. Vite SPA router fallback on cold start or 404),
+  // prevent "Unexpected token '<', <!doctype... is not valid JSON" errors by returning a clean JSON 404.
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/html') && (endpoint.includes('/api/') || primaryUrl.includes('/api/'))) {
+    return new Response(JSON.stringify({ error: `API route not found or server starting: ${endpoint}`, notFound: true }), {
+      status: 404,
+      statusText: 'Not Found',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // If HTTP 402 is returned, trip the circuit breaker to prevent storming upstream services
+  if (res.status === 402) {
+    const now = Date.now();
+    isEgressRestricted = true;
+    if (now - last402NoticeTime > 30000) {
+      last402NoticeTime = now;
+      console.warn('[Egress Protection] HTTP 402 detected on endpoint:', endpoint, '- Circuit breaker active.');
+    }
+  }
+
+  return res;
 };
 
 /**
@@ -344,13 +394,9 @@ export async function parseSafeApiResponse<T = any>(res: Response, endpointLabel
 
 export const getAuthHeaders = () => {
   const token = localStorage.getItem('ikshovia_token');
-  const role = localStorage.getItem('ikshovia_user_role');
-  const userId = localStorage.getItem('ikshovia_user_id');
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(role ? { 'x-user-role': role } : {}),
-    ...(userId ? { 'x-user-id': userId } : {}),
   };
 };
 
@@ -390,6 +436,19 @@ export const api = {
       body: JSON.stringify({ token, newPassword }),
     });
     return res.json();
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string, confirmNewPassword: string) => {
+    const res = await apiFetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ currentPassword, newPassword, confirmNewPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to change password');
+    }
+    return data;
   },
 
   getMe: async () => {
@@ -564,11 +623,19 @@ export const api = {
   },
 
   // Practice & Questions
-  getPracticeQuestions: async (subjectId?: string, conceptId?: string, limit = 10): Promise<Question[]> => {
+  getPracticeQuestions: async (
+    subjectId?: string,
+    conceptId?: string,
+    limit = 10,
+    topicId?: string,
+    shuffle = false
+  ): Promise<Question[]> => {
     try {
       const params = new URLSearchParams();
       if (subjectId) params.append('subjectId', subjectId);
       if (conceptId) params.append('conceptId', conceptId);
+      if (topicId) params.append('topicId', topicId);
+      if (shuffle) params.append('shuffle', 'true');
       params.append('limit', String(limit));
 
       const res = await apiFetch(`/api/practice/questions?${params.toString()}`);
@@ -577,6 +644,21 @@ export const api = {
       return Array.isArray(data) ? data : (Array.isArray(data?.questions) ? data.questions : []);
     } catch {
       return [];
+    }
+  },
+
+  getPracticePoolCount: async (subjectId?: string, topicId?: string, conceptId?: string): Promise<number> => {
+    try {
+      const params = new URLSearchParams();
+      if (subjectId) params.append('subjectId', subjectId);
+      if (topicId) params.append('topicId', topicId);
+      if (conceptId) params.append('conceptId', conceptId);
+      const res = await apiFetch(`/api/practice/pool-count?${params.toString()}`);
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return typeof data?.count === 'number' ? data.count : 0;
+    } catch {
+      return 0;
     }
   },
 
@@ -922,7 +1004,14 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ forceNew }),
     });
-    if (!res.ok) throw new Error('Failed to start mock test attempt');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      const err: any = new Error(errData.message || errData.error || 'Failed to start mock test attempt');
+      err.status = res.status;
+      err.code = errData.error;
+      err.testSeries = errData.testSeries;
+      throw err;
+    }
     const data = await res.json();
     return {
       attempt: data.attempt,
@@ -1719,7 +1808,7 @@ export const api = {
     try {
       const res = await apiFetch(`/api/resources/${id}/bookmark`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ notes }),
       });
       if (!res.ok) return { isBookmarked: false };
@@ -1734,7 +1823,7 @@ export const api = {
     try {
       const res = await apiFetch(`/api/resources/${id}/progress`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ lastPage, totalPages, progressPercentage }),
       });
       if (!res.ok) return null;
@@ -1942,16 +2031,94 @@ export const api = {
     return res.json();
   },
 
-  // Notifications
-  getNotifications: async (userId?: string): Promise<NotificationItem[]> => {
+  // Personalized Study Planner & Intelligence
+  getStudyPlan: async (): Promise<any> => {
     try {
-      const uid = userId || 'usr_demo';
-      const res = await apiFetch(`/api/notifications?userId=${uid}`, { headers: getAuthHeaders() });
+      const res = await apiFetch('/api/study-planner/current', { headers: getAuthHeaders() });
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  },
+
+  setupStudyPlan: async (planData: any): Promise<any> => {
+    const res = await apiFetch('/api/study-planner/setup', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(planData),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to configure study plan: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  updateStudyPlanTask: async (taskId: string, status: string): Promise<any> => {
+    const res = await apiFetch(`/api/study-planner/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to update task status: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  recordRevisionOutcome: async (conceptId: string, responseQuality: string): Promise<any> => {
+    const res = await apiFetch('/api/study-planner/revision-outcome', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ conceptId, responseQuality }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to record revision outcome: ${res.status}`);
+    }
+    return res.json();
+  },
+
+  getMistakeNotebook: async (): Promise<any[]> => {
+    try {
+      const res = await apiFetch('/api/study-planner/mistake-notebook', { headers: getAuthHeaders() });
       if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : (Array.isArray(data?.notifications) ? data.notifications : []);
+      return res.json();
     } catch {
       return [];
+    }
+  },
+
+  // Notifications
+  getNotifications: async (optionsOrUserId?: string | { limit?: number; offset?: number; unreadOnly?: boolean }): Promise<any> => {
+    try {
+      const params = new URLSearchParams();
+      if (typeof optionsOrUserId === 'object' && optionsOrUserId !== null) {
+        if (optionsOrUserId.limit) params.append('limit', String(optionsOrUserId.limit));
+        if (optionsOrUserId.offset) params.append('offset', String(optionsOrUserId.offset));
+        if (optionsOrUserId.unreadOnly) params.append('unreadOnly', 'true');
+      }
+      const q = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiFetch(`/api/notifications${q}`, { headers: getAuthHeaders() });
+      if (!res.ok) {
+        const fallback: any = [];
+        fallback.notifications = [];
+        fallback.unreadCount = 0;
+        fallback.totalCount = 0;
+        return fallback;
+      }
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.notifications) ? data.notifications : []);
+      const result: any = [...list];
+      result.notifications = list;
+      result.unreadCount = data?.unreadCount ?? list.filter((n: any) => !n.isRead).length;
+      result.totalCount = data?.totalCount ?? list.length;
+      return result;
+    } catch {
+      const fallback: any = [];
+      fallback.notifications = [];
+      fallback.unreadCount = 0;
+      fallback.totalCount = 0;
+      return fallback;
     }
   },
 
@@ -2387,6 +2554,44 @@ export const api = {
     return res.json();
   },
 
+  removeUser: async (userId: string, reason?: string) => {
+    const res = await apiFetch(`/api/admin/users/${userId}/remove`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to remove user account');
+    }
+    return res.json();
+  },
+
+  restoreUser: async (userId: string) => {
+    const res = await apiFetch(`/api/admin/users/${userId}/restore`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to restore user account');
+    }
+    return res.json();
+  },
+
+  permanentDeleteUser: async (userId: string, confirmationText: string) => {
+    const res = await apiFetch(`/api/admin/users/${userId}/permanent-delete`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ confirmationText }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to permanently delete user account');
+    }
+    return res.json();
+  },
+
   getMyPermissions: async () => {
     try {
       const res = await apiFetch('/api/admin/my-permissions', { headers: getAuthHeaders() });
@@ -2752,7 +2957,7 @@ export const api = {
   },
 
   // Coupons & Offers Management
-  validateCoupon: async (code: string, courseId: string): Promise<{
+  validateCoupon: async (code: string, courseId?: string): Promise<{
     isValid: boolean;
     error?: string;
     coupon?: Coupon;
@@ -3225,7 +3430,15 @@ export const api = {
       if (currentVersion) {
         params.set('currentVersion', currentVersion);
       }
-      const res = await apiFetch(`/api/app/version?${params.toString()}`);
+      params.set('_t', String(Date.now())); // Cache-busting parameter
+
+      const res = await apiFetch(`/api/app/version?${params.toString()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       if (!res.ok) return null;
       return res.json();
     } catch (err) {
@@ -3364,6 +3577,540 @@ export const api = {
     } catch {
       return [];
     }
+  },
+
+  // ==========================================
+  // TEACHER WORKSPACE APIS
+  // ==========================================
+  getTeacherDashboardStats: async (): Promise<any> => {
+    const res = await apiFetch('/api/teacher/dashboard-stats', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to load teacher dashboard statistics');
+    return res.json();
+  },
+
+  getTeacherClasses: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/teacher/classes', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getTeacherClassById: async (classId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to load class details');
+    return res.json();
+  },
+
+  createTeacherClass: async (data: any): Promise<any> => {
+    const res = await apiFetch('/api/teacher/classes', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create class');
+    }
+    return res.json();
+  },
+
+  updateTeacherClass: async (classId: string, data: any): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update class');
+    }
+    return res.json();
+  },
+
+  deleteTeacherClass: async (classId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete class');
+    return res.json();
+  },
+
+  getTeacherClassStudents: async (classId: string): Promise<any[]> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}/students`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getClassStudents: async (classId: string): Promise<any[]> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}/students`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  addStudentToClass: async (classId: string, studentId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}/students`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ studentId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to enroll student');
+    }
+    return res.json();
+  },
+
+  removeStudentFromClass: async (classId: string, studentId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/classes/${classId}/students/${studentId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to remove student from class');
+    return res.json();
+  },
+
+  getTeacherStudents: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/teacher/students', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getTeacherStudentDetail: async (studentId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/students/${studentId}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to load student details');
+    return res.json();
+  },
+
+  getTeacherAssignments: async (classId?: string): Promise<any[]> => {
+    const url = classId ? `/api/teacher/assignments?classId=${encodeURIComponent(classId)}` : '/api/teacher/assignments';
+    const res = await apiFetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  createTeacherAssignment: async (data: any): Promise<any> => {
+    const res = await apiFetch('/api/teacher/assignments', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create assignment');
+    }
+    return res.json();
+  },
+
+  updateTeacherAssignment: async (assignmentId: string, data: any): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/assignments/${assignmentId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to update assignment');
+    return res.json();
+  },
+
+  deleteTeacherAssignment: async (assignmentId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/assignments/${assignmentId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete assignment');
+    return res.json();
+  },
+
+  getTeacherSubmissions: async (assignmentId?: string, status?: string): Promise<any[]> => {
+    const params = new URLSearchParams();
+    if (assignmentId) params.append('assignmentId', assignmentId);
+    if (status && status !== 'ALL') params.append('status', status);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await apiFetch(`/api/teacher/submissions${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  evaluateTeacherSubmission: async (submissionId: string, data: any): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/submissions/${submissionId}/evaluate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save evaluation');
+    }
+    return res.json();
+  },
+
+  getTeacherQuizzes: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/teacher/quizzes', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  createTeacherQuiz: async (data: any): Promise<any> => {
+    const res = await apiFetch('/api/teacher/quizzes', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create quiz');
+    }
+    return res.json();
+  },
+
+  getTeacherAnnouncements: async (classId?: string): Promise<any[]> => {
+    const url = classId ? `/api/teacher/announcements?classId=${encodeURIComponent(classId)}` : '/api/teacher/announcements';
+    const res = await apiFetch(url, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  createTeacherAnnouncement: async (data: any): Promise<any> => {
+    const res = await apiFetch('/api/teacher/announcements', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to post announcement');
+    }
+    return res.json();
+  },
+
+  deleteTeacherAnnouncement: async (announcementId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/announcements/${announcementId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete announcement');
+    return res.json();
+  },
+
+  getTeacherAnalytics: async (): Promise<any> => {
+    const res = await apiFetch('/api/teacher/analytics', { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Failed to load teacher analytics');
+    return res.json();
+  },
+
+  // Learner-facing Class & Assignment APIs
+  getLearnerClasses: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/learner/classes', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getLearnerAssignments: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/learner/assignments', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  submitLearnerAssignment: async (assignmentId: string, answers: any[]): Promise<any> => {
+    const res = await apiFetch(`/api/learner/assignments/${assignmentId}/submit`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ answers }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit assignment');
+    }
+    return res.json();
+  },
+
+  getLearnerAnnouncements: async (): Promise<any[]> => {
+    const res = await apiFetch('/api/learner/announcements', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  // Candidate Dossier & Performance Aggregation
+  getStudentDossier: async (studentId: string): Promise<any> => {
+    const res = await apiFetch(`/api/teacher/students/${studentId}/dossier`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch candidate dossier');
+    }
+    return res.json();
+  },
+
+  getLearnerSelfDossier: async (): Promise<any> => {
+    const res = await apiFetch('/api/student/dossier', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch learner dossier');
+    }
+    return res.json();
+  },
+
+  // Platform Analytics (Admin/Super Admin)
+  getAdminPlatformAnalytics: async (): Promise<any> => {
+    const res = await apiFetch('/api/admin/analytics/platform', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load platform analytics');
+    }
+    return res.json();
+  },
+
+  markNotificationRead: async (notificationId: string): Promise<boolean> => {
+    const res = await apiFetch(`/api/notifications/${notificationId}/read`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.ok;
+  },
+
+  markAllNotificationsRead: async (): Promise<boolean> => {
+    const res = await apiFetch('/api/notifications/read-all', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return res.ok;
+  },
+
+  getNotificationPreferences: async (): Promise<any> => {
+    const res = await apiFetch('/api/notifications/preferences', { headers: getAuthHeaders() });
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  updateNotificationPreferences: async (preferences: any): Promise<any> => {
+    const res = await apiFetch('/api/notifications/preferences', {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(preferences),
+    });
+    if (!res.ok) throw new Error('Failed to update notification preferences');
+    return res.json();
+  },
+
+  registerDeviceToken: async (token: string, platform: 'android' | 'ios' | 'web' = 'android', appVersion?: string) => {
+    const res = await apiFetch('/api/notifications/devices', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ token, platform, appVersion }),
+    });
+    return res.json();
+  },
+
+  deactivateDeviceToken: async (token: string) => {
+    const res = await apiFetch('/api/notifications/devices/deactivate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ token }),
+    });
+    return res.json();
+  },
+
+  getRegisteredDevices: async () => {
+    const res = await apiFetch('/api/notifications/devices', { headers: getAuthHeaders() });
+    if (!res.ok) return { count: 0, devices: [] };
+    return res.json();
+  },
+
+  getPushSubsystemStatus: async () => {
+    const res = await apiFetch('/api/admin/push/status', { headers: getAuthHeaders() });
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // UNIFIED PRELIMS + MAINS + INTERVIEW ENGINE APIs
+  // ----------------------------------------------------
+  getExams: async () => {
+    const res = await apiFetch('/api/exams');
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getPapers: async (examId?: string, stage?: string) => {
+    const params = new URLSearchParams();
+    if (examId) params.append('examId', examId);
+    if (stage) params.append('stage', stage);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await apiFetch(`/api/exams/papers${qs}`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getMainsQuestions: async (params?: { exam?: string; paper?: string; subjectId?: string; search?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.exam) query.append('exam', params.exam);
+    if (params?.paper) query.append('paper', params.paper);
+    if (params?.subjectId) query.append('subjectId', params.subjectId);
+    if (params?.search) query.append('search', params.search);
+    if (params?.limit) query.append('limit', String(params.limit));
+    if (params?.offset) query.append('offset', String(params.offset));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/mains/questions${qs}`);
+    if (!res.ok) return { questions: [], total: 0 };
+    return res.json();
+  },
+
+  getMainsQuestionById: async (id: string) => {
+    const res = await apiFetch(`/api/mains/questions/${id}`);
+    if (!res.ok) throw new Error('Question not found');
+    return res.json();
+  },
+
+  getMainsSubmissions: async (questionId?: string) => {
+    const qs = questionId ? `?questionId=${encodeURIComponent(questionId)}` : '';
+    const res = await apiFetch(`/api/mains/submissions${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getMainsSubmissionById: async (id: string) => {
+    const res = await apiFetch(`/api/mains/submissions/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Submission not found');
+    return res.json();
+  },
+
+  saveMainsDraft: async (data: {
+    submissionId?: string;
+    questionId: string;
+    answerText?: string;
+    submissionType?: string;
+    attachmentUrl?: string;
+    wordCount?: number;
+    timeSpentSeconds?: number;
+  }) => {
+    const res = await apiFetch('/api/mains/draft', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save answer draft');
+    }
+    return res.json();
+  },
+
+  submitMainsAnswer: async (submissionId: string) => {
+    const res = await apiFetch('/api/mains/submit', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ submissionId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit answer');
+    }
+    return res.json();
+  },
+
+  evaluateMainsAnswerAI: async (submissionId: string) => {
+    const res = await apiFetch('/api/mains/evaluate-ai', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ submissionId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to evaluate answer');
+    }
+    return res.json();
+  },
+
+  getTeacherEvaluationsForLearner: async () => {
+    const res = await apiFetch('/api/mains/teacher-evaluations', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getInterviewProfile: async () => {
+    const res = await apiFetch('/api/interview/profile', { headers: getAuthHeaders() });
+    if (!res.ok) return null;
+    return res.json();
+  },
+
+  saveInterviewProfile: async (data: any) => {
+    const res = await apiFetch('/api/interview/profile', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save DAF profile');
+    }
+    return res.json();
+  },
+
+  getInterviewQuestions: async (params?: { exam?: string; category?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.exam) query.append('exam', params.exam);
+    if (params?.category) query.append('category', params.category);
+    if (params?.limit) query.append('limit', String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/interview/questions${qs}`);
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  getInterviewSessions: async () => {
+    const res = await apiFetch('/api/interview/sessions', { headers: getAuthHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  },
+
+  createInterviewSession: async (data: { exam?: string; mode?: string; boardName?: string }) => {
+    const res = await apiFetch('/api/interview/sessions', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create interview session');
+    }
+    return res.json();
+  },
+
+  getInterviewSession: async (id: string) => {
+    const res = await apiFetch(`/api/interview/sessions/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Interview session not found');
+    return res.json();
+  },
+
+  sendInterviewMessage: async (sessionId: string, answerText: string, step?: number) => {
+    const res = await apiFetch(`/api/interview/sessions/${sessionId}/message`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ answerText, step }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send interview message');
+    }
+    return res.json();
+  },
+
+  completeInterviewSession: async (sessionId: string) => {
+    const res = await apiFetch(`/api/interview/sessions/${sessionId}/complete`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to complete interview session');
+    }
+    return res.json();
+  },
+
+  getUnifiedPerformance: async () => {
+    const res = await apiFetch('/api/learner/unified-performance', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load unified performance');
+    }
+    return res.json();
   },
 };
 

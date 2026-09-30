@@ -21,7 +21,8 @@ import {
   MessageSquare,
   Phone,
   Edit3,
-  EyeOff
+  EyeOff,
+  Trash2
 } from 'lucide-react';
 import { LiveClass, LiveClassRecording } from '../../types/liveClass.js';
 import { liveClassService } from '../../services/liveClassService.js';
@@ -29,6 +30,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { CreateLiveClassModal } from './CreateLiveClassModal.js';
 import { EditLiveClassModal } from './EditLiveClassModal.js';
 import { DirectCallModal } from './DirectCallModal.js';
+import { GroupCallModal } from './GroupCallModal.js';
 import { LiveAttendanceModal } from './LiveAttendanceModal.js';
 import { PreJoinScreen } from './PreJoinScreen.js';
 import { LiveClassroomView } from './LiveClassroomView.js';
@@ -62,8 +64,21 @@ export const LiveClassesHubView: React.FC = () => {
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDirectCallModal, setShowDirectCallModal] = useState(false);
+  const [showGroupCallModal, setShowGroupCallModal] = useState(false);
   const [editingClass, setEditingClass] = useState<LiveClass | null>(null);
   const [attendanceClass, setAttendanceClass] = useState<LiveClass | null>(null);
+  const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
+
+  const handleQuickDelete = async (classId: string) => {
+    try {
+      await liveClassService.deleteClass(classId);
+      setDeletingClassId(null);
+      await loadClasses();
+    } catch (err: any) {
+      console.error('Failed to delete live class:', err);
+      alert(err.message || 'Failed to delete live class');
+    }
+  };
 
   useEffect(() => {
     loadClasses();
@@ -80,10 +95,10 @@ export const LiveClassesHubView: React.FC = () => {
         search: searchQuery || undefined,
         adminView: isTeacherOrAdmin,
       });
-      setClasses(data);
+      setClasses(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      console.error('[LiveHub Error]', err);
-      setError('Failed to load live classes. Please refresh.');
+      console.warn('[LiveHub Error]', err);
+      setClasses([]);
     } finally {
       setLoading(false);
     }
@@ -156,7 +171,7 @@ export const LiveClassesHubView: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#070A13] text-stone-100 p-4 sm:p-8 space-y-8">
-
+      
       {/* 1. HERO HEADER */}
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-stone-800">
         <div className="space-y-2">
@@ -180,6 +195,14 @@ export const LiveClassesHubView: React.FC = () => {
           >
             <Phone className="w-4 h-4 text-emerald-400" />
             <span>1:1 Video Consultation</span>
+          </button>
+
+          <button
+            onClick={() => setShowGroupCallModal(true)}
+            className="px-4 py-2.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 hover:border-amber-500/50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
+          >
+            <Users className="w-4 h-4 text-amber-400" />
+            <span>Group Call / Join Room</span>
           </button>
 
           {isTeacherOrAdmin && (
@@ -396,7 +419,7 @@ export const LiveClassesHubView: React.FC = () => {
               classes.map(c => {
                 const isLive = c.status === 'LIVE';
                 const isHost = isTeacherOrAdmin && (c.teacherId === user?.id || user?.role === 'ADMIN');
-                const scheduledDate = new Date(c.scheduledAt);
+                const scheduledDate = new Date(c.scheduledAt || c.scheduledDate || Date.now());
 
                 return (
                   <div
@@ -462,10 +485,10 @@ export const LiveClassesHubView: React.FC = () => {
                       <div className="p-3 bg-stone-900/70 rounded-xl border border-stone-800/80 flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-linear-to-br from-amber-600/30 to-stone-800 border border-amber-500/30 flex items-center justify-center font-bold text-amber-300 text-xs">
-                            {c.teacherName.substring(0, 2).toUpperCase()}
+                            {String(c.teacherName || 'Faculty').substring(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="text-xs font-bold text-stone-200">{c.teacherName}</div>
+                            <div className="text-xs font-bold text-stone-200">{c.teacherName || 'Faculty Mentor'}</div>
                             <div className="text-[10px] text-amber-400/90">Lead Faculty</div>
                           </div>
                         </div>
@@ -490,27 +513,54 @@ export const LiveClassesHubView: React.FC = () => {
                     <div className="pt-5 mt-4 border-t border-stone-800 flex items-center justify-between gap-3">
                       {isHost ? (
                         <div className="flex items-center gap-2 w-full">
-                          <button
-                            onClick={() => setEditingClass(c)}
-                            className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-amber-400 hover:text-amber-300 transition-colors"
-                            title="Edit Class & Settings"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setAttendanceClass(c)}
-                            className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-stone-300 hover:text-white transition-colors"
-                            title="View Attendance Report"
-                          >
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                          </button>
-                          <button
-                            onClick={() => handleStartOrJoin(c)}
-                            className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
-                          >
-                            <Video className="w-4 h-4" />
-                            <span>{isLive ? 'Resume Classroom' : 'Start as Faculty'}</span>
-                          </button>
+                          {deletingClassId === c.id ? (
+                            <div className="flex items-center gap-2 w-full bg-rose-950/40 p-1.5 rounded-xl border border-rose-900/50">
+                              <span className="text-[11px] text-rose-300 font-medium px-2">Delete this class?</span>
+                              <button
+                                onClick={() => handleQuickDelete(c.id)}
+                                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition-colors"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                onClick={() => setDeletingClassId(null)}
+                                className="px-2 py-1 text-xs text-stone-400 hover:text-white"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingClass(c)}
+                                className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-amber-400 hover:text-amber-300 transition-colors"
+                                title="Edit Class & Settings"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setAttendanceClass(c)}
+                                className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700 text-stone-300 hover:text-white transition-colors"
+                                title="View Attendance Report"
+                              >
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                              </button>
+                              <button
+                                onClick={() => setDeletingClassId(c.id)}
+                                className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-rose-900 text-rose-400 hover:text-rose-300 transition-colors"
+                                title="Delete Live Class"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleStartOrJoin(c)}
+                                className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                              >
+                                <Video className="w-4 h-4" />
+                                <span>{isLive ? 'Resume Classroom' : 'Start as Faculty'}</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 w-full">
@@ -578,6 +628,13 @@ export const LiveClassesHubView: React.FC = () => {
       <DirectCallModal
         isOpen={showDirectCallModal}
         onClose={() => setShowDirectCallModal(false)}
+      />
+
+      {/* MODAL: GROUP CALL / ROOM JOIN */}
+      <GroupCallModal
+        isOpen={showGroupCallModal}
+        onClose={() => setShowGroupCallModal(false)}
+        onEnterMeeting={(meeting) => handleStartOrJoin(meeting)}
       />
 
       {/* MODAL: ATTENDANCE */}

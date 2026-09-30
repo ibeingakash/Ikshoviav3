@@ -117,8 +117,8 @@ export const CurrentAffairsAdminView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-stone-200/80 pb-4 gap-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <Newspaper className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <Newspaper className="w-6 h-6 text-amber-800" />
             <span>Current Affairs Intelligence & Editorial Ops</span>
           </h1>
           <p className="text-xs text-stone-500 mt-1 font-medium">
@@ -130,7 +130,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
           <button
             onClick={() => handleTriggerIngestion()}
             disabled={ingesting}
-            className="text-xs font-bold bg-[#0C1024] hover:bg-[#121027] text-amber-300 px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 border border-amber-500/30 cursor-pointer shadow-2xs"
+            className="text-xs font-bold bg-[#1C1917] hover:bg-[#292524] text-amber-300 px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 border border-amber-500/30 cursor-pointer shadow-2xs"
           >
             {ingesting ? <RefreshCw className="w-4 h-4 animate-spin text-amber-400" /> : <Play className="w-4 h-4 fill-amber-400 text-amber-400" />}
             <span>Run All Active Providers</span>
@@ -144,7 +144,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
           onClick={() => setAdminTab('ARTICLES')}
           className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             adminTab === 'ARTICLES'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
           }`}
         >
@@ -156,7 +156,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
           onClick={() => setAdminTab('FRESHNESS')}
           className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             adminTab === 'FRESHNESS'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
           }`}
         >
@@ -168,7 +168,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
           onClick={() => setAdminTab('RUNS')}
           className={`text-xs font-bold px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             adminTab === 'RUNS'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
           }`}
         >
@@ -187,7 +187,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div className="bg-white border border-stone-200/90 p-3.5 rounded-xl text-center shadow-2xs">
                 <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider font-mono">Total Articles</span>
-                <div className="text-xl font-serif-editorial font-bold text-[#111426] mt-1">{metrics.total}</div>
+                <div className="text-xl font-serif-editorial font-bold text-stone-900 mt-1">{metrics.total}</div>
               </div>
               <div className="bg-white border border-stone-200/90 p-3.5 rounded-xl text-center shadow-2xs">
                 <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider font-mono">Published</span>
@@ -198,8 +198,8 @@ export const CurrentAffairsAdminView: React.FC = () => {
                 <div className="text-xl font-serif-editorial font-bold text-amber-800 mt-1">{metrics.reviewRequired}</div>
               </div>
               <div className="bg-white border border-stone-200/90 p-3.5 rounded-xl text-center shadow-2xs">
-                <span className="text-[10px] font-bold text-[#35156B] uppercase tracking-wider font-mono">Ingested</span>
-                <div className="text-xl font-serif-editorial font-bold text-[#35156B] mt-1">{metrics.ingested}</div>
+                <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider font-mono">Ingested</span>
+                <div className="text-xl font-serif-editorial font-bold text-amber-900 mt-1">{metrics.ingested}</div>
               </div>
               <div className="bg-white border border-stone-200/90 p-3.5 rounded-xl text-center shadow-2xs">
                 <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider font-mono">Rejected</span>
@@ -216,7 +216,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
                 onClick={() => setSelectedStatusFilter(st)}
                 className={`text-xs font-bold px-3 py-1.5 rounded-xl whitespace-nowrap transition-all cursor-pointer font-mono ${
                   selectedStatusFilter === st
-                    ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                    ? 'bg-amber-800 text-amber-100 shadow-2xs'
                     : 'bg-white text-stone-600 hover:bg-stone-100/80 border border-stone-200/90'
                 }`}
               >
@@ -228,7 +228,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
           {/* List Table / Cards */}
           {loading ? (
             <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2">
-              <Sparkles className="w-4 h-4 animate-spin text-[#35156B]" />
+              <Sparkles className="w-4 h-4 animate-spin text-amber-800" />
               <span>Loading Current Affairs records from PostgreSQL...</span>
             </div>
           ) : articles.length === 0 ? (
@@ -248,7 +248,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
                       }`}>
                         {art.status || 'PUBLISHED'}
                       </span>
-                      <span className="text-[11px] font-bold text-[#35156B]">{art.source}</span>
+                      <span className="text-[11px] font-bold text-amber-800">{art.source}</span>
                       <span className="text-[11px] text-stone-600 font-semibold">{art.category}</span>
                       <span className="text-[10px] text-stone-400 font-mono">{art.date}</span>
                     </div>
@@ -257,9 +257,9 @@ export const CurrentAffairsAdminView: React.FC = () => {
                       <button
                         onClick={() => handleEnrichArticle(art.id)}
                         disabled={enrichingId === art.id}
-                        className="text-xs font-bold bg-purple-50 text-[#35156B] hover:bg-purple-100 border border-purple-200 px-3 py-1 rounded-xl flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                        className="text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 px-3 py-1 rounded-xl flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                       >
-                        <Sparkles className={`w-3.5 h-3.5 text-[#35156B] ${enrichingId === art.id ? 'animate-spin' : ''}`} />
+                        <Sparkles className={`w-3.5 h-3.5 text-amber-800 ${enrichingId === art.id ? 'animate-spin' : ''}`} />
                         <span>{enrichingId === art.id ? 'Enriching...' : 'AI Enrich'}</span>
                       </button>
 
@@ -286,7 +286,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-serif-editorial font-bold text-[#111426] mb-1">{art.title}</h3>
+                    <h3 className="text-sm font-serif-editorial font-bold text-stone-900 mb-1">{art.title}</h3>
                     <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed">{art.summary}</p>
                   </div>
 
@@ -315,7 +315,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
 
             {loading ? (
               <div className="py-10 text-center text-xs text-stone-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-[#35156B]" />
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-800" />
                 <span>Reading provider health telemetry...</span>
               </div>
             ) : sourceFreshness.length === 0 ? (
@@ -326,7 +326,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
                   <div key={src.providerCode} className="border border-stone-200 p-4 rounded-2xl space-y-3 bg-stone-50/50">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-[#35156B]" />
+                        <Building2 className="w-4 h-4 text-amber-800" />
                         <span className="text-xs font-bold text-stone-900">{src.providerName}</span>
                       </div>
                       <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase border ${
@@ -357,7 +357,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
                       <button
                         onClick={() => handleTriggerIngestion(src.providerCode)}
                         disabled={ingesting}
-                        className="text-xs font-bold text-[#35156B] bg-[#35156B]/10 hover:bg-[#35156B]/20 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                        className="text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
                       >
                         <Play className="w-3 h-3" />
                         <span>Run Now</span>
@@ -384,7 +384,7 @@ export const CurrentAffairsAdminView: React.FC = () => {
 
             {loading ? (
               <div className="py-10 text-center text-xs text-stone-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-[#35156B]" />
+                <RefreshCw className="w-4 h-4 animate-spin text-amber-800" />
                 <span>Loading execution run history...</span>
               </div>
             ) : ingestionRuns.length === 0 ? (

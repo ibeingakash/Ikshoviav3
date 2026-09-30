@@ -118,7 +118,7 @@ export const EntitlementsView: React.FC = () => {
       );
       setNotification({
         type: 'success',
-        message: `Entitlement extended by ${additionalDays} days (New expiry: ${new Date(updated.expiresAt).toLocaleDateString()}).`,
+        message: `Entitlement extended by ${additionalDays} days (New expiry: ${updated.expiresAt ? new Date(updated.expiresAt).toLocaleDateString() : 'Lifetime'}).`,
       });
       setExtendModalOpen(false);
       await fetchData();
@@ -171,7 +171,7 @@ export const EntitlementsView: React.FC = () => {
               <Key className="w-5 h-5 text-amber-800" />
             </div>
             <div>
-              <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+              <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
                 Access & Entitlements Registry
               </h1>
               <p className="text-xs text-stone-500 font-medium">
@@ -191,7 +191,7 @@ export const EntitlementsView: React.FC = () => {
           </button>
           <button
             onClick={() => setGrantModalOpen(true)}
-            className="px-4 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 cursor-pointer transition-all"
+            className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 cursor-pointer transition-all"
           >
             <Plus className="w-4 h-4 text-amber-300" />
             <span>Grant Manual Access</span>
@@ -369,7 +369,7 @@ export const EntitlementsView: React.FC = () => {
                         <span>{new Date(ent.startsAt).toLocaleDateString()}</span>
                         <span className="text-stone-300 mx-1">→</span>
                         <span className="font-bold text-stone-700">
-                          {new Date(ent.expiresAt).toLocaleDateString()}
+                          {ent.expiresAt ? new Date(ent.expiresAt).toLocaleDateString() : 'Lifetime'}
                         </span>
                       </td>
 
@@ -528,7 +528,7 @@ export const EntitlementsView: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'Granting...' : 'Confirm Grant'}
               </button>
@@ -568,7 +568,7 @@ export const EntitlementsView: React.FC = () => {
               <div className="text-stone-600 text-[11px] pt-1">
                 Current Expiry:{' '}
                 <span className="font-mono font-bold text-stone-800">
-                  {new Date(selectedEntitlementForExtend.expiresAt).toLocaleDateString()}
+                  {selectedEntitlementForExtend.expiresAt ? new Date(selectedEntitlementForExtend.expiresAt).toLocaleDateString() : 'Lifetime'}
                 </span>
               </div>
             </div>
@@ -630,7 +630,7 @@ export const EntitlementsView: React.FC = () => {
               <button
                 type="submit"
                 disabled={isExtending}
-                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
               >
                 {isExtending ? 'Extending...' : 'Confirm Extension'}
               </button>

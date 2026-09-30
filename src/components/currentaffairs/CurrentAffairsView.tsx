@@ -40,7 +40,7 @@ import { ArticleReaderModal } from './ArticleReaderModal.js';
 import { ArchiveBrowserModal } from './ArchiveBrowserModal.js';
 
 export const CurrentAffairsView: React.FC = () => {
-  const { askTutorWithContext } = useLearner();
+  const { askTutorWithContext, learnerModel, setSelectedSubjectId, setActiveSection } = useLearner();
 
   // Parse URL query params on initial load
   const getInitialStateFromUrl = () => {
@@ -743,6 +743,84 @@ export const CurrentAffairsView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* ========================================================================= */}
+          {/* EXAM INTELLIGENCE: WEAK-AREA SYLLABUS INTERLINKAGE BANNER */}
+          {/* ========================================================================= */}
+          {!loading && (() => {
+            const allArticles = [...dayFeed.topStories, ...dayFeed.importantDevelopments];
+            const subjectMap: Record<string, string> = {
+              sub_polity: 'Polity & Governance',
+              sub_economy: 'Economy',
+              sub_environment: 'Environment',
+              sub_sci_tech: 'Science & Tech',
+              sub_history: 'History & Culture',
+              sub_bihar_special: 'Bihar Special',
+            };
+
+            const weakSubjects: { id: string; name: string; mastery: number }[] = [];
+            if (learnerModel?.subjectMastery) {
+              for (const [subId, mastery] of Object.entries(learnerModel.subjectMastery)) {
+                if (Number(mastery) < 65 && subjectMap[subId]) {
+                  weakSubjects.push({ id: subId, name: subjectMap[subId], mastery: Number(mastery) });
+                }
+              }
+            }
+
+            // If no subjects under 65%, take the lowest 2
+            if (weakSubjects.length === 0 && learnerModel?.subjectMastery) {
+              const entries = Object.entries(learnerModel.subjectMastery)
+                .filter(([id]) => subjectMap[id])
+                .sort((a, b) => Number(a[1]) - Number(b[1]));
+              if (entries.length > 0) {
+                weakSubjects.push({ id: entries[0][0], name: subjectMap[entries[0][0]], mastery: Number(entries[0][1]) });
+              }
+            }
+
+            const weakAreaNames = weakSubjects.map((w) => w.name.toLowerCase());
+            const matchedArticles = allArticles.filter((art) => {
+              const cat = (art.category || '').toLowerCase();
+              const rel = (art.relatedSubject || '').toLowerCase();
+              return weakAreaNames.some((w) => cat.includes(w) || rel.includes(w));
+            });
+
+            if (matchedArticles.length === 0) return null;
+
+            return (
+              <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white p-5 rounded-2xl border border-amber-600/30 shadow-md space-y-3 animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-300">
+                      Exam Intelligence Layer • Contemporary-to-Static Interlinkage
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-stone-400">
+                    {matchedArticles.length} High-Yield Articles Mapped to Weak Areas
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-xs text-stone-300 leading-relaxed max-w-2xl">
+                    <strong className="text-amber-200">{matchedArticles.length} developments</strong> in today's digest intersect with your priority focus subjects ({weakSubjects.map((w) => `${w.name} [${w.mastery}%]`).join(', ')}). Reviewing these editorial analyses directly reinforces syllabus recall for Prelims & Mains answer richness.
+                  </p>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (matchedArticles.length > 0) setSelectedArticle(matchedArticles[0]);
+                      }}
+                      className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs font-mono"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                      <span>Read Priority Focus</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ========================================================================= */}
           {/* SECTION 1: TODAY'S TOP STORIES (Highest Priority, No Duplicates) */}

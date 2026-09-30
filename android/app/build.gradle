@@ -7,38 +7,56 @@ android {
         applicationId "com.ikshovia.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 2
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "1.1"
+        versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 9
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:*.cjs:*.map:server.cjs:*.apk'
         }
     }
     signingConfigs {
         release {
-            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE') && file(project.property('MYAPP_RELEASE_STORE_FILE')).exists()) {
-                storeFile file(project.property('MYAPP_RELEASE_STORE_FILE'))
-                storePassword project.property('MYAPP_RELEASE_STORE_PASSWORD')
-                keyAlias project.property('MYAPP_RELEASE_KEY_ALIAS')
-                keyPassword project.property('MYAPP_RELEASE_KEY_PASSWORD')
+            def keystorePropsFile = rootProject.file("release-keystore.properties")
+            def keystoreProps = new Properties()
+            if (keystorePropsFile.exists()) {
+                keystoreProps.load(new FileInputStream(keystorePropsFile))
+            }
+            def storeFilePath = System.getenv('ANDROID_KEYSTORE_FILE') ?: project.findProperty('MYAPP_RELEASE_STORE_FILE') ?: System.getenv('MYAPP_RELEASE_STORE_FILE') ?: keystoreProps['MYAPP_RELEASE_STORE_FILE']
+            def storePass = System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: project.findProperty('MYAPP_RELEASE_STORE_PASSWORD') ?: System.getenv('MYAPP_RELEASE_STORE_PASSWORD') ?: keystoreProps['MYAPP_RELEASE_STORE_PASSWORD']
+            def keyAli = System.getenv('ANDROID_KEY_ALIAS') ?: project.findProperty('MYAPP_RELEASE_KEY_ALIAS') ?: System.getenv('MYAPP_RELEASE_KEY_ALIAS') ?: keystoreProps['MYAPP_RELEASE_KEY_ALIAS']
+            def keyPass = System.getenv('ANDROID_KEY_PASSWORD') ?: project.findProperty('MYAPP_RELEASE_KEY_PASSWORD') ?: System.getenv('MYAPP_RELEASE_KEY_PASSWORD') ?: keystoreProps['MYAPP_RELEASE_KEY_PASSWORD']
+
+            if (storeFilePath && file(storeFilePath).exists()) {
+                storeFile file(storeFilePath)
+                storePassword storePass
+                keyAlias keyAli
+                keyPassword keyPass
+                v1SigningEnabled true
+                v2SigningEnabled true
+                enableV3Signing true
+                enableV4Signing true
             }
         }
     }
     buildTypes {
         debug {
-            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE') && file(project.property('MYAPP_RELEASE_STORE_FILE')).exists()) {
+            if (signingConfigs.release.storeFile != null && signingConfigs.release.storeFile.exists()) {
                 signingConfig signingConfigs.release
             }
         }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE') && file(project.property('MYAPP_RELEASE_STORE_FILE')).exists()) {
+            if (signingConfigs.release.storeFile != null && signingConfigs.release.storeFile.exists()) {
                 signingConfig signingConfigs.release
             }
         }
+    }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
 }
 

@@ -54,6 +54,7 @@ export const DashboardView: React.FC = () => {
   } = useLearner();
 
   const [goals, setGoals] = useState<StudyGoal[]>([]);
+  const [studyPlan, setStudyPlan] = useState<any>(null);
   const [progressItems, setProgressItems] = useState<LearnerProgressItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
 
@@ -61,10 +62,12 @@ export const DashboardView: React.FC = () => {
     let isMounted = true;
     Promise.all([
       api.getGoals(user?.id).catch(() => []),
+      api.getStudyPlan().catch(() => null),
       api.getLearnerProgress().catch(() => []),
-    ]).then(([goalsRes, progRes]) => {
+    ]).then(([goalsRes, planRes, progRes]) => {
       if (isMounted) {
         if (Array.isArray(goalsRes)) setGoals(goalsRes);
+        if (planRes) setStudyPlan(planRes);
         if (Array.isArray(progRes)) setProgressItems(progRes);
         setLoadingItems(false);
       }
@@ -202,8 +205,51 @@ export const DashboardView: React.FC = () => {
 
           </div>
 
-          {/* YPT STUDY FOCUS & PEER GROUPS WIDGET */}
-          <YptHomeWidget />
+          {/* UNIFIED EXAM ENGINE BANNER: PRELIMS • MAINS • INTERVIEW */}
+          <div className="bg-stone-900 text-stone-100 rounded-2xl p-5 border border-stone-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold uppercase tracking-wider border border-amber-500/30">
+                  Unified Preparation Engine
+                </span>
+                <span className="text-[11px] text-stone-400 font-mono">Stage Architecture</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-white flex items-center gap-2">
+                <span>Prelims • Mains • Interview</span>
+              </h3>
+              <p className="text-xs text-stone-300 max-w-lg">
+                Connect objective practice, descriptive answer writing with 10-point commission rubric, and dynamic mock interview board sessions.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                onClick={() => setActiveSection('exam-engine')}
+                className="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Prelims Drill</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('mains')}
+                className="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Mains Writing</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('interview')}
+                className="px-3.5 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Interview Board</span>
+              </button>
+              <button
+                onClick={() => setActiveSection('exam-engine')}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Full Engine</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
 
           {/* MY ENROLLED COURSES SECTION (Direct from Entitlements Table) */}
           <div className="space-y-3">
@@ -225,11 +271,13 @@ export const DashboardView: React.FC = () => {
             {activeEntitlements.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {activeEntitlements.map(ent => {
-                  const formattedExpiry = new Date(ent.expiresAt).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  });
+                  const formattedExpiry = ent.expiresAt
+                    ? new Date(ent.expiresAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      })
+                    : 'Lifetime Access';
                   return (
                     <div
                       key={ent.id}
@@ -256,7 +304,7 @@ export const DashboardView: React.FC = () => {
                       <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
                         <button
                           onClick={() => setActiveSection('pyq-practice')}
-                          className="inline-flex items-center gap-2 bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                         >
                           <span>Continue Course</span>
                           <ArrowRight className="w-3.5 h-3.5" />
@@ -454,7 +502,7 @@ export const DashboardView: React.FC = () => {
                       else if (nextBestAction.actionType === 'MOCK') setActiveSection('mock-tests');
                       else setActiveSection('pyq-practice');
                     }}
-                    className="inline-flex items-center gap-2 bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    className="inline-flex items-center gap-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                   >
                     <span>Execute Action</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -559,6 +607,8 @@ export const DashboardView: React.FC = () => {
             )}
           </div>
 
+          {/* YPT Live Study Focus & Peer Accountability Widget */}
+          <YptHomeWidget />
         </div>
 
         {/* RIGHT RAIL / INTELLIGENCE SIDEBAR (4 cols) */}
@@ -605,19 +655,103 @@ export const DashboardView: React.FC = () => {
             </p>
           </div>
 
-          {/* Card 2: Daily Goals (Direct from Database) */}
+          {/* Card 2: Today's Personalized Study Plan Tasks */}
           <div className="bg-white border border-[#EAE6DF] rounded-3xl p-5 shadow-2xs space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-serif-editorial font-bold text-stone-900">Study Goals</h4>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 font-mono">
+                  Personalized Study Plan
+                </span>
+                <h4 className="text-sm font-serif-editorial font-bold text-stone-900 mt-0.5">
+                  Today's Blueprint Tasks
+                </h4>
+              </div>
               <button
                 onClick={() => setActiveSection('goals')}
-                className="text-[11px] font-semibold text-amber-800 hover:text-amber-900 cursor-pointer"
+                className="text-[11px] font-semibold text-amber-800 hover:text-amber-900 cursor-pointer flex items-center gap-0.5"
               >
-                {goals.length > 0 ? 'Manage Goals' : 'Set Goal'}
+                <span>Full Schedule</span>
+                <ArrowRight className="w-3 h-3" />
               </button>
             </div>
 
-            {goals.length > 0 ? (
+            {studyPlan?.todayTasks && studyPlan.todayTasks.length > 0 ? (
+              <div className="space-y-3">
+                {studyPlan.todayTasks.slice(0, 3).map((task: any) => {
+                  const isDone = task.status === 'COMPLETED';
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-3 rounded-2xl border text-xs space-y-1.5 transition-all ${
+                        isDone ? 'bg-emerald-50/30 border-emerald-200 opacity-75' : 'bg-[#FAF8F5] border-stone-200/80 hover:border-amber-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.2 rounded-full font-mono bg-amber-100 text-amber-950 border border-amber-300">
+                          {task.taskType.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[10px] text-stone-400 font-mono">
+                          {task.estimatedMinutes} mins
+                        </span>
+                      </div>
+
+                      <div className="font-bold text-stone-900 line-clamp-1">
+                        {task.title}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-stone-100/60">
+                        <button
+                          onClick={async () => {
+                            const newStatus = isDone ? 'PENDING' : 'COMPLETED';
+                            await api.updateStudyPlanTask(task.id, newStatus);
+                            setStudyPlan((prev: any) => ({
+                              ...prev,
+                              todayTasks: prev.todayTasks.map((t: any) => t.id === task.id ? { ...t, status: newStatus } : t)
+                            }));
+                          }}
+                          className="text-[10px] font-bold text-stone-500 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle2 className={`w-3.5 h-3.5 ${isDone ? 'text-emerald-600' : 'text-stone-300'}`} />
+                          <span>{isDone ? 'Completed' : 'Mark Done'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (task.taskType === 'MAINS_WRITING' || task.taskType === 'PRELIMS_PYQ' || task.taskType === 'WEAK_AREA_DRILL') {
+                              setActiveSection('exam-engine');
+                            } else if (task.taskType === 'SPACED_REVISION') {
+                              setActiveSection('revision');
+                            } else if (task.taskType === 'CURRENT_AFFAIRS') {
+                              setActiveSection('current-affairs');
+                            } else {
+                              setActiveSection('exam-engine');
+                            }
+                          }}
+                          className="text-[10px] font-bold text-amber-800 hover:underline cursor-pointer flex items-center gap-0.5"
+                        >
+                          <span>Start</span>
+                          <ArrowRight className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Progress bar */}
+                <div className="pt-1 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
+                    <span>Today's Progress</span>
+                    <span>{studyPlan.completionStats?.completionPercentage || 0}%</span>
+                  </div>
+                  <div className="w-full bg-stone-100 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-600 h-full rounded-full transition-all"
+                      style={{ width: `${studyPlan.completionStats?.completionPercentage || 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : goals.length > 0 ? (
               <div className="space-y-3.5">
                 {goals.slice(0, 3).map((g) => (
                   <div key={g.id} className="space-y-1.5">
@@ -648,12 +782,12 @@ export const DashboardView: React.FC = () => {
               </div>
             ) : (
               <div className="py-3 text-center space-y-2">
-                <p className="text-xs text-stone-500">No active study goals set.</p>
+                <p className="text-xs text-stone-500">Configure your study blueprint to receive daily scheduled tasks.</p>
                 <button
                   onClick={() => setActiveSection('goals')}
                   className="text-xs font-bold text-amber-800 hover:underline cursor-pointer"
                 >
-                  Create your first goal →
+                  Configure Study Plan →
                 </button>
               </div>
             )}

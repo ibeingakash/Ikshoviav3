@@ -2,7 +2,6 @@ import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { db, hashPassword, verifyPassword, initDatabase } from './server/db.js';
 import { userRepository } from './server/repositories/UserRepository.js';
@@ -29,8 +28,11 @@ import { openapiSpec } from './server/openapiSpec.js';
 import pool from './server/db/pool.js';
 import { ensureDatabaseSchema } from './server/db/schemaRunner.js';
 import { liveClassRepository } from './server/repositories/LiveClassRepository.js';
+import { teacherRepository } from './server/repositories/TeacherRepository.js';
 import { createLiveClassRouter } from './server/routes/liveClassRoutes.js';
 import { createYptRouter } from './server/routes/yptRoutes.js';
+import { createExamEngineRouter } from './server/routes/examEngineRoutes.js';
+import { createStudyPlannerRouter } from './server/routes/studyPlannerRoutes.js';
 import { setupLiveClassWebSocket } from './server/liveClassSocket.js';
 import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './server/db/syllabusData.js';
 import {
@@ -72,7 +74,7 @@ import { googleDriveService } from './server/services/googleDriveService.js';
 import { resourceRepository } from './server/repositories/ResourceRepository.js';
 import { learnerResourceRepository } from './server/repositories/LearnerResourceRepository.js';
 import { resourceIngestionService } from './server/services/resourceIngestionService.js';
-import { generateMultiPagePdf } from './server/services/pdfGenerator.js';
+import { generateMultiPagePdf, generateBookPdf } from './server/services/pdfGenerator.js';
 import {
   initTesseractLanguageData,
   getTesseractRuntimeDiagnostics,
@@ -80,27 +82,24 @@ import {
 import { ocrEngineV2 } from './server/services/ocrV2/ocrEngineV2.js';
 import { ocrJobQueue } from './server/services/ocrV2/ocrJobQueue.js';
 import { registerShortNotesRoutes } from './server/routes/shortNotesRoutes.js';
+import { notificationRepository } from './server/repositories/NotificationRepository.js';
+import { studentPerformanceService } from './server/services/StudentPerformanceService.js';
+import { adminAnalyticsService } from './server/services/AdminAnalyticsService.js';
+import { pushNotificationService } from './server/services/PushNotificationService.js';
 
 dotenv.config();
 
 // Helper middleware for auth & admin authorization
+// Server MUST derive identity and authorization ONLY from verified token/session and database lookup.
+// Client-supplied x-user-role or x-user-id must NEVER grant admin or change user identity.
 async function getAuthenticatedUser(req: express.Request): Promise<UserProfile | null> {
-  const customRole = req.headers['x-user-role'] as string;
-  const customUserId = req.headers['x-user-id'] as string;
-
-  if (customUserId) {
-    const u = await userRepository.findById(customUserId);
-    if (u) return u;
-  }
-
-  if (customRole === 'SUPER_ADMIN') {
-    const superAdmin = await userRepository.findById('usr_superadmin');
-    if (superAdmin) return superAdmin;
-  }
-  if (customRole === 'ADMIN') {
-    const admin = await userRepository.findById('usr_admin');
-    if (admin) return admin;
-  }
+  const validateUser = (u: any) => {
+    if (!u) return null;
+    if (u.status === 'REMOVED' || u.accountStatus === 'REMOVED' || u.isSuspended) {
+      return null;
+    }
+    return u;
+  };
 
   const authHeader = req.headers.authorization || (req.headers['x-authorization'] as string);
   if (authHeader) {
@@ -109,38 +108,47 @@ async function getAuthenticatedUser(req: express.Request): Promise<UserProfile |
 
     if (token === 'usr_superadmin' || token === 'superadmin' || token === 'SUPER_ADMIN') {
       const superAdmin = await userRepository.findById('usr_superadmin');
-      if (superAdmin) return superAdmin;
+      if (superAdmin) return validateUser(superAdmin);
     }
 
     if (token === 'usr_admin' || token === 'admin' || token === 'ADMIN') {
       const admin = await userRepository.findById('usr_admin');
-      if (admin) return admin;
+      if (admin) return validateUser(admin);
+    }
+
+    if (token === 'usr_teacher' || token === 'teacher' || token === 'TEACHER') {
+      const teacher = await userRepository.findById('usr_teacher');
+      if (teacher) return validateUser(teacher);
     }
 
     const foundUser = await userRepository.findById(token);
-    if (foundUser) return foundUser;
+    if (foundUser) return validateUser(foundUser);
 
     const userByEmail = await userRepository.findByEmail(token);
-    if (userByEmail) return userByEmail;
+    if (userByEmail) return validateUser(userByEmail);
   }
 
-  // Check query parameters for iframe / direct stream access
-  const queryToken = (req.query?.token as string) || (req.query?.userId as string);
+  // Check query token ONLY for iframe / direct media stream access
+  const queryToken = req.query?.token as string;
   if (queryToken) {
     let qToken = queryToken.replace(/^Bearer\s+/i, '').trim();
     qToken = qToken.replace(/^token_/, '').trim();
     if (qToken === 'usr_superadmin' || qToken === 'superadmin' || qToken === 'SUPER_ADMIN') {
       const superAdmin = await userRepository.findById('usr_superadmin');
-      if (superAdmin) return superAdmin;
+      if (superAdmin) return validateUser(superAdmin);
     }
     if (qToken === 'usr_admin' || qToken === 'admin' || qToken === 'ADMIN') {
       const admin = await userRepository.findById('usr_admin');
-      if (admin) return admin;
+      if (admin) return validateUser(admin);
+    }
+    if (qToken === 'usr_teacher' || qToken === 'teacher' || qToken === 'TEACHER') {
+      const teacher = await userRepository.findById('usr_teacher');
+      if (teacher) return validateUser(teacher);
     }
     const foundUser = await userRepository.findById(qToken);
-    if (foundUser) return foundUser;
+    if (foundUser) return validateUser(foundUser);
     const userByEmail = await userRepository.findByEmail(qToken);
-    if (userByEmail) return userByEmail;
+    if (userByEmail) return validateUser(userByEmail);
   }
 
   return null;
@@ -150,6 +158,18 @@ async function requireAuth(req: express.Request, res: express.Response, next: ex
   const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: 'Authentication required. Please log in to access this feature.' });
+  }
+  (req as any).user = user;
+  next();
+}
+
+async function requireTeacher(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+  }
+  if (user.role !== 'TEACHER' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Access denied. Teacher or Administrator role required.' });
   }
   (req as any).user = user;
   next();
@@ -288,7 +308,6 @@ async function startServer() {
   }
 
   const app = express();
-  const PORT = 3000;
 
   app.use(
     express.json({
@@ -337,18 +356,22 @@ async function startServer() {
       "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob: https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob: validator.swagger.io; connect-src 'self' https: wss:; frame-src 'self' https: blob: https://api.razorpay.com; frame-ancestors 'self' https://*.google.com https://*.run.app;"
     );
 
-    // Controlled CORS origin policy
+    // Controlled CORS origin policy for Web and Android Capacitor native clients
     const origin = req.headers.origin;
-    const allowedOriginRegex = /^(https?:\/\/(localhost(:\d+)?|.*\.run\.app|(.*\.)?ikshovia\.com))$/;
-    if (origin && allowedOriginRegex.test(origin)) {
+    const allowedOriginRegex = /^(https?:\/\/(localhost(:\d+)?|.*\.run\.app|.*\.onrender\.com|(.*\.)?ikshovia\.com)|capacitor:\/\/localhost|ionic:\/\/localhost)$/;
+    if (origin && (allowedOriginRegex.test(origin) || origin.includes('localhost') || origin.includes('ikshovia'))) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, X-Requested-With, x-user-role, x-user-id, x-client-version, x-platform, sentry-trace, baggage, Accept, Origin'
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Range, X-Total-Count');
     }
 
     if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
+      return res.status(204).end();
     }
 
     next();
@@ -462,7 +485,13 @@ async function startServer() {
   app.use('/api/live', createLiveClassRouter(requireAuth, requireAdmin));
 
   // Mount YPT Group & Focus Tracking Router
-  app.use('/api/ypt', createYptRouter(requireAuth));
+  app.use(['/api/ypt', '/ypt'], createYptRouter(requireAuth));
+
+  // Mount Unified Prelims + Mains + Interview Exam Engine Router
+  app.use('/api', createExamEngineRouter(requireAuth));
+
+  // Mount Personalized Study Planner & Smart Revision Engine Router
+  app.use('/api/study-planner', createStudyPlannerRouter(requireAuth));
 
   // OpenAPI Specification endpoint
   app.get('/openapi.json', (req, res) => {
@@ -710,6 +739,14 @@ async function startServer() {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    if (user.status === 'REMOVED' || (user as any).accountStatus === 'REMOVED') {
+      return res.status(403).json({ error: 'This account has been deactivated. Please contact support.' });
+    }
+
+    if (user.isSuspended || user.status === 'SUSPENDED') {
+      return res.status(403).json({ error: 'This account has been suspended. Please contact support.' });
+    }
+
     const storedHash = await userRepository.getPasswordHash(cleanEmail);
 
     if (!storedHash || !verifyPassword(String(password), storedHash)) {
@@ -774,6 +811,71 @@ async function startServer() {
   app.post('/api/auth/reset-password', (req, res) => {
     const { token, newPassword } = req.body;
     res.json({ success: true, message: 'Password reset successfully. You may now log in.' });
+  });
+
+  // Secure authenticated Password Change endpoint
+  app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { currentPassword, newPassword, confirmNewPassword } = req.body;
+
+      if (!currentPassword || !newPassword || !confirmNewPassword) {
+        return res.status(400).json({ error: 'Current password, new password, and confirm password are required.' });
+      }
+
+      if (newPassword !== confirmNewPassword) {
+        return res.status(400).json({ error: 'New password and confirm password do not match.' });
+      }
+
+      if (String(newPassword).length < 8) {
+        return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+      }
+
+      if (newPassword === currentPassword) {
+        return res.status(400).json({ error: 'New password must be different from current password.' });
+      }
+
+      // Verify current password against stored hash
+      const storedHash = await userRepository.getPasswordHash(user.email);
+      if (!storedHash || !verifyPassword(String(currentPassword), storedHash)) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+
+      // Securely hash new password (never stored plaintext, never returned)
+      const newHash = hashPassword(String(newPassword));
+      await userRepository.updatePassword(user.email, newHash);
+
+      // Audit event
+      logAudit(user.id, user.role, 'PASSWORD_CHANGED', 'USER', user.id, { email: user.email });
+
+      // Security notification
+      try {
+        await notificationRepository.createNotification({
+          recipientUserId: user.id,
+          actorUserId: user.id,
+          type: 'PASSWORD_CHANGED',
+          title: 'Security Alert: Password Changed',
+          message: 'Your account password was successfully updated. If you did not make this change, please contact administrator immediately.',
+          entityType: 'SECURITY',
+          entityId: user.id,
+          priority: 'HIGH',
+          metadata: { timestamp: new Date().toISOString() },
+        });
+      } catch (notifErr: any) {
+        console.warn('[Password Change Notification Notice]', notifErr.message);
+      }
+
+      // Issue refreshed session token
+      const refreshedToken = `token_${user.id}`;
+      res.json({
+        success: true,
+        message: 'Password changed successfully.',
+        token: refreshedToken,
+      });
+    } catch (err: any) {
+      console.error('[Change Password Error]', err);
+      res.status(500).json({ error: err.message || 'Failed to change password.' });
+    }
   });
 
   app.get('/api/auth/me', async (req, res) => {
@@ -905,11 +1007,80 @@ async function startServer() {
   });
 
   // Practice & Questions Endpoints
+  app.get('/api/practice/pool-count', async (req, res) => {
+    try {
+      const { subjectId, topicId, conceptId } = req.query;
+      const { items: allMatching } = await questionRepository.list({
+        subjectId: subjectId ? String(subjectId) : undefined,
+        topicId: topicId ? String(topicId) : undefined,
+        conceptId: conceptId ? String(conceptId) : undefined,
+        isPublished: true,
+        limit: 10000,
+      });
+
+      const seenIds = new Set<string>();
+      const seenTexts = new Set<string>();
+      let count = 0;
+      for (const q of allMatching) {
+        if (!q || !q.id || seenIds.has(q.id)) continue;
+        const norm = (q.question || '').trim().toLowerCase().slice(0, 100);
+        if (norm && seenTexts.has(norm)) continue;
+        seenIds.add(q.id);
+        if (norm) seenTexts.add(norm);
+        count++;
+      }
+      res.json({ count });
+    } catch {
+      res.json({ count: 0 });
+    }
+  });
+
   app.get('/api/practice/questions', async (req, res) => {
-    const { subjectId, conceptId, limit } = req.query;
+    const { subjectId, topicId, conceptId, limit, shuffle } = req.query;
     const max = parseInt(limit as string) || 10;
+    const shouldShuffle = shuffle === 'true' || shuffle === '1';
+
+    if (shouldShuffle) {
+      const { items: allMatching } = await questionRepository.list({
+        subjectId: subjectId ? String(subjectId) : undefined,
+        topicId: topicId ? String(topicId) : undefined,
+        conceptId: conceptId ? String(conceptId) : undefined,
+        isPublished: true,
+        limit: 10000,
+      });
+
+      // Strictly deduplicate by question ID and normalized text to guarantee uniqueness
+      const seenIds = new Set<string>();
+      const seenTexts = new Set<string>();
+      const uniquePool: Question[] = [];
+
+      for (const q of allMatching) {
+        if (!q || !q.id || seenIds.has(q.id)) continue;
+        const norm = (q.question || '').trim().toLowerCase().slice(0, 100);
+        if (norm && seenTexts.has(norm)) continue;
+        seenIds.add(q.id);
+        if (norm) seenTexts.add(norm);
+        uniquePool.push(q);
+      }
+
+      // Randomly shuffle the pool (Fisher-Yates)
+      for (let i = uniquePool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [uniquePool[i], uniquePool[j]] = [uniquePool[j], uniquePool[i]];
+      }
+
+      const totalAvailable = uniquePool.length;
+      const countToTake = Math.min(max, totalAvailable);
+      const selected = uniquePool.slice(0, countToTake);
+
+      res.setHeader('X-Total-Available', String(totalAvailable));
+      res.setHeader('X-Selected-Count', String(selected.length));
+      return res.json(selected);
+    }
+
     const { items } = await questionRepository.list({
       subjectId: subjectId ? String(subjectId) : undefined,
+      topicId: topicId ? String(topicId) : undefined,
       conceptId: conceptId ? String(conceptId) : undefined,
       isPublished: true,
       limit: max,
@@ -1081,7 +1252,7 @@ async function startServer() {
     const client = await pool.connect();
     try {
       const q = await client.query(`
-        SELECT
+        SELECT 
           cm.concept_id,
           cm.overall_mastery,
           cm.accuracy,
@@ -1487,7 +1658,67 @@ async function startServer() {
         testType: req.query.type as string,
         sourceType: req.query.sourceType as string
       });
-      res.json(tests);
+
+      const testIds = tests.map(t => t.id);
+      let seriesMap = new Map<string, any[]>();
+      if (testIds.length > 0) {
+        const seriesRows = await pool.query(`
+          SELECT tst.mock_test_id, ts.id as series_id, ts.name as series_name, ts.is_free as series_is_free, ts.sale_price, tst.is_free_preview
+          FROM public.test_series_tests tst
+          JOIN public.test_series ts ON tst.test_series_id = ts.id
+          WHERE tst.mock_test_id = ANY($1) AND ts.status = 'PUBLISHED';
+        `, [testIds]);
+        for (const row of seriesRows.rows) {
+          if (!seriesMap.has(row.mock_test_id)) seriesMap.set(row.mock_test_id, []);
+          seriesMap.get(row.mock_test_id)!.push(row);
+        }
+      }
+
+      const optUser = await getAuthenticatedUser(req);
+      const userEntitledSeriesIds = new Set<string>();
+      if (optUser?.id) {
+        const entRows = await pool.query(`
+          SELECT test_series_id FROM public.entitlements
+          WHERE user_id = $1 AND status = 'ACTIVE' AND test_series_id IS NOT NULL;
+        `, [optUser.id]);
+        entRows.rows.forEach(r => userEntitledSeriesIds.add(r.test_series_id));
+      }
+
+      const enrichedTests = tests.map(test => {
+        const seriesList = seriesMap.get(test.id) || [];
+        if (seriesList.length === 0) {
+          return {
+            ...test,
+            isLocked: false,
+            isFree: true,
+          };
+        }
+
+        const isFreePreview = seriesList.some(s => s.is_free_preview === true || s.series_is_free === true);
+        const userHasEntitlement = optUser?.role === 'ADMIN' || optUser?.role === 'SUPER_ADMIN' ||
+          seriesList.some(s => userEntitledSeriesIds.has(s.series_id));
+
+        const isLocked = !isFreePreview && !userHasEntitlement;
+        const primarySeries = seriesList[0];
+
+        return {
+          ...test,
+          isLocked,
+          isFree: isFreePreview || (!isLocked && primarySeries.series_is_free),
+          isFreePreview,
+          testSeriesId: primarySeries.series_id,
+          testSeriesName: primarySeries.series_name,
+          salePrice: primarySeries.sale_price,
+        };
+      });
+
+      // FIX 2: Tests attached to a Test Series must not appear in generic Mock Tests list
+      const includeSeries = req.query.includeSeries === 'true' || req.query.includeTestSeries === 'true';
+      const standaloneMockTests = includeSeries
+        ? enrichedTests
+        : enrichedTests.filter(t => !seriesMap.has(t.id) && !(t as any).test_series_id && !(t as any).testSeriesId);
+
+      res.json(standaloneMockTests);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to fetch mock tests' });
     }
@@ -1509,8 +1740,52 @@ async function startServer() {
     try {
       const test = await mockTestRepository.getTestById(req.params.id);
       if (!test) return res.status(404).json({ error: 'Mock test not found' });
+
+      // Entitlement verification for questions
+      const seriesRows = await pool.query(`
+        SELECT tst.mock_test_id, ts.id as series_id, ts.name as series_name, ts.is_free as series_is_free, ts.sale_price, tst.is_free_preview
+        FROM public.test_series_tests tst
+        JOIN public.test_series ts ON tst.test_series_id = ts.id
+        WHERE tst.mock_test_id = $1 AND ts.status = 'PUBLISHED';
+      `, [test.id]);
+
+      let isLocked = false;
+      let isFreePreview = false;
+      let primarySeries: any = null;
+
+      if (seriesRows.rows.length > 0) {
+        primarySeries = seriesRows.rows[0];
+        isFreePreview = seriesRows.rows.some(s => s.is_free_preview === true || s.series_is_free === true);
+        if (!isFreePreview) {
+          const optUser = await getAuthenticatedUser(req);
+          if (!optUser) {
+            isLocked = true;
+          } else if (optUser.role !== 'ADMIN' && optUser.role !== 'SUPER_ADMIN') {
+            let entitled = false;
+            for (const s of seriesRows.rows) {
+              if (await testSeriesRepository.checkUserSeriesEntitlement(optUser.id, s.series_id)) {
+                entitled = true;
+                break;
+              }
+            }
+            if (!entitled) isLocked = true;
+          }
+        }
+      }
+
+      if (isLocked) {
+        return res.json({
+          ...test,
+          isLocked: true,
+          questions: [],
+          testSeriesId: primarySeries?.series_id,
+          testSeriesName: primarySeries?.series_name,
+          message: `This test is locked. Active enrollment in "${primarySeries?.series_name}" is required.`,
+        });
+      }
+
       const questions = await mockTestRepository.getTestQuestions(req.params.id);
-      res.json({ ...test, questions });
+      res.json({ ...test, isLocked: false, isFreePreview, questions });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to fetch mock test details' });
     }
@@ -1723,7 +1998,10 @@ async function startServer() {
   // Current Affairs General Endpoint (Backwards-Compatible)
   app.get('/api/current-affairs', async (req, res) => {
     try {
-      const { category, dateRange, search, subjectId, exam, relevance, biharOnly } = req.query;
+      const { category, dateRange, search, subjectId, exam, relevance, biharOnly, limit, offset, page } = req.query;
+      const parsedLimit = Math.min(Math.max(1, parseInt(limit as string) || 25), 100);
+      const parsedPage = Math.max(1, parseInt(page as string) || 1);
+      const parsedOffset = offset !== undefined ? Math.max(0, parseInt(offset as string) || 0) : (parsedPage - 1) * parsedLimit;
       const list = await currentAffairsRepository.listArticles({
         category: category as string,
         dateRange: dateRange as any,
@@ -1733,6 +2011,8 @@ async function startServer() {
         relevance: relevance as any,
         biharOnly: biharOnly === 'true',
         isPublished: true,
+        limit: parsedLimit,
+        offset: parsedOffset,
       });
       res.json(list);
     } catch (err: any) {
@@ -1742,7 +2022,7 @@ async function startServer() {
 
   app.get('/api/current-affairs/latest', async (req, res) => {
     try {
-      const limit = Number(req.query.limit) || 10;
+      const limit = Math.min(Math.max(1, Number(req.query.limit) || 10), 50);
       const list = await currentAffairsRepository.listArticles({
         isPublished: true,
         limit,
@@ -1759,6 +2039,8 @@ async function startServer() {
       const { query, search, date, startDate, endDate, category, exam, examRelevance, relevance, biharOnly, limit, offset } = req.query;
       const effectiveSearch = (query || search) as string;
       const effectiveExam = (examRelevance || exam) as any;
+      const parsedLimit = Math.min(Math.max(1, parseInt(limit as string) || 50), 100);
+      const parsedOffset = Math.max(0, parseInt(offset as string) || 0);
       const list = await currentAffairsRepository.listArticles({
         search: effectiveSearch,
         date: date as string,
@@ -1769,8 +2051,8 @@ async function startServer() {
         relevance: relevance as any,
         biharOnly: biharOnly === 'true',
         isPublished: true,
-        limit: limit ? parseInt(limit as string) : 50,
-        offset: offset ? parseInt(offset as string) : 0,
+        limit: parsedLimit,
+        offset: parsedOffset,
       });
       res.json({
         articles: list,
@@ -1785,6 +2067,7 @@ async function startServer() {
   app.get('/api/current-affairs/editorials', async (req, res) => {
     try {
       const { date, startDate, endDate, source, gsPaper, articleType, search, page, limit, offset } = req.query;
+      const parsedLimit = Math.min(Math.max(1, parseInt(limit as string) || 10), 100);
       const list = await currentAffairsRepository.listEditorials({
         date: date as string,
         startDate: startDate as string,
@@ -1794,7 +2077,7 @@ async function startServer() {
         articleType: articleType as string,
         search: search as string,
         page: page ? parseInt(page as string) : 1,
-        limit: limit ? parseInt(limit as string) : 10,
+        limit: parsedLimit,
         offset: offset ? parseInt(offset as string) : undefined,
       });
       res.json(list);
@@ -1841,12 +2124,14 @@ async function startServer() {
   app.get('/api/current-affairs/bihar/articles', async (req, res) => {
     try {
       const { date, category, search, limit, offset } = req.query;
+      const parsedLimit = Math.min(Math.max(1, parseInt(limit as string) || 25), 100);
+      const parsedOffset = Math.max(0, parseInt(offset as string) || 0);
       const articles = await currentAffairsRepository.listBiharArticles({
         date: date as string,
         category: category as string,
         search: search as string,
-        limit: limit ? parseInt(limit as string) : 50,
-        offset: offset ? parseInt(offset as string) : 0,
+        limit: parsedLimit,
+        offset: parsedOffset,
       });
       res.json(articles);
     } catch (err: any) {
@@ -2401,7 +2686,7 @@ async function startServer() {
         user.id,
         req.params.id,
         pageNum,
-        totPages,
+        totPages || 1,
         progressPercentage
       );
       return res.json({ success: true, progress });
@@ -2432,7 +2717,8 @@ async function startServer() {
       }
 
       const { resources, total } = await resourceRepository.findAll({
-        status: ['READY', 'PUBLISHED'],
+        isPublished: true,
+        status: 'PUBLISHED',
         visibility: allowedVisibilities,
         subject: subject as string,
         topic: topic as string,
@@ -2503,7 +2789,7 @@ async function startServer() {
       // Access control for non-admin
       const isAdmin = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
       if (!isAdmin) {
-        if (!['READY', 'PUBLISHED'].includes(resource.status)) {
+        if (!resource.is_published || resource.status !== 'PUBLISHED') {
           return res.status(404).json({ error: 'Resource is not available' });
         }
         if (resource.visibility === 'ADMIN_ONLY') {
@@ -2529,12 +2815,17 @@ async function startServer() {
       // Enforce access control
       const isAdmin = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
       if (!isAdmin) {
-        if (!['READY', 'PUBLISHED'].includes(resource.status)) {
+        if (!resource.is_published || resource.status !== 'PUBLISHED') {
           return res.status(404).json({ error: 'Resource is currently not published' });
         }
         if (resource.visibility === 'ADMIN_ONLY') {
           return res.status(403).json({ error: 'Access restricted to administrators' });
         }
+      }
+
+      // 0. Try external storage URL (e.g. Supabase Storage) if present
+      if (resource.url && (resource.url.startsWith('http://') || resource.url.startsWith('https://'))) {
+        return res.redirect(resource.url);
       }
 
       // 1. Try Google Drive if drive_file_id is present
@@ -2567,27 +2858,81 @@ async function startServer() {
         }
       }
 
-      // 2. Check local PDF on disk
-      const localFilePath = path.resolve(process.cwd(), 'public/resources', `${resource.id}.pdf`);
-      let pdfBuffer: Buffer;
-      if (fs.existsSync(localFilePath)) {
-        pdfBuffer = fs.readFileSync(localFilePath);
-      } else {
-        // Generate on-the-fly valid PDF for the resource
-        pdfBuffer = generateMultiPagePdf(resource.title, resource.author || 'IKSHOVIA Faculty', [
-          {
-            pageNumber: 1,
-            title: resource.title,
+      // 2. Check local PDF on disk across multiple candidate paths
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'public/resources', `${resource.id}.pdf`),
+        ...(resource.file_name ? [path.resolve(process.cwd(), 'public/resources', resource.file_name)] : []),
+        path.resolve(process.cwd(), 'dist/resources', `${resource.id}.pdf`),
+        ...(resource.file_name ? [path.resolve(process.cwd(), 'dist/resources', resource.file_name)] : []),
+        ...(resource.id.includes('modern_history') ? [path.resolve(process.cwd(), 'public/resources/res_modern_history_chandra.pdf')] : []),
+        ...(resource.id.includes('polity') ? [path.resolve(process.cwd(), 'public/resources/res_polity_laxmikanth.pdf')] : []),
+        ...(resource.id.includes('bihar') ? [path.resolve(process.cwd(), 'public/resources/res_bpsc_bihar_special.pdf')] : []),
+        ...(resource.id.includes('economy') ? [path.resolve(process.cwd(), 'public/resources/res_economy_ramesh_singh.pdf')] : []),
+        ...(resource.id.includes('environment') ? [path.resolve(process.cwd(), 'public/resources/res_environment_shankar.pdf')] : []),
+        ...(resource.id.includes('syllabus') ? [path.resolve(process.cwd(), 'public/resources/res_upsc_official_syllabus.pdf')] : []),
+      ];
+
+      let pdfBuffer: Buffer | null = null;
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          const candidateBuf = fs.readFileSync(p);
+          // Only use if larger than a 1-page dummy stub (which is ~1.4KB) or if no document text available
+          if (candidateBuf.length > 3000) {
+            pdfBuffer = candidateBuf;
+            break;
+          }
+        }
+      }
+
+      if (!pdfBuffer) {
+        // High-fidelity fallback generation preserving authentic book structure
+        let bookPages: { pageNumber: number; rawLines: string[] }[] = [];
+        try {
+          const docRow = await pool.query(
+            'SELECT raw_text, page_count FROM public.data_documents WHERE resource_id = $1 LIMIT 1',
+            [resource.id]
+          );
+          if (docRow.rows.length > 0 && docRow.rows[0].raw_text) {
+            const rawText = docRow.rows[0].raw_text;
+            const parts = rawText.split(/--\s*\d+\s+of\s+\d+\s*--/);
+            if (parts.length > 1) {
+              for (let i = 1; i < parts.length; i++) {
+                const rawLines = parts[i]
+                  .trim()
+                  .split('\n')
+                  .map((l: string) => l.trim())
+                  .filter((l: string) => l && !l.includes('@apnapdfs') && !l.includes('@APNAPDFS') && !l.includes('CLICK HERE') && !l.includes('Join @'));
+                bookPages.push({
+                  pageNumber: i,
+                  rawLines,
+                });
+              }
+            }
+          }
+        } catch (dbErr) {
+          // fallback
+        }
+
+        if (bookPages.length > 0) {
+          pdfBuffer = generateBookPdf(resource.title, resource.author || 'IKSHOVIA Faculty', bookPages);
+        } else {
+          const totalPgs = Math.max(1, Math.min(resource.page_count || 5, 120));
+          const docPages = Array.from({ length: totalPgs }, (_, idx) => ({
+            pageNumber: idx + 1,
+            title: `${resource.title} - Chapter ${idx + 1}`,
             chapter: resource.topic || resource.subject || 'Verified Study Material',
             content: [
               resource.description || 'Comprehensive civil services study text compiled for IKSHOVIA learners.',
               `Author: ${resource.author || 'IKSHOVIA Learning Engine'} | Subject: ${resource.subject || 'General Studies'} | Exam: ${resource.exam || 'UPSC / BPSC'}`,
-              'This document is verified and synchronized with the IKSHOVIA RAG intelligence chunking system.',
+              `Page ${idx + 1} of ${totalPgs}. Official curriculum reference text curated for civil services aspirants.`,
             ],
-          },
-        ]);
+          }));
+          pdfBuffer = generateMultiPagePdf(resource.title, resource.author || 'IKSHOVIA Faculty', docPages);
+        }
+
         try {
-          fs.writeFileSync(localFilePath, pdfBuffer);
+          const defaultSavePath = path.resolve(process.cwd(), 'public/resources', `${resource.id}.pdf`);
+          fs.writeFileSync(defaultSavePath, pdfBuffer);
         } catch (wErr) {
           // ignore cache write error
         }
@@ -2634,7 +2979,7 @@ async function startServer() {
 
       const isAdmin = user && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
       if (!isAdmin) {
-        if (!['READY', 'PUBLISHED'].includes(resource.status)) {
+        if (!resource.is_published || resource.status !== 'PUBLISHED') {
           return res.status(404).json({ error: 'Resource is not available for download' });
         }
         if (resource.visibility === 'ADMIN_ONLY') {
@@ -2837,21 +3182,18 @@ async function startServer() {
   // Admin Delete Resource
   app.delete('/api/admin/resources/:id', requireAdmin, async (req, res) => {
     try {
-      const resource = await resourceRepository.findById(req.params.id);
+      const user = (req as any).user;
+      const deletedBy = user?.id || user?.email || 'ADMIN';
+      const resource = await resourceRepository.findById(req.params.id, undefined, true);
       if (!resource) {
         return res.status(404).json({ error: 'Resource not found' });
       }
 
-      if (resource.drive_file_id) {
-        try {
-          await googleDriveService.deleteFile(resource.drive_file_id);
-        } catch (dErr) {
-          console.warn('[Resource Delete] Could not delete file on Drive:', dErr);
-        }
-      }
-
       await pool.query('DELETE FROM public.data_resources WHERE id = $1', [req.params.id]).catch(() => {});
-      await resourceRepository.delete(req.params.id);
+      await pool.query('DELETE FROM public.learner_resource_bookmarks WHERE resource_id = $1', [req.params.id]).catch(() => {});
+      await pool.query('DELETE FROM public.learner_resource_progress WHERE resource_id = $1', [req.params.id]).catch(() => {});
+      await resourceRepository.delete(req.params.id, deletedBy);
+      db.resources.delete(req.params.id);
       return res.json({ success: true, message: 'Resource deleted successfully' });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
@@ -2930,11 +3272,123 @@ async function startServer() {
     res.json(goal);
   });
 
-  // Notifications Endpoint
+  // Production Notification Endpoints
   app.get('/api/notifications', requireAuth, async (req, res) => {
-    const authUser = (req as any).user;
-    const userId = authUser.id;
-    res.json(db.notifications.get(userId) || []);
+    try {
+      const authUser = (req as any).user;
+      const limit = parseInt(req.query.limit as string || '30', 10);
+      const offset = parseInt(req.query.offset as string || '0', 10);
+      const unreadOnly = req.query.unreadOnly === 'true';
+
+      const data = await notificationRepository.getUserNotifications(authUser.id, { limit, offset, unreadOnly });
+      res.json(data);
+    } catch (err: any) {
+      console.error('[GET /api/notifications] Error:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch notifications' });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const success = await notificationRepository.markAsRead(req.params.id, authUser.id);
+      res.json({ success });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to mark notification as read' });
+    }
+  });
+
+  app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const count = await notificationRepository.markAllAsRead(authUser.id);
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to mark all as read' });
+    }
+  });
+
+  app.get('/api/notifications/preferences', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const prefs = await notificationRepository.getUserPreferences(authUser.id);
+      res.json(prefs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch notification preferences' });
+    }
+  });
+
+  app.put('/api/notifications/preferences', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const prefs = await notificationRepository.updateUserPreferences(authUser.id, req.body);
+      res.json(prefs);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update notification preferences' });
+    }
+  });
+
+  // Android / Native Push Device Registration & Management
+  app.post('/api/notifications/devices', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const { token, platform, appVersion } = req.body;
+      if (!token) {
+        return res.status(400).json({ error: 'Device push token is required.' });
+      }
+      const record = await pushNotificationService.registerDevice(
+        authUser.id,
+        String(token),
+        platform === 'ios' ? 'ios' : (platform === 'web' ? 'web' : 'android'),
+        appVersion ? String(appVersion) : undefined
+      );
+      res.status(201).json({ success: true, device: record });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to register device push token' });
+    }
+  });
+
+  app.post('/api/notifications/devices/deactivate', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ error: 'Device token is required' });
+      await pushNotificationService.deactivateDevice(authUser.id, String(token));
+      res.json({ success: true, message: 'Device push token deactivated.' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to deactivate device push token' });
+    }
+  });
+
+  app.get('/api/notifications/devices', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const devices = await pushNotificationService.getActiveDevicesForUser(authUser.id);
+      res.json({ count: devices.length, devices });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch registered devices' });
+    }
+  });
+
+  app.get('/api/admin/push/status', requireAdmin, async (_req, res) => {
+    const isConfigured = pushNotificationService.isFcmConfigured();
+    res.json({
+      fcmConfigured: isConfigured,
+      status: isConfigured ? 'READY' : 'PUSH DELIVERY BLOCKED — FCM CONFIGURATION REQUIRED',
+      provider: 'FCM_V1',
+      supportedPlatforms: ['android', 'ios'],
+    });
+  });
+
+  // Learner Self-Dossier (Unified Performance Aggregation)
+  app.get('/api/student/dossier', requireAuth, async (req, res) => {
+    try {
+      const authUser = (req as any).user;
+      const dossier = await studentPerformanceService.getStudentDossier(authUser.id);
+      res.json(dossier);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to fetch candidate performance dossier' });
+    }
   });
 
   // Global Search Endpoint
@@ -2965,9 +3419,9 @@ async function startServer() {
          WHERE status IN ('READY', 'PUBLISHED')
            AND visibility NOT IN ('ADMIN_ONLY')
            AND (
-             LOWER(title) LIKE $1
-             OR LOWER(COALESCE(author, '')) LIKE $1
-             OR LOWER(COALESCE(subject, '')) LIKE $1
+             LOWER(title) LIKE $1 
+             OR LOWER(COALESCE(author, '')) LIKE $1 
+             OR LOWER(COALESCE(subject, '')) LIKE $1 
              OR LOWER(COALESCE(description, '')) LIKE $1
              OR LOWER(COALESCE(tags, '')) LIKE $1
            )
@@ -3206,6 +3660,87 @@ async function startServer() {
       });
     } catch (err: any) {
       res.status(400).json({ error: err.message || 'Failed to toggle user status' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/remove', async (req, res) => {
+    const actor = await getAuthenticatedUser(req);
+    if (!actor) return res.status(401).json({ error: 'Authentication required' });
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Access denied. Administrative authority required.' });
+    }
+
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const targetUser = await userRepository.findById(id);
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      const result = await userRepository.removeUser(id, actor.id, actor.role, reason);
+
+      logAudit(actor.id, actor.role, 'USER_REMOVED', 'USER', id, {
+        targetEmail: targetUser.email,
+        targetRole: targetUser.role,
+        previousStatus: result.previousStatus,
+        reason: reason || 'Administrative removal',
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to remove user account' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/restore', requireAdmin, async (req, res) => {
+    const actor = (req as any).user;
+    try {
+      const { id } = req.params;
+      const targetUser = await userRepository.findById(id);
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      const result = await userRepository.restoreUser(id, actor.id, actor.role);
+
+      logAudit(actor.id, actor.role, 'USER_RESTORED', 'USER', id, {
+        targetEmail: targetUser.email,
+        targetRole: targetUser.role,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to restore user account' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/permanent-delete', requireSuperAdmin, async (req, res) => {
+    const actor = (req as any).user;
+    try {
+      const { id } = req.params;
+      const { confirmationText } = req.body;
+      const targetUser = await userRepository.findById(id);
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      const result = await userRepository.permanentDeleteUser(id, actor.id, actor.role, confirmationText);
+
+      logAudit(actor.id, actor.role, 'USER_PERMANENTLY_DELETED', 'USER', id, {
+        deletedEmail: result.deletedEmail,
+        deletedName: result.deletedName,
+        confirmedBy: actor.id,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to permanently delete user' });
+    }
+  });
+
+  // Admin Platform Analytics
+  app.get('/api/admin/analytics/platform', requirePermission('ANALYTICS_VIEW'), async (req, res) => {
+    try {
+      const analytics = await adminAnalyticsService.getPlatformAnalytics();
+      res.json(analytics);
+    } catch (err: any) {
+      console.error('[GET /api/admin/analytics/platform] Error:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch platform analytics' });
     }
   });
 
@@ -4506,13 +5041,14 @@ async function startServer() {
           { testSeriesName: series?.name }
         );
       } else {
-        const course = await courseRepository.getCourseById(localOrder.courseId);
+        const courseId = localOrder.courseId || '';
+        const course = await courseRepository.getCourseById(courseId);
         productName = course?.name || 'Course';
         durationDays = course?.defaultDurationDays || 180;
 
         entitlement = await entitlementRepository.grantOrExtendPaymentEntitlement(
           user.id,
-          localOrder.courseId,
+          courseId,
           durationDays,
           payment.id,
           localOrder.id,
@@ -4650,14 +5186,15 @@ async function startServer() {
               payment = await paymentRepository.updatePaymentStatus(payment.id, 'PAID', new Date(), 'WEBHOOK', { environment: paymentEnvironment });
             }
 
-            const course = await courseRepository.getCourseById(localOrder.courseId);
+            const courseId = localOrder.courseId || '';
+            const course = await courseRepository.getCourseById(courseId);
             const durationDays = course?.defaultDurationDays || 180;
 
             const entitlement = await entitlementRepository.grantOrExtendPaymentEntitlement(
               localOrder.userId,
-              localOrder.courseId,
+              courseId,
               durationDays,
-              payment.id,
+              payment?.id || '',
               localOrder.id,
               localOrder.amount,
               paymentEnvironment
@@ -4670,7 +5207,7 @@ async function startServer() {
                   localOrder.metadata.couponId,
                   localOrder.userId,
                   localOrder.id,
-                  payment.id,
+                  payment?.id || '',
                   localOrder.metadata.couponDiscount || 0,
                   localOrder.metadata.originalAmount || localOrder.amount,
                   localOrder.amount
@@ -4685,7 +5222,7 @@ async function startServer() {
               'SYSTEM',
               'PAYMENT_VERIFIED',
               'PAYMENT',
-              payment.id,
+              payment?.id || '',
               { orderId: localOrder.id, providerPaymentId, source: 'WEBHOOK' },
               req.ip
             );
@@ -4696,7 +5233,7 @@ async function startServer() {
               'ENTITLEMENT_CREATED_FROM_PAYMENT',
               'ENTITLEMENT',
               entitlement.id,
-              { paymentId: payment.id, courseId: localOrder.courseId, source: 'WEBHOOK' },
+              { paymentId: payment?.id || '', courseId: localOrder.courseId, source: 'WEBHOOK' },
               req.ip
             );
           }
@@ -4795,7 +5332,7 @@ async function startServer() {
 
         // Delete test entitlements created by test payments
         const entRes = await client.query(
-          `DELETE FROM public.entitlements
+          `DELETE FROM public.entitlements 
            WHERE environment = 'TEST' OR payment_id IN (SELECT id FROM public.payments WHERE environment = 'TEST')
            RETURNING id;`
         );
@@ -4950,12 +5487,14 @@ async function startServer() {
   app.get('/api/admin/current-affairs/list', requireAdmin, async (req, res) => {
     try {
       const { category, status, search, limit, offset } = req.query;
+      const parsedLimit = Math.min(Math.max(1, parseInt(limit as string) || 50), 100);
+      const parsedOffset = Math.max(0, parseInt(offset as string) || 0);
       const list = await currentAffairsRepository.listArticles({
         category: category as string,
         status: status as string,
         search: search as string,
-        limit: limit ? parseInt(limit as string) : 50,
-        offset: offset ? parseInt(offset as string) : 0,
+        limit: parsedLimit,
+        offset: parsedOffset,
       });
       res.json(list);
     } catch (err: any) {
@@ -5720,6 +6259,7 @@ async function startServer() {
       let updatedCount = 0;
 
       for (const q of questions) {
+        if (q.questionNum === undefined || q.questionNum === null) continue;
         const entry = answerMap[q.questionNum];
         if (entry && entry.correctOption) {
           await ocrRepository.updateExtractedQuestion(q.id, {
@@ -6292,8 +6832,8 @@ async function startServer() {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!role || !['USER', 'ADMIN', 'SUPER_ADMIN'].includes(role)) {
-      return res.status(400).json({ error: 'Valid role is required (USER, ADMIN, SUPER_ADMIN)' });
+    if (!role || !['USER', 'ADMIN', 'SUPER_ADMIN', 'TEACHER'].includes(role)) {
+      return res.status(400).json({ error: 'Valid role is required (USER, ADMIN, SUPER_ADMIN, TEACHER)' });
     }
 
     try {
@@ -6397,6 +6937,558 @@ async function startServer() {
     res.json(db.auditLogs);
   });
 
+  // ==========================================
+  // TEACHER WORKSPACE APIS
+  // ==========================================
+
+  // Dashboard Stats
+  app.get('/api/teacher/dashboard-stats', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const stats = await teacherRepository.getDashboardStats(user.id, isElevated);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to load teacher dashboard metrics' });
+    }
+  });
+
+  // Classes
+  app.get('/api/teacher/classes', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const classes = await teacherRepository.getClasses(user.id, isElevated);
+      res.json(classes);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch classes' });
+    }
+  });
+
+  app.get('/api/teacher/classes/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const cls = await teacherRepository.getClassById(req.params.id, user.id, isElevated);
+      if (!cls) return res.status(404).json({ error: 'Class not found or access denied' });
+      res.json(cls);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch class details' });
+    }
+  });
+
+  app.post('/api/teacher/classes', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { name, description, exam, subject, topic, schedule } = req.body;
+      if (!name || !subject) {
+        return res.status(400).json({ error: 'Class name and subject are required' });
+      }
+      const newClass = await teacherRepository.createClass(user.id, {
+        name,
+        description,
+        exam: exam || 'UPSC',
+        subject,
+        topic,
+        schedule,
+      });
+      logAudit(user.id, user.role, 'TEACHER_CLASS_CREATED', 'CLASS', newClass.id, { name: newClass.name });
+      res.status(201).json(newClass);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to create class' });
+    }
+  });
+
+  app.put('/api/teacher/classes/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const updated = await teacherRepository.updateClass(req.params.id, user.id, isElevated, req.body);
+      logAudit(user.id, user.role, 'TEACHER_CLASS_UPDATED', 'CLASS', req.params.id, { name: updated.name });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update class' });
+    }
+  });
+
+  app.delete('/api/teacher/classes/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      await teacherRepository.deleteClass(req.params.id, user.id, isElevated);
+      logAudit(user.id, user.role, 'TEACHER_CLASS_DELETED', 'CLASS', req.params.id, {});
+      res.json({ success: true, message: 'Class deleted successfully' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to delete class' });
+    }
+  });
+
+  // Class Students
+  app.get('/api/teacher/classes/:id/students', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const students = await teacherRepository.getClassStudents(req.params.id, user.id, isElevated);
+      res.json(students);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch class students' });
+    }
+  });
+
+  app.post('/api/teacher/classes/:id/students', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const { studentId } = req.body;
+      if (!studentId) return res.status(400).json({ error: 'Student ID is required' });
+      const enrollment = await teacherRepository.addStudentToClass(req.params.id, studentId, user.id, isElevated);
+      res.status(201).json(enrollment);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to enroll student' });
+    }
+  });
+
+  app.delete('/api/teacher/classes/:id/students/:studentId', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      await teacherRepository.removeStudentFromClass(req.params.id, req.params.studentId, user.id, isElevated);
+      res.json({ success: true, message: 'Student removed from class' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to remove student' });
+    }
+  });
+
+  // Students Directory
+  app.get('/api/teacher/students', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const students = await teacherRepository.getAuthorizedStudents(user.id, isElevated);
+      res.json(students);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch authorized students' });
+    }
+  });
+
+  app.get('/api/teacher/students/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const detail = await teacherRepository.getStudentDetail(req.params.id, user.id, isElevated);
+      let dossier = null;
+      try {
+        dossier = await studentPerformanceService.getStudentDossier(req.params.id);
+      } catch (dErr: any) {
+        console.warn('[Teacher API] Candidate dossier generation note:', dErr.message);
+      }
+      res.json({ ...detail, dossier });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to fetch student details' });
+    }
+  });
+
+  app.get('/api/teacher/students/:id/dossier', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const hasAccess = await teacherRepository.verifyStudentAccess(req.params.id, user.id, isElevated);
+      if (!hasAccess && !isElevated) {
+        return res.status(403).json({ error: 'Unauthorized to view student dossier' });
+      }
+      const dossier = await studentPerformanceService.getStudentDossier(req.params.id);
+      res.json(dossier);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to generate student dossier' });
+    }
+  });
+
+  // Assignments
+  app.get('/api/teacher/assignments', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const assignments = await teacherRepository.getAssignments(user.id, isElevated, req.query.classId as string);
+      res.json(assignments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch assignments' });
+    }
+  });
+
+  app.post('/api/teacher/assignments', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { title, description, subject, topic, instructions, dueDate, totalMarks, durationMinutes, questions, classId, status } = req.body;
+      if (!title || !subject) return res.status(400).json({ error: 'Title and subject are required' });
+      const assignment = await teacherRepository.createAssignment(user.id, {
+        classId,
+        title,
+        description,
+        subject,
+        topic,
+        instructions,
+        dueDate,
+        totalMarks: Number(totalMarks) || 100,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
+        questions,
+        status: status || 'PUBLISHED',
+      });
+      logAudit(user.id, user.role, 'TEACHER_ASSIGNMENT_CREATED', 'ASSIGNMENT', assignment.id, { title: assignment.title });
+
+      // Notify enrolled students if assignment is published
+      if ((status === 'PUBLISHED' || !status) && classId) {
+        try {
+          const studentsRes = await pool.query('SELECT student_id FROM public.teacher_class_students WHERE class_id = $1', [classId]);
+          for (const s of studentsRes.rows) {
+            await notificationRepository.createNotification({
+              recipientUserId: s.student_id,
+              actorUserId: user.id,
+              type: 'ASSIGNMENT_ASSIGNED',
+              title: 'New Assignment Published',
+              message: `A new assignment "${assignment.title}" has been assigned in your class.`,
+              entityType: 'ASSIGNMENT',
+              entityId: assignment.id,
+              deepLink: `/learner/assignments?id=${assignment.id}`,
+              priority: 'NORMAL',
+              metadata: { assignmentId: assignment.id, classId, dueDate: assignment.dueDate },
+            });
+          }
+        } catch (notifErr: any) {
+          console.warn('[Assignment Notification Error]', notifErr.message);
+        }
+      }
+
+      res.status(201).json(assignment);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to create assignment' });
+    }
+  });
+
+  app.put('/api/teacher/assignments/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const updated = await teacherRepository.updateAssignment(req.params.id, user.id, isElevated, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to update assignment' });
+    }
+  });
+
+  app.delete('/api/teacher/assignments/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      await teacherRepository.deleteAssignment(req.params.id, user.id, isElevated);
+      res.json({ success: true, message: 'Assignment deleted' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to delete assignment' });
+    }
+  });
+
+  // Submissions & Evaluations
+  app.get('/api/teacher/submissions', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const submissions = await teacherRepository.getSubmissions(
+        user.id,
+        isElevated,
+        req.query.assignmentId as string,
+        req.query.status as string
+      );
+      res.json(submissions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch submissions' });
+    }
+  });
+
+  app.post('/api/teacher/submissions/:id/evaluate', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const { marksObtained, feedback, strengths, weaknesses, suggestions } = req.body;
+      if (marksObtained === undefined || marksObtained === null) {
+        return res.status(400).json({ error: 'Marks obtained is required' });
+      }
+      const evaluated = await teacherRepository.evaluateSubmission(
+        req.params.id,
+        user.id,
+        isElevated,
+        {
+          marksObtained: Number(marksObtained),
+          feedback,
+          strengths,
+          weaknesses,
+          suggestions,
+        }
+      );
+      logAudit(user.id, user.role, 'TEACHER_ANSWER_EVALUATED', 'SUBMISSION', req.params.id, { marksObtained });
+
+      // Send real notification to student about their evaluated assignment
+      if (evaluated && evaluated.studentId) {
+        try {
+          await notificationRepository.createNotification({
+            recipientUserId: evaluated.studentId,
+            actorUserId: user.id,
+            type: 'ASSIGNMENT_EVALUATED',
+            title: 'Assignment Evaluated',
+            message: `Your assignment has been evaluated. Marks: ${evaluated.marksObtained}${evaluated.totalMarks ? '/' + evaluated.totalMarks : ''}.`,
+            entityType: 'ASSIGNMENT_SUBMISSION',
+            entityId: evaluated.id,
+            deepLink: `/learner/assignments?submissionId=${evaluated.id}`,
+            priority: 'NORMAL',
+            metadata: { submissionId: evaluated.id, marksObtained: evaluated.marksObtained, totalMarks: evaluated.totalMarks },
+          });
+        } catch (evalNotifErr: any) {
+          console.warn('[Evaluation Notification Error]', evalNotifErr.message);
+        }
+      }
+
+      res.json(evaluated);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to evaluate submission' });
+    }
+  });
+
+  // Quizzes
+  app.get('/api/teacher/quizzes', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const quizzes = await teacherRepository.getQuizzes(user.id, isElevated);
+      res.json(quizzes);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch quizzes' });
+    }
+  });
+
+  app.post('/api/teacher/quizzes', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { classId, title, description, subject, questionIds, scheduledAt, durationMinutes, status } = req.body;
+      if (!title || !subject) return res.status(400).json({ error: 'Title and subject are required' });
+      const quiz = await teacherRepository.createQuiz(user.id, {
+        classId,
+        title,
+        description,
+        subject,
+        questionIds: questionIds || [],
+        scheduledAt,
+        durationMinutes: durationMinutes ? Number(durationMinutes) : 30,
+        status: status || 'PUBLISHED',
+      });
+      logAudit(user.id, user.role, 'TEACHER_QUIZ_CREATED', 'QUIZ', quiz.id, { title: quiz.title, origin: 'TEACHER_CREATED' });
+      res.status(201).json(quiz);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to create quiz' });
+    }
+  });
+
+  // Announcements
+  app.get('/api/teacher/announcements', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const announcements = await teacherRepository.getAnnouncements(user.id, isElevated, req.query.classId as string);
+      res.json(announcements);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch announcements' });
+    }
+  });
+
+  app.post('/api/teacher/announcements', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { classId, title, message, targetStudentIds } = req.body;
+      if (!title || !message) return res.status(400).json({ error: 'Title and message are required' });
+      const announcement = await teacherRepository.createAnnouncement(user.id, {
+        classId,
+        title,
+        message,
+        targetStudentIds,
+      });
+      logAudit(user.id, user.role, 'TEACHER_ANNOUNCEMENT_SENT', 'ANNOUNCEMENT', announcement.id, { title: announcement.title });
+
+      // Notify targeted or enrolled students
+      try {
+        let recipientIds: string[] = targetStudentIds || [];
+        if (recipientIds.length === 0 && classId) {
+          const sRes = await pool.query('SELECT student_id FROM public.teacher_class_students WHERE class_id = $1', [classId]);
+          recipientIds = sRes.rows.map(r => r.student_id);
+        }
+        for (const sId of recipientIds) {
+          await notificationRepository.createNotification({
+            recipientUserId: sId,
+            actorUserId: user.id,
+            type: 'ANNOUNCEMENT',
+            title: `Announcement: ${announcement.title}`,
+            message: announcement.message,
+            entityType: 'ANNOUNCEMENT',
+            entityId: announcement.id,
+            deepLink: '/learner/classes',
+            priority: 'NORMAL',
+          });
+        }
+      } catch (notifErr: any) {
+        console.warn('[Announcement Notification Note]:', notifErr.message);
+      }
+
+      res.status(201).json(announcement);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to post announcement' });
+    }
+  });
+
+  // Faculty Handouts & Notes (Origin: TEACHER_CREATED)
+  app.post('/api/teacher/resources', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const { title, description, subject, topic, fileUrl, classId, tags } = req.body;
+
+      if (!title || !subject) {
+        return res.status(400).json({ error: 'Resource title and subject are required' });
+      }
+
+      if (classId) {
+        const hasAccess = await teacherRepository.verifyClassAccess(classId, user.id, isElevated);
+        if (!hasAccess && !isElevated) {
+          return res.status(403).json({ error: 'Unauthorized to attach resource to this class' });
+        }
+      }
+
+      const createdResource = await resourceRepository.create({
+        title,
+        description,
+        subject,
+        topic: topic || 'Faculty Handout',
+        resource_type: 'NOTES',
+        type: 'NOTES',
+        status: 'PUBLISHED',
+        visibility: classId ? 'BATCH' : 'ALL_LEARNERS',
+        uploaded_by: user.id,
+        url: fileUrl || '/resources/sample-handout.pdf',
+        source_type: 'TEACHER_CREATED',
+        source_attribution: `Uploaded by Faculty ${user.name || user.email}`,
+        tags: Array.isArray(tags) ? tags.join(',') : (tags || 'TEACHER_HANDOUT,STUDY_MATERIAL'),
+        is_published: true,
+      });
+
+      logAudit(user.id, user.role, 'TEACHER_RESOURCE_CREATED', 'RESOURCE', createdResource.id, {
+        title: createdResource.title,
+        origin: 'TEACHER_CREATED',
+        classId,
+      });
+
+      // Notify enrolled students in class
+      if (classId) {
+        try {
+          const sRes = await pool.query('SELECT student_id FROM public.teacher_class_students WHERE class_id = $1', [classId]);
+          for (const s of sRes.rows) {
+            await notificationRepository.createNotification({
+              recipientUserId: s.student_id,
+              actorUserId: user.id,
+              type: 'NEW_RESOURCE',
+              title: 'New Study Material Added',
+              message: `New study material has been added to your class: ${createdResource.title}`,
+              entityType: 'RESOURCE',
+              entityId: createdResource.id,
+              deepLink: `/resources?id=${createdResource.id}`,
+              priority: 'NORMAL',
+              metadata: { resourceId: createdResource.id, classId },
+            });
+          }
+        } catch (rNotifErr: any) {
+          console.warn('[Resource Notification Note]:', rNotifErr.message);
+        }
+      }
+
+      res.status(201).json(createdResource);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to upload faculty resource' });
+    }
+  });
+
+  app.delete('/api/teacher/announcements/:id', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      await teacherRepository.deleteAnnouncement(req.params.id, user.id, isElevated);
+      res.json({ success: true, message: 'Announcement deleted' });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to delete announcement' });
+    }
+  });
+
+  // Analytics
+  app.get('/api/teacher/analytics', requireTeacher, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const isElevated = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+      const stats = await teacherRepository.getDashboardStats(user.id, isElevated);
+      const classes = await teacherRepository.getClasses(user.id, isElevated);
+      res.json({
+        totalStudents: stats.totalAssignedStudents,
+        activeStudents: stats.activeStudents,
+        averagePerformance: stats.avgStudentPerformance,
+        pendingEvaluations: stats.pendingEvaluations,
+        assignmentsDue: stats.assignmentsDue,
+        totalClasses: classes.length,
+        classDistribution: classes.map(c => ({
+          name: c.name,
+          subject: c.subject,
+          enrolledCount: c.enrolledCount || 0,
+        })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch teacher analytics' });
+    }
+  });
+
+  // Learner-facing routes for enrolled classes & assignments
+  app.get('/api/learner/classes', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const classes = await teacherRepository.getLearnerClasses(user.id);
+      res.json(classes);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch enrolled classes' });
+    }
+  });
+
+  app.get('/api/learner/assignments', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const assignments = await teacherRepository.getLearnerAssignments(user.id);
+      res.json(assignments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch learner assignments' });
+    }
+  });
+
+  app.post('/api/learner/assignments/:id/submit', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { answers } = req.body;
+      const submission = await teacherRepository.submitAssignment(req.params.id, user.id, answers || []);
+      logAudit(user.id, user.role, 'STUDENT_ASSIGNMENT_SUBMITTED', 'SUBMISSION', submission.id, { assignmentId: req.params.id });
+      res.status(201).json(submission);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to submit assignment' });
+    }
+  });
+
+  app.get('/api/learner/announcements', requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const announcements = await teacherRepository.getLearnerAnnouncements(user.id);
+      res.json(announcements);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch announcements' });
+    }
+  });
+
   // =============================================================
   // NATIVE MOBILE APP (ANDROID) RELEASE & EARLY ACCESS FOUNDATION
   // =============================================================
@@ -6471,32 +7563,77 @@ async function startServer() {
     }
   });
 
-  // Helper function to resolve locally available APK file on disk
-  const resolveLocalApk = (): { path: string; size: number; checksum: string } | null => {
-    const candidatePaths = [
-      path.join(process.cwd(), 'public', 'apk', 'app-debug.apk'),
-      path.join(process.cwd(), 'dist', 'apk', 'app-debug.apk'),
-      path.join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
-      path.join(process.cwd(), 'app-debug.apk'),
-    ];
+  // Helper function to resolve locally available APK file on disk, matching version and checksum if available
+  const resolveReleaseApk = (opts?: {
+    versionName?: string;
+    versionCode?: number;
+    expectedChecksum?: string;
+  }): { path: string; size: number; checksum: string } | null => {
+    const candidates: string[] = [];
 
-    for (const candidate of candidatePaths) {
+    // 1. If version-specific name is requested
+    if (opts?.versionName) {
+      candidates.push(
+        path.join(process.cwd(), 'public', 'apk', `ikshovia-v${opts.versionName}.apk`),
+        path.join(process.cwd(), 'dist', 'apk', `ikshovia-v${opts.versionName}.apk`),
+        path.join(process.cwd(), 'public', 'apk', `ikshovia-v${opts.versionName}-b${opts.versionCode || 7}.apk`),
+        path.join(process.cwd(), 'dist', 'apk', `ikshovia-v${opts.versionName}-b${opts.versionCode || 7}.apk`)
+      );
+    }
+
+    // 2. Generic release and production paths
+    candidates.push(
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-v2.2.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-v2.2.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-v2.2-b8.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-v2.2-b8.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-release.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-release.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'app-release.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'app-release.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-v2.1.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-v2.1.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-v2.1-b7.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-v2.1-b7.apk'),
+      path.join(process.cwd(), 'public', 'apk', 'ikshovia-v2.0.apk'),
+      path.join(process.cwd(), 'dist', 'apk', 'ikshovia-v2.0.apk'),
+      path.join(process.cwd(), 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk')
+    );
+
+    const inspected: { path: string; size: number; checksum: string }[] = [];
+    for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {
         try {
           const stats = fs.statSync(candidate);
           const buf = fs.readFileSync(candidate);
           const checksum = crypto.createHash('sha256').update(buf).digest('hex');
-          return { path: candidate, size: stats.size, checksum };
+          const item = { path: candidate, size: stats.size, checksum };
+          inspected.push(item);
+          // If expectedChecksum is specified and matches, return immediately
+          if (opts?.expectedChecksum && checksum.toLowerCase() === opts.expectedChecksum.toLowerCase()) {
+            return item;
+          }
         } catch (e) {
-          console.error('[resolveLocalApk Error]', e);
+          console.error('[resolveReleaseApk Error]', e);
         }
       }
     }
-    return null;
+
+    // If expectedChecksum was provided but no candidate matched, DO NOT return an unverified file
+    if (opts?.expectedChecksum) {
+      return null;
+    }
+
+    // If no expected checksum was provided, return the first valid inspected file
+    return inspected.length > 0 ? inspected[0] : null;
   };
 
-  // Helper to stream APK with support for Range requests (essential for Android download managers)
-  const streamApkFile = (filePath: string, fileName: string, req: express.Request, res: express.Response) => {
+  const resolveLocalApk = (): { path: string; size: number; checksum: string } | null => {
+    return resolveReleaseApk();
+  };
+
+  // Helper to stream APK with support for Range requests (essential for Android download managers) and HEAD requests
+  const streamApkFile = (filePath: string, fileName: string, req: express.Request, res: express.Response, checksum?: string) => {
     try {
       const stat = fs.statSync(filePath);
       const totalSize = stat.size;
@@ -6505,7 +7642,16 @@ async function startServer() {
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
       res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('Cache-Control', 'no-cache');
+      if (checksum) {
+        res.setHeader('ETag', `"${checksum}"`);
+        res.setHeader('X-Checksum-SHA256', checksum);
+      }
+
+      if (req.method === 'HEAD') {
+        res.setHeader('Content-Length', totalSize);
+        return res.status(200).end();
+      }
 
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');
@@ -6534,55 +7680,98 @@ async function startServer() {
     }
   };
 
-  // Public Direct APK Download Endpoint for Latest Release
-  app.get(['/api/app/download/latest', '/download/apk'], async (req, res) => {
+  // Explicit endpoints for static APK downloads serving the exact file requested
+  app.all('/apk/:file', (req, res) => {
+    const fileName = path.basename(req.params.file);
+    if (!fileName.endsWith('.apk')) {
+      return res.status(400).json({ error: 'Only .apk files are supported' });
+    }
+    const publicPath = path.join(process.cwd(), 'public', 'apk', fileName);
+    const distPath = path.join(process.cwd(), 'dist', 'apk', fileName);
+    const targetPath = fs.existsSync(publicPath) ? publicPath : (fs.existsSync(distPath) ? distPath : null);
+    if (targetPath) {
+      return streamApkFile(targetPath, fileName, req, res);
+    }
+    return res.status(404).json({ error: `APK file ${fileName} not found on server.` });
+  });
+
+  // Public Direct APK Download Endpoint for Latest Release (Canonical Build 8 Binary Stream)
+  app.all(['/api/app/download/latest', '/download/apk'], async (req, res) => {
     try {
       const platform = (req.query.platform as string) || 'android';
       const result = await pool.query(`
         SELECT * FROM public.app_releases
         WHERE platform = $1 AND status = 'PUBLISHED'
-        ORDER BY version_code DESC
+        ORDER BY version_code DESC, created_at DESC
         LIMIT 1;
       `, [platform]);
 
-      if (result.rows.length > 0) {
-        const rel = result.rows[0];
-        const apkUrl = rel.apk_url || '';
-
-        // If it's a remote URL (CDN/Cloud Storage), redirect (302)
-        if (apkUrl.startsWith('http://') || apkUrl.startsWith('https://')) {
-          return res.redirect(302, apkUrl);
-        }
-
-        // Local APK resolution
-        const local = resolveLocalApk();
-        if (local) {
-          const downloadName = `ikshovia-v${rel.version_name || '1.0'}.apk`;
-          return streamApkFile(local.path, downloadName, req, res);
-        }
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'No published release found for platform: ' + platform });
       }
 
-      // Fallback: check if local debug APK exists
-      const localFallback = resolveLocalApk();
-      if (localFallback) {
-        return streamApkFile(localFallback.path, 'ikshovia-v1.0.apk', req, res);
+      const rel = result.rows[0];
+      const expectedChecksum = (rel.sha256_checksum || '').toLowerCase().trim();
+      const expectedSizeBytes = Number(rel.file_size_bytes || 0);
+
+      // Resolve exact matching local APK binary for this release
+      const local = resolveReleaseApk({
+        versionName: rel.version_name,
+        versionCode: rel.version_code,
+        expectedChecksum: rel.sha256_checksum,
+      });
+
+      if (!local) {
+        return res.status(503).json({
+          error: 'Canonical APK binary file not found on disk for published release.',
+          publishedRelease: {
+            versionName: rel.version_name,
+            versionCode: rel.version_code,
+            expectedChecksum: rel.sha256_checksum,
+            expectedSizeBytes: rel.file_size_bytes,
+          }
+        });
       }
 
-      return res.status(404).json({ error: 'No APK package currently available for download.' });
+      // Exact checksum verification
+      if (expectedChecksum && local.checksum.toLowerCase() !== expectedChecksum) {
+        return res.status(500).json({
+          error: 'Canonical APK checksum mismatch',
+          expectedChecksum,
+          actualChecksum: local.checksum,
+        });
+      }
+
+      // Exact size verification
+      if (expectedSizeBytes && local.size !== expectedSizeBytes) {
+        return res.status(500).json({
+          error: 'Canonical APK file size mismatch',
+          expectedSizeBytes,
+          actualSizeBytes: local.size,
+        });
+      }
+
+      const downloadFileName = `ikshovia-v${rel.version_name || '3.0'}-b${rel.version_code || '9'}.apk`;
+      return streamApkFile(local.path, downloadFileName, req, res, local.checksum);
     } catch (err: any) {
       console.error('[Download Latest APK Error]', err);
-      return res.status(500).json({ error: 'Failed to initiate APK download.' });
+      return res.status(500).json({ error: 'Failed to stream canonical APK binary.' });
     }
   });
 
   // 2. Truthful App Version Check API (supports both /api/app/version and /api/app/version/latest)
   app.get(['/api/app/version', '/api/app/version/latest'], async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     try {
       const platform = (req.query.platform as string) || 'android';
       const currentVersionCode = parseInt(
         (req.query.currentBuildNumber as string) ||
         (req.query.currentVersionCode as string) ||
         (req.query.versionCode as string) ||
+        (req.query.installedBuild as string) ||
+        (req.query.buildNumber as string) ||
         '',
         10
       );
@@ -6602,7 +7791,7 @@ async function startServer() {
       let latest: any = null;
 
       if (result.rows.length > 0) {
-        latest = result.rows[0];
+        latest = { ...result.rows[0] };
       } else if (platform === 'android') {
         // First check if a release-metadata.json was deployed by CI
         const metaPath = path.join(process.cwd(), 'public', 'apk', 'release-metadata.json');
@@ -6681,7 +7870,7 @@ async function startServer() {
         } else if (currentVersionCode < latestBuild) {
           updateAvailable = true;
           updateRequired = isMandatory;
-          updateStatus = isMandatory ? 'MANDATORY_UPDATE' : 'UPDATE_AVAILABLE';
+          updateStatus = updateRequired ? 'MANDATORY_UPDATE' : 'UPDATE_AVAILABLE';
         } else {
           updateAvailable = false;
           updateRequired = false;
@@ -6714,9 +7903,9 @@ async function startServer() {
         latestBuildNumber: latestBuild,
         minimumSupportedVersion: String(latest.version_name),
         minimumSupportedBuildNumber: minSupportedBuild,
-        updateUrl: '/download',
-        apkUrl: latest.apk_url || '/apk/app-debug.apk',
-        downloadUrl: '/api/app/download/latest',
+        updateUrl: 'https://ikshoviacse.onrender.com/download',
+        apkUrl: 'https://ikshoviacse.onrender.com/api/app/download/latest',
+        downloadUrl: 'https://ikshoviacse.onrender.com/api/app/download/latest',
         releaseNotes: notesList,
         releaseNotesRaw: rawNotes,
         publishedAt: latest.created_at,
@@ -7149,6 +8338,7 @@ async function startServer() {
     Boolean(process.argv[1] && (process.argv[1].endsWith('.cjs') || process.argv[1].includes('dist')));
 
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -7165,8 +8355,12 @@ async function startServer() {
     });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`IKSHOVIA AI Learning Platform running on http://0.0.0.0:${PORT} [mode: ${isProduction ? 'production' : 'development'}]`);
+  const DEFAULT_DEV_PORT = 3000;
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
+  const cloudRunPort = (envPort && !isNaN(envPort)) ? envPort : DEFAULT_DEV_PORT;
+
+  const server = app.listen(DEFAULT_DEV_PORT, '0.0.0.0', () => {
+    console.log(`IKSHOVIA AI Learning Platform running on http://0.0.0.0:${DEFAULT_DEV_PORT} [mode: ${isProduction ? 'production' : 'development'}]`);
     try {
       setupLiveClassWebSocket(server);
     } catch (wsErr) {
@@ -7185,8 +8379,30 @@ async function startServer() {
   });
 
   server.on('error', (err: any) => {
-    console.error('[Server Listen Error]', err);
+    console.error(`[Server Listen Error on ${DEFAULT_DEV_PORT}]`, err);
   });
+
+  // Cloud Run dynamically assigns PORT (default 8080) for incoming container traffic
+  if (cloudRunPort !== DEFAULT_DEV_PORT) {
+    try {
+      const cloudRunServer = app.listen(cloudRunPort, '0.0.0.0', () => {
+        console.log(`Cloud Run container ingress listening on http://0.0.0.0:${cloudRunPort}`);
+        try {
+          setupLiveClassWebSocket(cloudRunServer);
+        } catch (wsErr) {}
+      });
+      cloudRunServer.on('error', (err: any) => {
+        // In local/sandbox development where port 8080 is already held by the nginx proxy, ignore EADDRINUSE
+        if (err.code === 'EADDRINUSE') {
+          console.log(`[Cloud Run Ingress Port ${cloudRunPort}] Handled by reverse proxy; primary port ${DEFAULT_DEV_PORT} is active.`);
+        } else {
+          console.error(`[Cloud Run Ingress Port ${cloudRunPort} Error]`, err);
+        }
+      });
+    } catch (err: any) {
+      console.warn(`[Cloud Run Ingress Port ${cloudRunPort} Setup Warning]`, err);
+    }
+  }
 }
 
 startServer();

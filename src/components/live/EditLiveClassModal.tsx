@@ -49,7 +49,7 @@ export const EditLiveClassModal: React.FC<EditLiveClassModalProps> = ({
 
   const [title, setTitle] = useState(liveClass.title);
   const [description, setDescription] = useState(liveClass.description || '');
-  const [exam, setExam] = useState<'UPSC' | 'BPSC' | 'BOTH'>(liveClass.exam);
+  const [exam, setExam] = useState<'UPSC' | 'BPSC' | 'BOTH' | 'ALL'>(liveClass.exam);
   const [subject, setSubject] = useState(liveClass.subject || UPSC_BPSC_SUBJECTS[0]);
   const [durationMinutes, setDurationMinutes] = useState(liveClass.durationMinutes || 60);
   const [status, setStatus] = useState<any>(liveClass.status);
@@ -57,6 +57,7 @@ export const EditLiveClassModal: React.FC<EditLiveClassModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,10 +91,6 @@ export const EditLiveClassModal: React.FC<EditLiveClassModalProps> = ({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${liveClass.title}"? This class will be permanently removed.`)) {
-      return;
-    }
-
     try {
       setLoading(true);
       await liveClassService.deleteClass(liveClass.id);
@@ -251,15 +248,36 @@ export const EditLiveClassModal: React.FC<EditLiveClassModalProps> = ({
           </div>
 
           <div className="pt-4 flex items-center justify-between border-t border-stone-800">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleDelete}
-              className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Delete Class</span>
-            </button>
+            {showDeleteConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-rose-300 font-medium">Permanently delete?</span>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleDelete}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition-all"
+                >
+                  Yes, Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-2.5 py-1.5 text-xs text-stone-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete Class</span>
+              </button>
+            )}
 
             <div className="flex items-center gap-3">
               <button

@@ -23,16 +23,23 @@ import { useAuth } from '../../context/AuthContext.js';
 interface DirectCallModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCall?: DirectVideoCall | null;
+  initialMode?: 'DIRECTORY' | 'CALLING' | 'IN_CALL';
 }
 
-export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClose }) => {
+export const DirectCallModal: React.FC<DirectCallModalProps> = ({
+  isOpen,
+  onClose,
+  initialCall = null,
+  initialMode = 'DIRECTORY',
+}) => {
   const { user } = useAuth();
 
   // Mode: 'DIRECTORY' | 'CALLING' | 'IN_CALL'
-  const [mode, setMode] = useState<'DIRECTORY' | 'CALLING' | 'IN_CALL'>('DIRECTORY');
+  const [mode, setMode] = useState<'DIRECTORY' | 'CALLING' | 'IN_CALL'>(initialMode);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [searchUser, setSearchUser] = useState('');
-  const [currentCall, setCurrentCall] = useState<DirectVideoCall | null>(null);
+  const [currentCall, setCurrentCall] = useState<DirectVideoCall | null>(initialCall);
 
   // In-call media states
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -51,9 +58,23 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
 
   useEffect(() => {
     if (isOpen) {
+      if (initialCall) {
+        setCurrentCall(initialCall);
+        setMode(initialMode || (initialCall.status === 'ACCEPTED' ? 'IN_CALL' : 'CALLING'));
+        if (initialMode === 'IN_CALL' || initialCall.status === 'ACCEPTED') {
+          startCamera();
+        }
+      } else {
+        setMode('DIRECTORY');
+      }
       loadUsers();
       checkExistingCall();
-      pollerRef.current = setInterval(checkExistingCall, 3000);
+      pollerRef.current = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        // Do not hammer server if already connected in call
+        if (mode === 'IN_CALL') return;
+        checkExistingCall();
+      }, 8000);
     } else {
       cleanupStreams();
       if (pollerRef.current) clearInterval(pollerRef.current);
@@ -64,7 +85,7 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
       if (pollerRef.current) clearInterval(pollerRef.current);
       if (callTimerRef.current) clearInterval(callTimerRef.current);
     };
-  }, [isOpen]);
+  }, [isOpen, initialCall, initialMode]);
 
   // Call duration counter
   useEffect(() => {
@@ -93,14 +114,24 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
   const checkExistingCall = async () => {
     try {
       const res = await liveClassService.getActiveDirectCall();
-      if (res.call) {
-        setCurrentCall(res.call);
-        if (res.call.status === 'ACCEPTED' && mode !== 'IN_CALL') {
-          setMode('IN_CALL');
-          startCamera();
-        } else if (res.call.status === 'ENDED' || res.call.status === 'DECLINED' || res.call.status === 'MISSED') {
+      if (res?.call) {
+        const call = res.call;
+        setCurrentCall(call);
+        if (call.status === 'ACCEPTED') {
+          if (mode !== 'IN_CALL') {
+            setMode('IN_CALL');
+            startCamera();
+          }
+        } else if (call.status === 'RINGING') {
+          if (call.callerId === user?.id && mode !== 'CALLING' && mode !== 'IN_CALL') {
+            setMode('CALLING');
+            startCamera();
+          }
+        } else if (call.status === 'ENDED' || call.status === 'DECLINED' || call.status === 'MISSED') {
           handleCallTerminated();
         }
+      } else if (mode === 'CALLING' || mode === 'IN_CALL') {
+        handleCallTerminated();
       }
     } catch (err) {
       // quiet
@@ -151,7 +182,8 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
   const handleAcceptIncoming = async () => {
     if (!currentCall) return;
     try {
-      await liveClassService.respondDirectCall(currentCall.id, 'ACCEPT');
+      const accepted = await liveClassService.respondDirectCall(currentCall.id, 'ACCEPT');
+      setCurrentCall(accepted || currentCall);
       setMode('IN_CALL');
       startCamera();
     } catch (err) {
@@ -309,7 +341,7 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
               {/* User cards list */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
                 {usersList
-                  .filter(u => u.name.toLowerCase().includes(searchUser.toLowerCase()))
+                  .filter(u => (u.name || '').toLowerCase().includes((searchUser || '').toLowerCase()))
                   .map(target => (
                     <div
                       key={target.id}
@@ -317,10 +349,10 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center font-bold text-amber-300 text-xs">
-                          {target.name.substring(0, 2).toUpperCase()}
+                          {String(target?.name || 'User').substring(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-white line-clamp-1">{target.name}</div>
+                          <div className="text-xs font-bold text-white line-clamp-1">{target.name || 'Scholar / Mentor'}</div>
                           <div className="text-[10px] text-stone-500 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                             <span>{target.role === 'TEACHER' ? 'Faculty Mentor' : 'Scholar'}</span>
@@ -352,13 +384,13 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
             <div className="relative">
               <div className="w-24 h-24 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center animate-ping absolute inset-0" />
               <div className="w-24 h-24 rounded-full bg-stone-900 border-2 border-rose-500 flex items-center justify-center text-3xl font-bold text-amber-300 relative z-10">
-                {(currentCall.calleeName || 'User').substring(0, 2).toUpperCase()}
+                {String(currentCall?.calleeName || 'User').substring(0, 2).toUpperCase()}
               </div>
             </div>
 
             <div>
               <div className="text-xs text-stone-400 uppercase tracking-wider font-semibold">Calling Mentor / Scholar</div>
-              <h3 className="text-2xl font-black text-white mt-1">{currentCall.calleeName}</h3>
+              <h3 className="text-2xl font-black text-white mt-1">{currentCall.calleeName || 'Connecting...'}</h3>
               <p className="text-xs text-stone-500 mt-1">Waiting for user to connect...</p>
             </div>
 
@@ -380,12 +412,12 @@ export const DirectCallModal: React.FC<DirectCallModalProps> = ({ isOpen, onClos
               {/* Remote simulation or feed */}
               <div className="text-center space-y-3 z-10 p-6">
                 <div className="w-20 h-20 rounded-full bg-stone-900 border-2 border-amber-500/40 mx-auto flex items-center justify-center text-2xl font-bold text-amber-300 shadow-xl">
-                  {currentCall?.calleeId === user?.id
-                    ? (currentCall?.callerName || 'FC').substring(0, 2).toUpperCase()
-                    : (currentCall?.calleeName || 'FC').substring(0, 2).toUpperCase()}
+                  {String((currentCall?.calleeId === user?.id
+                    ? (currentCall?.callerName || 'Faculty')
+                    : (currentCall?.calleeName || 'Scholar')) || 'FC').substring(0, 2).toUpperCase()}
                 </div>
                 <div className="text-sm font-bold text-white">
-                  {currentCall?.calleeId === user?.id ? currentCall?.callerName : currentCall?.calleeName}
+                  {currentCall?.calleeId === user?.id ? (currentCall?.callerName || 'Faculty') : (currentCall?.calleeName || 'Scholar')}
                 </div>
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

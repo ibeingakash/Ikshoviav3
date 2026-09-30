@@ -171,6 +171,49 @@
   .surface-card-hover:hover {
     border-color: rgba(217, 119, 6, 0.4);
   }
+
+  /* Refined IKSHOVIA Brand Components */
+  .badge-gold {
+    background-color: #FEF9C3;
+    color: #78350F;
+    border: 1px solid #FDE047;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+  }
+
+  .badge-ink {
+    background-color: #1C1917;
+    color: #FDF6E2;
+    border: 1px solid #D97706;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+  }
+
+  .btn-gold {
+    background: linear-gradient(180deg, #D97706 0%, #B45309 100%);
+    color: #FFFFFF;
+    border: 1px solid #92400E;
+    box-shadow: 0 1px 2px rgba(146, 64, 14, 0.2);
+    transition: all 0.15s ease-in-out;
+  }
+
+  .btn-gold:hover {
+    background: linear-gradient(180deg, #B45309 0%, #92400E 100%);
+    box-shadow: 0 2px 4px rgba(146, 64, 14, 0.3);
+  }
+
+  .btn-ink {
+    background-color: #1C1917;
+    color: #FDF6E2;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    transition: all 0.15s ease-in-out;
+  }
+
+  .btn-ink:hover {
+    background-color: #292524;
+    border-color: rgba(217, 119, 6, 0.6);
+    color: #FFFFFF;
+  }
 }
 
 /* Custom Scrollbars */

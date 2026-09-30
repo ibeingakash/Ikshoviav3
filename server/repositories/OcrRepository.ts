@@ -292,7 +292,7 @@ export class OcrRepository {
              error_message, document_hash, official_source_url, source_domain,
              commission, paper, year, exam_cycle, parser_version, ocr_engine_version,
              structure_report, answer_key_status, created_at, updated_at
-      FROM public.ocr_jobs
+      FROM public.ocr_jobs 
       WHERE id = $1
     `, [id]);
     if (res.rows.length === 0) return null;
@@ -512,15 +512,9 @@ export class OcrRepository {
 
   async getQuestionsByJobId(jobId: string): Promise<ExtractedQuestionRecord[]> {
     const res = await pool.query(
-      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
-              question_type, question_text, question_en, question_hi, statements, statements_hi,
-              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
-              explanation, explanation_en, explanation_hi, available_languages, difficulty,
-              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
-              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
-              created_at, updated_at
-       FROM public.ocr_extracted_questions
-       WHERE job_id = $1
+      `SELECT *
+       FROM public.ocr_extracted_questions 
+       WHERE job_id = $1 
        ORDER BY question_num ASC NULLS LAST, created_at ASC`,
       [jobId]
     );
@@ -529,14 +523,8 @@ export class OcrRepository {
 
   async getExtractedQuestionById(id: string): Promise<ExtractedQuestionRecord | null> {
     const res = await pool.query(
-      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
-              question_type, question_text, question_en, question_hi, statements, statements_hi,
-              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
-              explanation, explanation_en, explanation_hi, available_languages, difficulty,
-              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
-              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
-              created_at, updated_at
-       FROM public.ocr_extracted_questions
+      `SELECT *
+       FROM public.ocr_extracted_questions 
        WHERE id = $1`,
       [id]
     );
@@ -544,13 +532,92 @@ export class OcrRepository {
     return this.mapRowToExtractedQuestion(res.rows[0]);
   }
 
-  async updateExtractedQuestion(id: string, updates: Partial<ExtractedQuestionRecord>): Promise<ExtractedQuestionRecord | null> {
+  async updateExtractedQuestion(id: string, updates: any): Promise<ExtractedQuestionRecord | null> {
     const existing = await this.getExtractedQuestionById(id);
     if (!existing) return null;
 
-    const merged = { ...existing, ...updates };
-    const saved = await this.saveExtractedQuestions(existing.jobId, [merged]);
-    return saved[0] || null;
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    const addField = (col: string, val: any, isJson = false) => {
+      if (val !== undefined) {
+        values.push(isJson ? JSON.stringify(val) : val);
+        setClauses.push(`${col} = $${values.length}${isJson ? '::jsonb' : ''}`);
+      }
+    };
+
+    const qText = updates.question ?? updates.question_text ?? updates.questionText ?? updates.question_en;
+    addField('question_text', qText);
+    addField('question_en', updates.question_en ?? qText);
+    addField('question_hi', updates.question_hi);
+    addField('options', updates.options, true);
+    addField('options_en', updates.options_en ?? updates.options, true);
+    addField('options_hi', updates.options_hi, true);
+    addField('correct_answer', updates.correct_answer ?? updates.correctAnswer);
+    addField('explanation', updates.explanation ?? updates.explanation_en);
+    addField('explanation_en', updates.explanation_en ?? updates.explanation);
+    addField('explanation_hi', updates.explanation_hi);
+    addField('subject_id', updates.subject_id ?? updates.subjectId);
+    addField('topic_id', updates.topic_id ?? updates.topicId);
+    addField('concept_id', updates.concept_id ?? updates.conceptId);
+    addField('difficulty', updates.difficulty);
+    addField('status', updates.status);
+    addField('destination', updates.destination);
+    addField('answer_key_status', updates.answer_key_status ?? updates.answerKeyStatus);
+    addField('validation_errors', updates.validation_errors ?? updates.validationErrors, true);
+
+    setClauses.push(`corrections_count = COALESCE(corrections_count, 0) + 1`);
+    setClauses.push(`last_corrected_at = NOW()`);
+    setClauses.push(`last_corrected_by = $${values.length + 1}`);
+    values.push(updates.last_corrected_by ?? updates.lastCorrectedBy ?? 'Admin');
+    setClauses.push(`updated_at = NOW()`);
+
+    values.push(id);
+    const updateSql = `
+      UPDATE public.ocr_extracted_questions
+      SET ${setClauses.join(', ')}
+      WHERE id = $${values.length}
+      RETURNING *;
+    `;
+    const res = await pool.query(updateSql, values);
+    if (res.rows.length === 0) return null;
+
+    // Synchronize with public.questions if question was published
+    try {
+      await pool.query(`
+        UPDATE public.questions
+        SET 
+          question = COALESCE($1, question),
+          question_en = COALESCE($1, question_en),
+          question_hi = COALESCE($2, question_hi),
+          options = COALESCE($3::jsonb, options),
+          correct_answer = COALESCE($4, correct_answer),
+          explanation = COALESCE($5, explanation),
+          explanation_en = COALESCE($5, explanation_en),
+          explanation_hi = COALESCE($6, explanation_hi),
+          subject_id = COALESCE($7, subject_id),
+          difficulty = COALESCE($8, difficulty),
+          last_corrected_at = NOW(),
+          last_corrected_by = $9
+        WHERE id = $10 OR source_job_id = $11
+      `, [
+        qText,
+        updates.question_hi || null,
+        updates.options ? JSON.stringify(updates.options) : null,
+        (updates.correct_answer ?? updates.correctAnswer) || null,
+        (updates.explanation ?? updates.explanation_en) || null,
+        updates.explanation_hi || null,
+        (updates.subject_id ?? updates.subjectId) || null,
+        updates.difficulty || null,
+        updates.last_corrected_by ?? updates.lastCorrectedBy ?? 'Admin',
+        id,
+        existing.jobId
+      ]);
+    } catch (e: any) {
+      console.warn('[OcrRepository] Sync to questions warning:', e.message);
+    }
+
+    return this.mapRowToExtractedQuestion(res.rows[0]);
   }
 
   async approveAndPublishQuestion(
@@ -594,7 +661,7 @@ export class OcrRepository {
 
     // Admin OCR uploads are strictly ADMIN_IMPORTED.
     // Official Commission is strictly for papers ingested by the official crawler pipeline.
-    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' =
+    const resolvedSourceType: 'OFFICIAL_COMMISSION' | 'ADMIN_IMPORTED' = 
       (job as any)?.isOfficialIngestion ? 'OFFICIAL_COMMISSION' : 'ADMIN_IMPORTED';
 
     const client = await pool.connect();
@@ -603,8 +670,8 @@ export class OcrRepository {
 
       // 1. Update in staging table
       await client.query(
-        `UPDATE public.ocr_extracted_questions
-         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4,
+        `UPDATE public.ocr_extracted_questions 
+         SET status = 'PUBLISHED', is_pyq = $1, subject_id = $2, topic_id = $3, concept_id = $4, 
              difficulty = $5, exam_tag = $6, pyq_year = $7, destination = $8, updated_at = NOW()
          WHERE id = $9`,
         [resolvedSourceType === 'OFFICIAL_COMMISSION', finalSubjectId, finalTopicId, finalConceptId, finalDifficulty, finalExamTag, finalPyqYear, finalDestination, questionId]
@@ -864,7 +931,7 @@ export class OcrRepository {
     let blockedCount = 0;
 
     for (const q of questions) {
-      if (!q.correctAnswer || q.options.length < 2 || !q.question || q.question.trim().length < 5) {
+      if (!q.correctAnswer || !q.options || q.options.length < 2 || !q.question || q.question.trim().length < 5) {
         blockedCount++;
         continue;
       }
@@ -1169,8 +1236,8 @@ export class OcrRepository {
     const res = await pool.query(
       `SELECT id, question_id, job_id, revision_num, source_origin, field_changed,
               old_value, new_value, reason, details, changed_by, changed_at
-       FROM public.question_revisions
-       WHERE question_id = $1
+       FROM public.question_revisions 
+       WHERE question_id = $1 
        ORDER BY revision_num DESC, changed_at DESC`,
       [questionId]
     );
@@ -1378,14 +1445,8 @@ export class OcrRepository {
     try {
       await client.query('BEGIN');
       const fetchRes = await client.query(
-        `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
-                question_type, question_text, question_en, question_hi, statements, statements_hi,
-                match_data, match_data_hi, options, options_en, options_hi, correct_answer,
-                explanation, explanation_en, explanation_hi, available_languages, difficulty,
-                exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
-                duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
-                created_at, updated_at
-         FROM public.ocr_extracted_questions
+        `SELECT *
+         FROM public.ocr_extracted_questions 
          WHERE id = ANY($1::text[])`,
         [questionIds]
       );
@@ -1418,7 +1479,10 @@ export class OcrRepository {
         }
 
         // Check option alignment if letter-based
-        const optIds = eq.options.map(o => o.id?.toUpperCase());
+        const optIds = (eq.options || []).map((o: any, idx: number) => {
+          if (typeof o === 'string') return (['A', 'B', 'C', 'D', 'E', 'F'][idx] || String(idx + 1)).toUpperCase();
+          return o?.id ? String(o.id).toUpperCase() : '';
+        });
         const ans = eq.correctAnswer.trim().toUpperCase();
         if (optIds.length > 0 && ['A', 'B', 'C', 'D', 'E'].includes(ans) && !optIds.includes(ans)) {
           rejectedIds.push(qId);
@@ -1435,7 +1499,7 @@ export class OcrRepository {
         const finalDestination = targetMeta?.destination || eq.destination || 'PRACTICE_BANK';
 
         await client.query(
-          `UPDATE public.ocr_extracted_questions
+          `UPDATE public.ocr_extracted_questions 
            SET status = 'READY_TO_PUBLISH',
                subject_id = $1, topic_id = $2, concept_id = $3,
                difficulty = $4, exam_tag = $5, pyq_year = $6, destination = $7,
@@ -1497,14 +1561,8 @@ export class OcrRepository {
     const blockedReasons: { questionId: string; questionNum?: number; reason: string }[] = [];
 
     const fetchRes = await pool.query(
-      `SELECT id, job_id, question_num, page_number, subject_id, topic_id, concept_id,
-              question_type, question_text, question_en, question_hi, statements, statements_hi,
-              match_data, match_data_hi, options, options_en, options_hi, correct_answer,
-              explanation, explanation_en, explanation_hi, available_languages, difficulty,
-              exam_tag, pyq_year, source, is_pyq, has_visual_content, validation_errors,
-              duplicate_warning, field_confidence, is_approved, is_rejected, rejection_reason,
-              created_at, updated_at
-       FROM public.ocr_extracted_questions
+      `SELECT *
+       FROM public.ocr_extracted_questions 
        WHERE id = ANY($1::text[])`,
       [questionIds]
     );

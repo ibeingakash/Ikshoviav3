@@ -261,8 +261,8 @@ describe('OCR V2 Paper Completeness & Exam Option Policy Suite', () => {
       expect(normalized.length).toBe(5);
       const optC = normalized.find((o: any) => o.id === 'C');
       const optE = normalized.find((o: any) => o.id === 'E');
-      expect(optC.status).toBe('MISSING');
-      expect(optE.status).toBe('MISSING');
+      expect(optC?.status).toBe('MISSING');
+      expect(optE?.status).toBe('MISSING');
     });
 
     it('marks Option E as UNEXPECTED for UPSC papers', () => {
@@ -276,7 +276,7 @@ describe('OCR V2 Paper Completeness & Exam Option Policy Suite', () => {
       const normalized = normalizeOptionsForExam('UPSC CSE', rawOptions);
       const optE = normalized.find((o: any) => o.id === 'E');
       expect(optE).toBeDefined();
-      expect(optE.status).toBe('UNEXPECTED');
+      expect(optE?.status).toBe('UNEXPECTED');
     });
 
     it('preserves existing option text when normalized', () => {

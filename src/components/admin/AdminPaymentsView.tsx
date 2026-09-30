@@ -251,8 +251,8 @@ export const AdminPaymentsView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-              <CreditCard className="w-6 h-6 text-[#35156B]" />
+            <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+              <CreditCard className="w-6 h-6 text-amber-800" />
               <span>Payments & Revenue Operations</span>
             </h1>
           </div>
@@ -287,7 +287,7 @@ export const AdminPaymentsView: React.FC = () => {
             disabled={loading}
             className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200/90 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#35156B] ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-800 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
@@ -417,7 +417,7 @@ export const AdminPaymentsView: React.FC = () => {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search by learner name, email, payment ID, or order ID..."
-            className="w-full pl-9 pr-4 py-2 bg-[#FCFBF9] border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-[#35156B] transition-colors"
+            className="w-full pl-9 pr-4 py-2 bg-[#FCFBF9] border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-700 transition-colors"
           />
         </form>
 
@@ -491,7 +491,7 @@ export const AdminPaymentsView: React.FC = () => {
               {loading ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-stone-400">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#35156B]" />
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-amber-800" />
                     <span>Loading payment transactions...</span>
                   </td>
                 </tr>
@@ -636,7 +636,7 @@ export const AdminPaymentsView: React.FC = () => {
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold bg-[#35156B] text-amber-300 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-mono font-bold bg-[#1C1917] text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30">
                     PAYMENT RECORD
                   </span>
                   {getEnvironmentBadge(selectedPayment.environment)}

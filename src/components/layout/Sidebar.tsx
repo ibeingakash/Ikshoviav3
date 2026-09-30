@@ -37,6 +37,7 @@ import {
   Smartphone,
   Video,
   Flame,
+  Compass,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -55,6 +56,7 @@ export const Sidebar: React.FC = () => {
 
   const [learningOpen, setLearningOpen] = useState<boolean>(true);
   const [adminOpen, setAdminOpen] = useState<boolean>(true);
+  const [teacherOpen, setTeacherOpen] = useState<boolean>(true);
 
   // Top General / Core Items
   const coreNavItems: NavItem[] = [
@@ -65,11 +67,13 @@ export const Sidebar: React.FC = () => {
 
   // Learning Hub Items
   const learningNavItems: NavItem[] = [
-    { id: 'ypt', label: 'YPT Study Focus & Groups', icon: Flame, badge: 'Focus', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
+    { id: 'exam-engine', label: 'Prelims • Mains • Interview', icon: Compass, badge: 'Unified', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' },
+    { id: 'ypt', label: 'YPT Focus & Groups', icon: Flame, badge: 'Focus', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
+    { id: 'learner-classes', label: 'My Enrolled Classes', icon: BookOpen, badge: 'Faculty', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'live-classes', label: 'Live Classes & Faculty', icon: Video, badge: 'Live', badgeColor: 'bg-rose-100 text-rose-900 border border-rose-300' },
     { id: 'pyq-practice', label: 'Official PYQ Papers', icon: FolderArchive, badge: 'Official', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
-    { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs', badgeColor: 'bg-purple-100 text-purple-900 border border-purple-300' },
-    { id: 'mock-tests', label: 'Mock Tests', icon: FileCheck2, badge: 'Simulations', badgeColor: 'bg-indigo-50 text-indigo-700 border border-indigo-200' },
+    { id: 'test-series', label: 'Exam Test Series', icon: Layers, badge: 'Packs', badgeColor: 'bg-amber-100 text-amber-950 border border-amber-300' },
+    { id: 'mock-tests', label: 'Mock Tests', icon: FileCheck2, badge: 'Simulations', badgeColor: 'bg-stone-100 text-stone-800 border border-stone-300' },
     { id: 'practice', label: 'Topic & Subject Practice', icon: BookOpen },
     { id: 'courses-catalog', label: 'Course Catalog & Plans', icon: Tag, badge: 'Courses', badgeColor: 'bg-emerald-100 text-emerald-900 border border-emerald-300' },
     { id: 'learner-purchases', label: 'My Purchases & Receipts', icon: Receipt },
@@ -86,13 +90,13 @@ export const Sidebar: React.FC = () => {
   const adminNavItems: NavItem[] = [
     { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
     { id: 'admin-app-releases', label: 'App Releases & APK', icon: Smartphone, badge: 'APK', badgeColor: 'bg-emerald-100 text-emerald-900 border border-emerald-300' },
-    { id: 'admin-resources', label: 'Resource Studio', icon: FolderArchive, badge: 'Drive', badgeColor: 'bg-blue-100 text-blue-900 border border-blue-300' },
+    { id: 'admin-resources', label: 'Resource Studio', icon: FolderArchive, badge: 'Drive', badgeColor: 'bg-amber-100 text-amber-900 border border-amber-300' },
     { id: 'admin-short-notes', label: 'Short Notes Studio', icon: BookOpen, badge: 'OCR' },
     { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
     { id: 'admin-coupons', label: 'Coupons & Offers', icon: Tag, badge: 'Discounts' },
     { id: 'admin-users', label: 'User Management', icon: Users, badge: 'Users' },
     { id: 'admin-courses', label: 'Courses & Pricing', icon: Package, badge: 'Catalog' },
-    { id: 'admin-test-series', label: 'Test Series Studio', icon: Layers, badge: 'Packs', badgeColor: 'bg-indigo-100 text-indigo-900 border border-indigo-300' },
+    { id: 'admin-test-series', label: 'Test Series Studio', icon: Layers, badge: 'Packs', badgeColor: 'bg-amber-100 text-amber-950 border border-amber-300' },
     { id: 'admin-entitlements', label: 'Access & Subscriptions', icon: Key, badge: 'Grants' },
     { id: 'admin-payments', label: 'Payments & Revenue', icon: CreditCard, badge: 'Razorpay' },
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: 'Canonical' },
@@ -110,8 +114,26 @@ export const Sidebar: React.FC = () => {
     { id: 'super-admin-audit', label: 'Audit Telemetry', icon: History },
   ];
 
+  // Teacher Workspace Items
+  const teacherNavItems: NavItem[] = [
+    { id: 'teacher-dashboard', label: 'Faculty Overview', icon: LayoutDashboard },
+    { id: 'teacher-classes', label: 'Classes & Batches', icon: BookOpen, badge: 'Cohorts' },
+    { id: 'teacher-students', label: 'Assigned Students', icon: Users },
+    { id: 'teacher-assignments', label: 'Assignments & Mains', icon: FileCheck2 },
+    { id: 'teacher-evaluations', label: 'Answer Evaluation', icon: CheckSquare, badge: 'Grading' },
+    { id: 'teacher-quizzes', label: 'Quizzes & Tests', icon: Database },
+    { id: 'teacher-resources', label: 'Handouts & Notes', icon: FolderArchive },
+    { id: 'teacher-live', label: 'Live Classroom', icon: Video, badge: 'WebRTC' },
+    { id: 'teacher-announcements', label: 'Notice Board', icon: Newspaper },
+    { id: 'teacher-analytics', label: 'Cohort Analytics', icon: BarChart3 },
+  ];
+
   const isSectionActive = (itemId: NavigationSection, label: string) => {
     if (activeSection === itemId) return true;
+    if (itemId === 'teacher-dashboard' && activeSection === 'teacher-dashboard') return true;
+    if (itemId.startsWith('teacher-') && activeSection === itemId) return true;
+    if (itemId === 'learner-classes' && (activeSection === 'learner-classes' || activeSection === 'learner-assignments')) return true;
+    if (itemId === 'ypt' && (activeSection === 'ypt' || activeSection === 'ypt-groups')) return true;
     if (itemId === 'pyq-practice' && (activeSection === 'pyq-practice' || activeSection === 'practice-pyq' || activeSection === 'mock-pyq')) return true;
     if (itemId === 'mock-tests' && (activeSection === 'mock-tests' || activeSection === 'mock-custom' || activeSection === 'mock-attempts')) return true;
     if (itemId === 'practice' && (activeSection === 'practice' || activeSection === 'practice-subject' || activeSection === 'practice-full')) return true;
@@ -218,6 +240,57 @@ export const Sidebar: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* TEACHER / FACULTY WORKSPACE */}
+        {(user?.role === 'TEACHER' || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
+          <div className="border-t border-[#EAE6DF] pt-3">
+            <button
+              onClick={() => setTeacherOpen(prev => !prev)}
+              className="w-full flex items-center justify-between text-[10px] font-mono font-bold text-amber-800 tracking-wider uppercase px-3 py-1 mb-1 hover:text-amber-950 cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
+                <span>TEACHER WORKSPACE</span>
+              </div>
+              {teacherOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </button>
+
+            {teacherOpen && (
+              <div className="space-y-0.5 mt-1">
+                {teacherNavItems.map(item => {
+                  const Icon = item.icon;
+                  const isActive = isSectionActive(item.id, item.label);
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveSection(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-amber-600 text-white font-bold shadow-2xs'
+                          : 'hover:bg-amber-50/60 text-stone-600 hover:text-amber-950 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-600'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                            isActive ? 'bg-amber-400 text-stone-950' : 'bg-amber-100 text-amber-900'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ADMINISTRATION */}
         {(user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (

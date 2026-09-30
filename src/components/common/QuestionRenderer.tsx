@@ -69,9 +69,17 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
   const qText = isHindi && question.question_hi ? question.question_hi : (question.question_en || question.question);
   
-  const rawOptions: QuestionOption[] = (isHindi && question.options_hi && question.options_hi.length > 0)
+  const unnormalizedOptions = (isHindi && question.options_hi && question.options_hi.length > 0)
     ? question.options_hi
     : (question.options_en && question.options_en.length > 0 ? question.options_en : (question.options || []));
+
+  const rawOptions: QuestionOption[] = unnormalizedOptions.map((opt, idx) => {
+    if (typeof opt === 'string') {
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+      return { id: letters[idx] || String(idx + 1), text: opt };
+    }
+    return opt;
+  });
 
   // Enforce BPSC/UPSC standard: options strictly capped at A-E, never show Option F or beyond
   const options: QuestionOption[] = rawOptions.filter(opt => {
@@ -83,20 +91,55 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
     ? question.explanation_hi 
     : (question.explanation_en || question.explanation);
 
-  const statements = isHindi && question.statements_hi && question.statements_hi.length > 0
-    ? question.statements_hi
-    : question.statements;
+  const rawMatchSource = isHindi && (question.matchData_hi || (question as any).match_data_hi) 
+    ? (question.matchData_hi || (question as any).match_data_hi) 
+    : (question.matchData || (question as any).match_data);
+  let parsedRawMatch = rawMatchSource;
+  if (typeof parsedRawMatch === 'string') {
+    try { parsedRawMatch = JSON.parse(parsedRawMatch); } catch { parsedRawMatch = undefined; }
+  }
 
-  const rawMatch = isHindi && question.matchData_hi ? question.matchData_hi : question.matchData;
-  const matchData = rawMatch ? {
-    leftColumn: ((rawMatch as any).leftColumn || (rawMatch as any).listI || (rawMatch as any).left_column || []) as any[],
-    rightColumn: ((rawMatch as any).rightColumn || (rawMatch as any).listII || (rawMatch as any).right_column || []) as any[],
-    leftHeader: rawMatch.leftHeader || (rawMatch as any).left_header,
-    rightHeader: rawMatch.rightHeader || (rawMatch as any).right_header,
-    codes: rawMatch.codes || [],
-  } : undefined;
+  // Dynamic extraction from question stem if match_data not pre-populated
+  let dynamicMatchLeft: any[] = [];
+  let dynamicMatchRight: any[] = [];
+  if (!parsedRawMatch || !((parsedRawMatch as any).leftColumn?.length || (parsedRawMatch as any).listI?.length)) {
+    const lines = (qText || '').split(/\n+/);
+    const itemRegex = /([A-Za-z])[\.\)]\s*([^\t\n0-9]+?)(?:\.|\t|\s{2,})\s*([1-9])[\.\)]\s*(.*)/;
+    for (const line of lines) {
+      const m = line.trim().match(itemRegex);
+      if (m) {
+        dynamicMatchLeft.push({ key: m[1].toUpperCase(), text: renderSafeText(m[2]) });
+        dynamicMatchRight.push({ key: m[3], text: renderSafeText(m[4]) });
+      }
+    }
+  }
 
-  const qType = question.questionType || (matchData && matchData.leftColumn.length > 0 ? 'MATCH_FOLLOWING' : (statements && statements.length > 0 ? 'STATEMENT_BASED' : 'SINGLE_CHOICE'));
+  const matchData = (parsedRawMatch && ((parsedRawMatch as any).leftColumn?.length || (parsedRawMatch as any).listI?.length)) ? {
+    leftColumn: ((parsedRawMatch as any).leftColumn || (parsedRawMatch as any).listI || (parsedRawMatch as any).left_column || []) as any[],
+    rightColumn: ((parsedRawMatch as any).rightColumn || (parsedRawMatch as any).listII || (parsedRawMatch as any).right_column || []) as any[],
+    leftHeader: parsedRawMatch.leftHeader || (parsedRawMatch as any).left_header || (isHindi ? 'सूची-I' : 'List-I'),
+    rightHeader: parsedRawMatch.rightHeader || (parsedRawMatch as any).right_header || (isHindi ? 'सूची-II' : 'List-II'),
+    codes: parsedRawMatch.codes || [],
+  } : (dynamicMatchLeft.length >= 2 ? {
+    leftColumn: dynamicMatchLeft,
+    rightColumn: dynamicMatchRight,
+    leftHeader: isHindi ? 'सूची-I' : 'List-I',
+    rightHeader: isHindi ? 'सूची-II' : 'List-II',
+    codes: [],
+  } : undefined);
+
+  let rawStatements = isHindi && (question.statements_hi || (question as any).statements_hi) && (question.statements_hi || (question as any).statements_hi).length > 0
+    ? (question.statements_hi || (question as any).statements_hi)
+    : (question.statements || (question as any).statements);
+  if (typeof rawStatements === 'string') {
+    try { rawStatements = JSON.parse(rawStatements); } catch { rawStatements = undefined; }
+  }
+  const statements = Array.isArray(rawStatements) && rawStatements.length > 0 ? rawStatements : undefined;
+
+  const rawQType = question.questionType || (question as any).question_type || question.type;
+  const qType = (rawQType === 'MATCH_FOLLOWING' || matchData) 
+    ? 'MATCH_FOLLOWING' 
+    : ((rawQType === 'STATEMENT_BASED' || (statements && statements.length > 0)) ? 'STATEMENT_BASED' : 'SINGLE_CHOICE');
 
   // Support both selectedOption and selectedOptionId props
   const effectiveSelectedOption = selectedOption !== undefined ? selectedOption : selectedOptionId;
@@ -113,8 +156,27 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
     return String(effectiveSelectedOption).trim().toUpperCase() === cleanOptId;
   };
 
-  const isMatchFollowing = (qType === 'MATCH_FOLLOWING' || Boolean(matchData && matchData.leftColumn.length > 0)) && Boolean(matchData && matchData.leftColumn.length > 0);
-  const isStatementBased = qType === 'STATEMENT_BASED' && statements && statements.length > 0;
+  const isMatchFollowing = qType === 'MATCH_FOLLOWING';
+  const isStatementBased = qType === 'STATEMENT_BASED' && Boolean(statements && statements.length > 0);
+
+  // If match following, ensure option text only displays the code combination (e.g. A-1, B-2, C-3, D-4)
+  const displayOptions: QuestionOption[] = isMatchFollowing ? options.map(opt => {
+    const textStr = String(opt.text || '');
+    const codeMatch = textStr.match(/([a-eA-E]-[1-5](?:,\s*[a-eA-E]-[1-5])+)/i);
+    if (codeMatch) {
+      return { ...opt, text: codeMatch[1].trim() };
+    }
+    return opt;
+  }) : options;
+
+  // When match following is active, clean the question stem so List-I / List-II is not duplicated in the main text
+  const effectiveQText = isMatchFollowing && matchData
+    ? (qText || '')
+        .replace(/\bList\s*[-–.]?\s*I[\s\S]*$/i, '')
+        .replace(/\bसूची\s*[-–.]?\s*I[\s\S]*$/i, '')
+        .replace(/Select the correct matching combination code:?/i, '')
+        .trim() || qText
+    : qText;
 
   return (
     <div id={`question-card-${question.id}`} className="space-y-5">
@@ -181,7 +243,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
       )}
 
       <div className="text-base sm:text-lg font-serif-editorial font-semibold text-stone-900 leading-relaxed whitespace-pre-line">
-        {qText}
+        {effectiveQText}
       </div>
 
       {/* Structured Statement-Based Display */}
@@ -255,7 +317,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
 
       {/* Options Matrix */}
       <div className="space-y-3 pt-1">
-        {options.map((opt) => {
+        {displayOptions.map((opt) => {
           const optTextStr = renderSafeText(opt.text);
           const selected = isSelected(opt.id);
           const isCorrectAnswer = String(opt.id).trim().toUpperCase() === String(question.correctAnswer).trim().toUpperCase();

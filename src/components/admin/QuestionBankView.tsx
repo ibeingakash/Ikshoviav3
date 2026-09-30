@@ -471,7 +471,7 @@ export const QuestionBankView: React.FC = () => {
           {questions.map((q, idx) => {
             const isSelected = selectedQuestionIds.includes(q.id);
             const isPyq = !!q.pyqYear || !!q.isPyq || q.tags?.some(t => t.toLowerCase().includes('pyq'));
-            const isVerified = q.status === 'READY_TO_PUBLISH' || q.status === 'APPROVED' || !!q.correctAnswer;
+            const isVerified = q.status === 'READY_TO_PUBLISH' || (q.status as string) === 'APPROVED' || !!q.correctAnswer;
             const qText = getDisplayText(languageMode === 'hi' && q.question_hi ? q.question_hi : (q.question_en || q.question));
             const rawOpts = languageMode === 'hi' && q.options_hi && q.options_hi.length > 0 ? q.options_hi : (q.options_en || q.options || []);
             const explanation = getDisplayText(languageMode === 'hi' && q.explanation_hi ? q.explanation_hi : (q.explanation_en || q.explanation));
@@ -679,10 +679,11 @@ export const QuestionBankView: React.FC = () => {
                     <label className="font-bold text-stone-700">Option {letter}</label>
                     <input
                       type="text"
-                      value={editFormData.options?.[idx] || ''}
+                      value={typeof editFormData.options?.[idx] === 'string' ? editFormData.options?.[idx] : (editFormData.options?.[idx]?.text || '')}
                       onChange={e => {
                         const nextOpts = [...(editFormData.options || ['', '', '', ''])];
-                        nextOpts[idx] = e.target.value;
+                        const cur = nextOpts[idx];
+                        nextOpts[idx] = typeof cur === 'object' && cur !== null ? { ...cur, text: e.target.value } : e.target.value;
                         setEditFormData(prev => ({ ...prev, options: nextOpts }));
                       }}
                       className="w-full bg-[#FCFBF9] border border-stone-300 rounded-xl p-2 text-xs focus:border-amber-500 focus:outline-none"
@@ -800,10 +801,11 @@ export const QuestionBankView: React.FC = () => {
                     <label className="font-bold text-stone-700">Option {letter}</label>
                     <input
                       type="text"
-                      value={newQuestionForm.options?.[idx] || ''}
+                      value={typeof newQuestionForm.options?.[idx] === 'string' ? newQuestionForm.options?.[idx] : (newQuestionForm.options?.[idx]?.text || '')}
                       onChange={e => {
                         const nextOpts = [...(newQuestionForm.options || ['', '', '', ''])];
-                        nextOpts[idx] = e.target.value;
+                        const cur = nextOpts[idx];
+                        nextOpts[idx] = typeof cur === 'object' && cur !== null ? { ...cur, text: e.target.value } : e.target.value;
                         setNewQuestionForm(prev => ({ ...prev, options: nextOpts }));
                       }}
                       placeholder={`Option ${letter} text...`}

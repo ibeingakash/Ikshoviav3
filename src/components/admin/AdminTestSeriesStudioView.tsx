@@ -135,7 +135,7 @@ export const AdminTestSeriesStudioView: React.FC = () => {
       slug: series.slug,
       targetExam: series.targetExam,
       examCycle: series.examCycle || '',
-      category: series.category,
+      category: (series.category as 'CHAPTER_WISE' | 'FULL_LENGTH' | 'INTEGRATED' | 'MAINS' | 'PRELIMS') || 'PRELIMS',
       description: series.description || '',
       mrp: series.mrp || 0,
       salePrice: series.salePrice || 0,

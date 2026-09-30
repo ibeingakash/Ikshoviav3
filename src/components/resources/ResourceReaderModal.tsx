@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   ChevronLeft,
@@ -16,11 +16,19 @@ import {
   RefreshCw,
   AlertCircle,
   ExternalLink,
+  FileText,
 } from 'lucide-react';
-import { api } from '../../lib/api.js';
+import * as pdfjsLib from 'pdfjs-dist';
+import { api, apiUrl, apiFetch } from '../../lib/api.js';
 import { LearningResource } from '../../types/index.js';
 import { registerBackButtonHandler } from '../../lib/capacitor.js';
 import { ResourceAskAIDialog } from './ResourceAskAIDialog.js';
+import { pdfCache } from '../../lib/pdfCache.js';
+
+// Configure pdfjs worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+}
 
 interface ResourceReaderModalProps {
   resource: LearningResource;
@@ -37,12 +45,9 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
   onBookmarkChanged,
   onProgressUpdated,
 }) => {
-  const totalPages = Math.max(1, resource.page_count || 1);
-  const initialPage = Math.min(
-    totalPages,
-    Math.max(1, resource.last_page || resource.lastPage || 1)
-  );
+  const initialPage = Math.max(1, resource.last_page || resource.lastPage || 1);
 
+  const [totalPages, setTotalPages] = useState<number>(Math.max(1, resource.page_count || 1));
   const [currentPage, setCurrentPage] = useState<number>(initialPage);
   const [pageInput, setPageInput] = useState<string>(String(initialPage));
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -52,27 +57,164 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
   );
   const [bookmarkLoading, setBookmarkLoading] = useState<boolean>(false);
   const [isAskAIOpen, setIsAskAIOpen] = useState<boolean>(false);
-  const [streamLoading, setStreamLoading] = useState<boolean>(true);
-  const [streamError, setStreamError] = useState<string | null>(null);
+
+  // PDF Engine State
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [loadingDoc, setLoadingDoc] = useState<boolean>(true);
+  const [renderingPage, setRenderingPage] = useState<boolean>(false);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
 
-  // Sync initial page when resource changes & set loading timeout
+  // Load PDF document on open or resource change
   useEffect(() => {
-    const p = Math.min(totalPages, Math.max(1, resource.last_page || resource.lastPage || 1));
-    setCurrentPage(p);
-    setPageInput(String(p));
-    setIsBookmarked(Boolean(resource.is_bookmarked || resource.isBookmarked));
-    setStreamLoading(true);
-    setStreamError(null);
+    if (!isOpen) {
+      setPdfDoc(null);
+      return;
+    }
 
-    // Ensure overlay never persists indefinitely if browser doesn't fire load event for PDF plugin
-    const timer = setTimeout(() => {
-      setStreamLoading(false);
-    }, 1800);
-    return () => clearTimeout(timer);
-  }, [resource.id]);
+    let isCancelled = false;
+    setLoadingDoc(true);
+    setDocError(null);
+    setUseIframeFallback(false);
+
+    const loadPdf = async () => {
+      try {
+        const cacheKey = `pdf_${resource.id}_${resource.file_size || resource.updated_at || 'v2'}`;
+        let arrayBuffer = await pdfCache.get(cacheKey);
+
+        if (!arrayBuffer) {
+          const token = localStorage.getItem('ikshovia_token');
+          const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+          const endpoint = `/api/resources/${resource.id}/stream${tokenQuery}`;
+          
+          const headers: Record<string, string> = {};
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+
+          const res = await apiFetch(endpoint, { headers });
+          if (!res.ok) {
+            throw new Error(`Server returned status ${res.status}`);
+          }
+
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType && !contentType.includes('pdf') && !contentType.includes('octet-stream')) {
+            // If non-PDF (e.g. HTML or redirect), switch to iframe fallback
+            if (!isCancelled) {
+              setUseIframeFallback(true);
+              setLoadingDoc(false);
+            }
+            return;
+          }
+
+          arrayBuffer = await res.arrayBuffer();
+          if (isCancelled) return;
+          // Cache in-memory and persistent cache
+          await pdfCache.set(cacheKey, arrayBuffer);
+        }
+
+        if (isCancelled || !arrayBuffer) return;
+
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          useSystemFonts: true,
+        });
+
+        const doc = await loadingTask.promise;
+        if (isCancelled) return;
+
+        setPdfDoc(doc);
+        const count = doc.numPages || 1;
+        setTotalPages(count);
+        const targetPage = Math.min(count, Math.max(1, resource.last_page || resource.lastPage || 1));
+        setCurrentPage(targetPage);
+        setPageInput(String(targetPage));
+        setLoadingDoc(false);
+      } catch (err: any) {
+        console.warn('[ResourceReaderModal] In-app PDF loading error:', err);
+        if (!isCancelled) {
+          setDocError(err.message || 'Failed to render PDF in-app');
+          setLoadingDoc(false);
+        }
+      }
+    };
+
+    loadPdf();
+
+    return () => {
+      isCancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
+    };
+  }, [isOpen, resource.id]);
+
+  // Render current page on canvas
+  const renderCurrentPage = useCallback(async () => {
+    if (!pdfDoc || !canvasRef.current || useIframeFallback) return;
+
+    try {
+      setRenderingPage(true);
+      const page = await pdfDoc.getPage(currentPage);
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        setRenderingPage(false);
+        return;
+      }
+
+      // Compute display scale
+      const containerWidth = Math.max(320, containerRef.current?.clientWidth || window.innerWidth || 800);
+      const baseViewport = page.getViewport({ scale: 1 });
+      
+      // Calculate responsive width (fit to container with margins)
+      const targetWidth = Math.max(280, Math.min(containerWidth - 32, 950));
+      const fitScale = (targetWidth / baseViewport.width) * (zoomLevel / 100);
+      const scale = Math.max(0.5, Math.min(3.0, fitScale));
+
+      const dpr = window.devicePixelRatio || 1;
+      const viewport = page.getViewport({ scale: scale * dpr });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
+      canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
+
+      const renderContext = {
+        canvasContext: context,
+        viewport,
+      };
+
+      const renderTask = page.render(renderContext);
+      renderTaskRef.current = renderTask;
+      await renderTask.promise;
+      setRenderingPage(false);
+    } catch (err: any) {
+      if (err?.name !== 'RenderingCancelledException') {
+        console.error('Canvas render error, falling back to native viewer:', err);
+        setUseIframeFallback(true);
+      }
+      setRenderingPage(false);
+    }
+  }, [pdfDoc, currentPage, zoomLevel, useIframeFallback]);
+
+  useEffect(() => {
+    renderCurrentPage();
+  }, [renderCurrentPage]);
 
   // Handle Android back button
   useEffect(() => {
@@ -125,17 +267,6 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
     const valid = Math.max(1, Math.min(totalPages, page));
     setCurrentPage(valid);
     setPageInput(String(valid));
-
-    // If iframe supports PDF fragment navigation, update src hash
-    if (iframeRef.current) {
-      try {
-        iframeRef.current.src = valid > 1
-          ? `/api/resources/${resource.id}/stream#page=${valid}`
-          : `/api/resources/${resource.id}/stream`;
-      } catch (e) {
-        // ignore hash set error
-      }
-    }
   };
 
   const handlePageInputSubmit = (e: React.FormEvent) => {
@@ -189,14 +320,11 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
 
   if (!isOpen) return null;
 
-  const streamUrl = currentPage > 1
-    ? `/api/resources/${resource.id}/stream#page=${currentPage}`
-    : `/api/resources/${resource.id}/stream`;
-
+  const downloadUrl = apiUrl(`/api/resources/${resource.id}/download`);
   const isGoogleDriveStream = resource.storage_provider === 'GOOGLE_DRIVE' || Boolean(resource.drive_file_id);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
       <div
         ref={containerRef}
         className="bg-stone-900 text-stone-100 rounded-2xl border border-stone-800 shadow-2xl w-full h-[95vh] max-w-6xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
@@ -220,7 +348,7 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
                 <span className="hidden sm:inline">{resource.exam || 'UPSC / BPSC'}</span>
                 <span>•</span>
                 <span className="text-stone-400">
-                  {isGoogleDriveStream ? 'Streaming directly from Google Drive' : 'Local PDF Stream'}
+                  {isGoogleDriveStream ? 'Authenticated Drive PDF' : 'In-App Secure Reader'}
                 </span>
               </div>
             </div>
@@ -230,7 +358,7 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
           <div className="flex items-center gap-1.5 bg-stone-900 p-1 rounded-xl border border-stone-800">
             <button
               onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage <= 1}
+              disabled={currentPage <= 1 || loadingDoc}
               className="p-1.5 text-stone-300 hover:text-white disabled:opacity-30 rounded-lg hover:bg-stone-800 transition cursor-pointer"
               title="Previous Page (Left Arrow)"
               aria-label="Previous Page"
@@ -245,14 +373,15 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
                 value={pageInput}
                 onChange={(e) => setPageInput(e.target.value)}
                 onBlur={() => setPageInput(String(currentPage))}
-                className="w-10 px-1.5 py-0.5 text-center font-bold text-xs bg-stone-950 text-amber-300 rounded border border-stone-700 focus:outline-none focus:border-amber-400"
+                disabled={loadingDoc}
+                className="w-10 px-1.5 py-0.5 text-center font-bold text-xs bg-stone-950 text-amber-300 rounded border border-stone-700 focus:outline-none focus:border-amber-400 disabled:opacity-50"
               />
               <span className="text-stone-400 text-[11px]">of {totalPages}</span>
             </form>
 
             <button
               onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage >= totalPages}
+              disabled={currentPage >= totalPages || loadingDoc}
               className="p-1.5 text-stone-300 hover:text-white disabled:opacity-30 rounded-lg hover:bg-stone-800 transition cursor-pointer"
               title="Next Page (Right Arrow)"
               aria-label="Next Page"
@@ -297,11 +426,15 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[10px] font-semibold text-stone-400 w-9 text-center">
-                {zoomLevel}%
-              </span>
               <button
-                onClick={() => setZoomLevel((z) => Math.min(200, z + 25))}
+                onClick={() => setZoomLevel(100)}
+                className="text-[10px] font-semibold text-stone-400 hover:text-amber-300 w-9 text-center"
+                title="Reset Zoom to 100%"
+              >
+                {zoomLevel}%
+              </button>
+              <button
+                onClick={() => setZoomLevel((z) => Math.min(250, z + 25))}
                 className="p-1 text-stone-400 hover:text-white rounded"
                 title="Zoom In"
               >
@@ -309,14 +442,43 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
               </button>
             </div>
 
+            {/* View Mode Switcher: Canvas vs Native PDF Viewer */}
+            <button
+              onClick={() => {
+                setUseIframeFallback(!useIframeFallback);
+                setDocError(null);
+              }}
+              className={`p-2 rounded-xl border transition flex items-center gap-1.5 text-xs font-semibold ${
+                useIframeFallback
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-white border-stone-800'
+              }`}
+              title={useIframeFallback ? 'Switch to Interactive Page Reader' : 'Switch to Native Browser PDF Viewer'}
+            >
+              <FileText className="w-4 h-4" />
+              <span className="hidden md:inline">{useIframeFallback ? 'Native View' : 'Reader View'}</span>
+            </button>
+
+            {/* Open in New Window / Tab */}
+            <a
+              href={apiUrl(`/api/resources/${resource.id}/stream${localStorage.getItem('ikshovia_token') ? `?token=${encodeURIComponent(localStorage.getItem('ikshovia_token') || '')}` : ''}`)}
+              target="_blank"
+              rel="noreferrer"
+              className="p-2 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-amber-300 rounded-xl border border-stone-800 transition"
+              title="Open Document in New Browser Tab"
+              aria-label="Open in New Window"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+
             {/* Download */}
             <a
-              href={`/api/resources/${resource.id}/download`}
+              href={downloadUrl}
               target="_blank"
               rel="noreferrer"
               className="p-2 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-white rounded-xl border border-stone-800 transition"
-              title="Download PDF"
-              aria-label="Download PDF"
+              title="Download Document"
+              aria-label="Download Document"
             >
               <Download className="w-4 h-4" />
             </a>
@@ -345,60 +507,68 @@ export const ResourceReaderModal: React.FC<ResourceReaderModalProps> = ({
 
         {/* Reader Canvas / Document Viewport */}
         <div className="flex-1 bg-stone-950 relative overflow-hidden flex flex-col">
-          {streamLoading && (
-            <div className="absolute inset-0 z-10 bg-stone-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-stone-400 gap-3 pointer-events-none">
+          {loadingDoc && (
+            <div className="absolute inset-0 z-10 bg-stone-950/90 backdrop-blur-xs flex flex-col items-center justify-center text-stone-400 gap-3 pointer-events-none">
               <RefreshCw className="w-8 h-8 animate-spin text-amber-500" />
               <div className="text-center">
                 <p className="text-xs font-semibold text-stone-200">
-                  Streaming {resource.title}...
+                  Loading {resource.title}...
                 </p>
                 <p className="text-[11px] text-stone-500 mt-0.5">
-                  Resuming at Page {currentPage} of {totalPages}
+                  Preparing high-fidelity in-app reader...
                 </p>
               </div>
             </div>
           )}
 
-          {streamError ? (
+          {docError ? (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-stone-400">
               <AlertCircle className="w-10 h-10 text-amber-500 mb-2" />
-              <h4 className="text-sm font-bold text-stone-200">Could not render PDF stream</h4>
+              <h4 className="text-sm font-bold text-stone-200">Could not render document in-app</h4>
               <p className="text-xs text-stone-400 mt-1 max-w-md">
-                Your browser or network prevented live PDF streaming. You can download the verified document directly.
+                {docError}. You can download the verified resource directly or view via external browser.
               </p>
-              <div className="flex items-center gap-3 mt-4">
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
                 <button
                   onClick={() => {
-                    setStreamError(null);
-                    setStreamLoading(true);
+                    setDocError(null);
+                    setLoadingDoc(true);
+                    setUseIframeFallback(false);
+                    // trigger re-fetch
+                    setPdfDoc(null);
                   }}
-                  className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl text-xs font-semibold"
+                  className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl text-xs font-semibold cursor-pointer"
                 >
-                  Retry
+                  Retry In-App
                 </button>
                 <a
-                  href={`/api/resources/${resource.id}/download`}
+                  href={downloadUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   <span>Download PDF</span>
                 </a>
               </div>
             </div>
-          ) : (
+          ) : useIframeFallback ? (
             <iframe
-              ref={iframeRef}
-              src={streamUrl}
+              src={apiUrl(`/api/resources/${resource.id}/stream${localStorage.getItem('ikshovia_token') ? `?token=${encodeURIComponent(localStorage.getItem('ikshovia_token') || '')}` : ''}`)}
               title={resource.title}
-              onLoad={() => setStreamLoading(false)}
-              onError={() => {
-                setStreamLoading(false);
-                setStreamError('Failed to load streaming viewer');
-              }}
               className="w-full h-full border-0 bg-stone-900"
             />
+          ) : (
+            <div className="flex-1 overflow-auto flex items-center justify-center p-2 sm:p-4 bg-stone-950/80">
+              <div className="relative shadow-2xl rounded-lg overflow-hidden border border-stone-800/80 bg-white">
+                {renderingPage && (
+                  <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-xs flex items-center justify-center z-10">
+                    <RefreshCw className="w-6 h-6 animate-spin text-amber-400" />
+                  </div>
+                )}
+                <canvas ref={canvasRef} className="block max-w-full" />
+              </div>
+            </div>
           )}
 
           {/* Bottom Progress Bar */}

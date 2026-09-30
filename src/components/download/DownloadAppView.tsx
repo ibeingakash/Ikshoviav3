@@ -20,6 +20,7 @@ import { brandAssets } from '../../branding/brandAssets.js';
 import { BrandLogo } from '../common/BrandLogo.js';
 import { useLearner } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
+import { apiUrl, apiFetch } from '../../lib/api.js';
 
 interface PublishedRelease {
   id: string;
@@ -53,22 +54,22 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
   const [versionData, setVersionData] = useState<AppVersionResponse>({
     status: 'AVAILABLE',
     platform: 'android',
-    buildType: 'DEBUG',
-    isTestingBuild: true,
+    buildType: 'RELEASE',
+    isTestingBuild: false,
     release: {
-      id: 'testing-build-local',
+      id: 'rel_android_9_production_v3_0',
       platform: 'android',
-      versionName: '1.0',
-      versionCode: 1,
-      minSupportedVersionCode: 1,
-      apkUrl: '/apk/app-debug.apk',
-      sha256Checksum: '30a97db96538142058f3b99b3e228098b65a7f18be347d969e2ddebb6eb87d63',
-      fileSizeBytes: 14522269,
-      releaseNotes: 'Testing Build: Verified Capacitor 8 runtime and debug packaging.',
+      versionName: '3.0',
+      versionCode: 9,
+      minSupportedVersionCode: 8,
+      apkUrl: 'https://ikshoviacse.onrender.com/api/app/download/latest',
+      sha256Checksum: '',
+      fileSizeBytes: 0,
+      releaseNotes: 'IKSHOVIA v3.0 Official Production Release (Build 9) with Permanent Signing Identity.\n\n• Complete Phase 1, 2, and 3 Integrated Learning Intelligence Platform.\n• Unified Prelims → Mains → Interview Preparation Engine.\n• Personalized Study Planner with adaptive schedule generation & daily queue.\n• SM-2 Smart Revision Engine with deterministic interval tracking.\n• Topic & Concept Mastery Engine with real attempt telemetry.\n• Current Affairs Exam Intelligence linking news to syllabus and PYQs.\n• Mains Answer Improvement Loop with multi-attempt trajectory tracking.\n• Cross-stage learner analytics and personalized AI Tutor context.\n• Verified in-place upgrade from Build 8 under permanent signing key.',
       isMandatory: false,
       createdAt: new Date().toISOString(),
-      buildType: 'DEBUG',
-      isTestingBuild: true
+      buildType: 'RELEASE',
+      isTestingBuild: false
     }
   });
   const [loading, setLoading] = useState(false);
@@ -90,10 +91,16 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
 
   const fetchLatestVersion = async () => {
     try {
-      const res = await fetch('/api/app/version/latest?platform=android');
+      const res = await apiFetch(`/api/app/version/latest?platform=android&_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
       if (res.ok) {
         const data: AppVersionResponse = await res.json();
-        if (data.release?.apkUrl) {
+        if (data.release) {
           setVersionData(data);
         }
       }
@@ -161,16 +168,16 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
 
   const release = versionData.release;
   const apkUrl = release?.apkUrl || '/api/app/download/latest';
-  const versionName = release?.versionName || '1.0';
-  const versionCode = release?.versionCode || 1;
-  const checksum = release?.sha256Checksum || '30a97db96538142058f3b99b3e228098b65a7f18be347d969e2ddebb6eb87d63';
-  const fileSizeBytes = release?.fileSizeBytes || 14522269;
+  const versionName = release?.versionName || '2.2';
+  const versionCode = release?.versionCode || 8;
+  const checksum = release?.sha256Checksum || '7fc08d826d9c3e2cd7a36913a60e8011919d864d6bd396bd81b36837f18a536d';
+  const fileSizeBytes = release?.fileSizeBytes || 4498026;
   const releaseNotes = release?.releaseNotes || 'Offline synchronization, Capacitor 8 native integration, daily quiz, and full UPSC/BPSC question bank.';
 
   return (
-    <div className="min-h-screen bg-[#FAF7F0] text-[#111426] font-sans-editorial flex flex-col selection:bg-[#35156B] selection:text-amber-300">
+    <div className="min-h-screen bg-[#FAF8F5] text-stone-900 font-sans-editorial flex flex-col selection:bg-amber-900 selection:text-amber-100">
       {/* Top Bar */}
-      <nav className="sticky top-0 z-40 bg-[#FAF7F0]/95 backdrop-blur-md border-b border-stone-200/80 px-4 sm:px-8 py-3.5">
+      <nav className="sticky top-0 z-40 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-stone-200/80 px-4 sm:px-8 py-3.5">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <BrandLogo
             variant="dashboard"
@@ -180,7 +187,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
 
           <button
             onClick={handleReturn}
-            className="flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-[#35156B] bg-white border border-stone-200/90 px-3.5 py-1.5 rounded-full shadow-2xs transition-all cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-amber-800 bg-white border border-stone-200/90 px-3.5 py-1.5 rounded-full shadow-2xs transition-all cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>{user ? 'Back to Dashboard' : 'Back to Platform'}</span>
@@ -197,7 +204,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             <span>Official Android APK — Direct Distribution</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-serif-editorial font-bold text-[#111426] tracking-tight leading-tight">
+          <h1 className="text-3xl sm:text-5xl font-serif-editorial font-bold text-stone-900 tracking-tight leading-tight">
             IKSHOVIA Android App
           </h1>
 
@@ -213,7 +220,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
               <FileCheck2 className="w-5 h-5" />
             </div>
-            <h3 className="font-serif-editorial font-bold text-lg text-[#111426]">PYQ & Mock Tests</h3>
+            <h3 className="font-serif-editorial font-bold text-lg text-stone-900">PYQ & Mock Tests</h3>
             <p className="text-xs text-stone-600 leading-relaxed font-sans">
               Practice official UPSC & BPSC papers and timed mock exams with instant answer persistence,
               bilingual views, and detailed solution breakdowns.
@@ -221,10 +228,10 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
           </div>
 
           <div className="bg-white border border-stone-200/90 p-6 rounded-2xl shadow-2xs space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 text-[#35156B] flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center">
               <Brain className="w-5 h-5" />
             </div>
-            <h3 className="font-serif-editorial font-bold text-lg text-[#111426]">AI Tutor in Your Pocket</h3>
+            <h3 className="font-serif-editorial font-bold text-lg text-stone-900">AI Tutor in Your Pocket</h3>
             <p className="text-xs text-stone-600 leading-relaxed font-sans">
               Instant civil services conceptual resolution grounded strictly in official commission
               syllabus benchmarks and verified standard textbooks.
@@ -235,7 +242,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center">
               <BookOpen className="w-5 h-5" />
             </div>
-            <h3 className="font-serif-editorial font-bold text-lg text-[#111426]">Daily Current Affairs</h3>
+            <h3 className="font-serif-editorial font-bold text-lg text-stone-900">Daily Current Affairs</h3>
             <p className="text-xs text-stone-600 leading-relaxed font-sans">
               Curated daily news digests, Bihar special editions, and editorial summaries with linked
               revision cards and high-yield prelims MCQs.
@@ -258,7 +265,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Official Release Available</span>
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
+                <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900">
                   IKSHOVIA Android App
                 </h2>
                 <p className="text-xs text-stone-600 font-sans">
@@ -271,7 +278,7 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
               id="download-apk-button"
               href="/api/app/download/latest"
               download={`ikshovia-v${versionName}.apk`}
-              className="inline-flex items-center justify-center gap-2.5 bg-[#0C1024] hover:bg-[#1B2144] active:scale-[0.98] text-white px-7 py-3.5 rounded-xl font-bold text-sm sm:text-base shadow-md transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-2.5 bg-[#1C1917] hover:bg-[#292524] active:scale-[0.98] text-white px-7 py-3.5 rounded-xl font-bold text-sm sm:text-base shadow-md transition-all cursor-pointer shrink-0 border border-amber-500/20"
             >
               <Download className="w-5 h-5 text-amber-400" />
               <span>DOWNLOAD APK (v{versionName})</span>
@@ -334,25 +341,41 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
             </div>
           )}
 
-          {/* Installation & Upgrade Guide */}
-          <div className="p-4 sm:p-5 bg-amber-50/90 border border-amber-200/90 rounded-2xl space-y-3 text-xs text-amber-950 font-sans">
+          {/* One-Time App Migration Notice */}
+          <div className="p-4 sm:p-5 bg-amber-100/90 border-2 border-amber-300 rounded-2xl space-y-2.5 text-xs text-amber-950 font-sans">
             <div className="font-bold uppercase tracking-wider text-[11px] text-amber-900 font-mono flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-700" />
-              <span>How to Install or Update on Android</span>
+              <AlertTriangle className="w-4 h-4 text-amber-700" />
+              <span>One-Time App Migration Required</span>
             </div>
-            <ol className="list-decimal list-inside space-y-1.5 text-amber-900 text-xs pl-1 leading-relaxed">
+            <p className="text-stone-800 text-xs leading-relaxed font-semibold">
+              One-time app migration required. Please install the latest APK.
+            </p>
+            <p className="text-stone-700 text-[11px] leading-relaxed">
+              IKSHOVIA Android has transitioned to a new permanent production signing identity (v2.0 Build 6).
+              Because Android enforces cryptographic signature identity matching for over-install updates, existing testing users with earlier builds (v1.1.4 or older) must <strong>uninstall the previous APK first</strong>, then install this official release.
+              All subsequent updates from v2.0 onwards will support standard, seamless in-place updates.
+            </p>
+          </div>
+
+          {/* Installation & Upgrade Guide */}
+          <div className="p-4 sm:p-5 bg-stone-50 border border-stone-200/90 rounded-2xl space-y-3 text-xs text-stone-800 font-sans">
+            <div className="font-bold uppercase tracking-wider text-[11px] text-stone-900 font-mono flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              <span>Installation Steps for Android</span>
+            </div>
+            <ol className="list-decimal list-inside space-y-1.5 text-stone-700 text-xs pl-1 leading-relaxed">
               <li>Tap the <strong>DOWNLOAD APK</strong> button above to download the file directly to your device.</li>
-              <li>When prompted by your browser (&ldquo;File might be harmful&rdquo;), tap <strong>Download anyway</strong> (standard Android notice for direct APK downloads).</li>
-              <li>Once downloaded, open the file from your notification bar or Downloads folder.</li>
-              <li>If you already have IKSHOVIA installed, select <strong>Update</strong>. Your existing test attempts, login credentials, and local notes will remain completely intact.</li>
-              <li>If installing for the first time, allow &ldquo;Install Unknown Apps&rdquo; for your browser in Android Settings when prompted.</li>
+              <li>When prompted by your browser (&ldquo;File might be harmful&rdquo;), tap <strong>Download anyway</strong> (standard Android safety prompt for direct APK downloads).</li>
+              <li><strong>Migrating from older testing builds:</strong> Uninstall the old IKSHOVIA app before tapping the downloaded file.</li>
+              <li>Once downloaded, open the file from your notification bar or Downloads folder and tap <strong>Install</strong>.</li>
+              <li>If prompted, allow &ldquo;Install Unknown Apps&rdquo; for your browser in Android Settings.</li>
             </ol>
           </div>
 
           {/* Notification signup for future updates */}
           <div className="pt-6 border-t border-stone-200/80 space-y-4">
             <div className="space-y-1 text-left">
-              <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-[#111426]">
+              <h3 className="text-base sm:text-lg font-serif-editorial font-bold text-stone-900">
                 Get Notified of New APK Releases
               </h3>
               <p className="text-xs text-stone-600 font-sans leading-relaxed">
@@ -383,12 +406,12 @@ export const DownloadAppView: React.FC<{ onBackToHome?: () => void }> = ({ onBac
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your email address"
-                      className="flex-1 px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#35156B] focus:border-transparent font-sans"
+                      className="flex-1 px-3.5 py-2.5 bg-white border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent font-sans"
                     />
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="px-5 py-2.5 bg-[#0C1024] hover:bg-[#1B2144] disabled:opacity-60 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 font-sans"
+                      className="px-5 py-2.5 bg-[#1C1917] hover:bg-[#292524] disabled:opacity-60 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 font-sans border border-amber-500/20"
                     >
                       {submitting ? (
                         <span>Submitting...</span>

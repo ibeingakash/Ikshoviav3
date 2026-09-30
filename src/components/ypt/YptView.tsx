@@ -73,6 +73,7 @@ export const YptView: React.FC = () => {
 
   // Ticking timer ref
   const timerIntervalRef = useRef<any>(null);
+  const sessionStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     loadTodayData();
@@ -126,6 +127,7 @@ export const YptView: React.FC = () => {
   const handleStartTimer = async () => {
     try {
       setActionError(null);
+      sessionStartTimeRef.current = Date.now();
       const res = await yptService.startSession(
         selectedSubject.toLowerCase().replace(/\s+/g, '_'),
         selectedSubject
@@ -142,9 +144,14 @@ export const YptView: React.FC = () => {
   const handleStopTimer = async () => {
     try {
       setActionError(null);
+      const startTime = sessionStartTimeRef.current;
+      const durationSeconds = startTime ? Math.max(1, Math.round((Date.now() - startTime) / 1000)) : undefined;
+      const endedAt = new Date().toISOString();
+
       if (activeSessionId) {
-        await yptService.stopSession(activeSessionId);
+        await yptService.stopSession(activeSessionId, { durationSeconds, endedAt });
       }
+      sessionStartTimeRef.current = null;
       setIsStudying(false);
       setActiveSessionId(null);
       setActionSuccess('Study session saved successfully!');

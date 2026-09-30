@@ -96,7 +96,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between p-5 border-b border-stone-100 bg-stone-50/80 rounded-t-3xl sticky top-0 z-10">
           <div className="flex items-center gap-2.5">
-            <Calendar className="w-5 h-5 text-[#35156B]" />
+            <Calendar className="w-5 h-5 text-amber-700" />
             <div>
               <h2 className="text-lg font-bold text-stone-900 font-serif">Current Affairs Archive & Calendar</h2>
               <p className="text-xs text-stone-500 font-normal">Search historical policy releases, Supreme Court verdicts, and verified news developments</p>
@@ -123,7 +123,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                 placeholder="Search past events, keywords, bills..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-stone-200 text-xs text-stone-900 pl-9 pr-3 py-2 rounded-xl focus:outline-none focus:border-[#35156B]"
+                className="w-full bg-white border border-stone-200 text-xs text-stone-900 pl-9 pr-3 py-2 rounded-xl focus:outline-none focus:border-amber-500"
               />
             </form>
 
@@ -134,7 +134,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                 type="date"
                 value={customDate}
                 onChange={e => setCustomDate(e.target.value)}
-                className="bg-white border border-stone-200 text-xs text-stone-800 px-3 py-1.5 rounded-xl focus:outline-none focus:border-[#35156B]"
+                className="bg-white border border-stone-200 text-xs text-stone-800 px-3 py-1.5 rounded-xl focus:outline-none focus:border-amber-500"
               />
               {customDate && (
                 <button
@@ -156,7 +156,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                   onClick={() => setSelectedCategory(cat)}
                   className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all shrink-0 cursor-pointer ${
                     selectedCategory === cat
-                      ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+                      ? 'bg-[#1C1917] text-amber-300 border border-amber-500/20 shadow-2xs'
                       : 'bg-white text-stone-600 hover:bg-stone-200/70 border border-stone-200'
                   }`}
                 >
@@ -172,7 +172,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                   onClick={() => setSelectedExam(ex)}
                   className={`text-[10px] font-bold px-2.5 py-0.5 rounded-lg transition-all cursor-pointer ${
                     selectedExam === ex
-                      ? 'bg-[#35156B] text-amber-300 font-extrabold'
+                      ? 'bg-[#1C1917] text-amber-300 font-extrabold'
                       : 'text-stone-600 hover:text-stone-900'
                   }`}
                 >
@@ -189,7 +189,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
           
           {loading && (
             <div className="py-16 text-center text-stone-500 text-xs flex flex-col items-center justify-center gap-2">
-              <Sparkles className="w-6 h-6 animate-spin text-[#35156B]" />
+              <Sparkles className="w-6 h-6 animate-spin text-amber-700" />
               <span>Fetching archived records...</span>
             </div>
           )}
@@ -208,7 +208,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
               {/* Date Header Strip */}
               <div className="flex items-center justify-between border-b border-stone-200 pb-2">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#35156B]" />
+                  <Calendar className="w-4 h-4 text-amber-700" />
                   <span className="text-sm font-bold text-stone-900 font-serif">{formatDateHuman(group.formattedDate || group.date, { includeWeekday: true })}</span>
                   <span className="text-[11px] font-semibold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200">
                     {group.count} {group.count === 1 ? 'Article' : 'Articles'}
@@ -220,7 +220,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                     onSelectDate(group.date);
                     onClose();
                   }}
-                  className="text-xs font-bold text-[#35156B] hover:text-[#4B1F78] flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-bold text-amber-800 hover:text-amber-900 flex items-center gap-1 cursor-pointer"
                 >
                   <span>Open Day Reader</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -233,10 +233,10 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                   <div
                     key={art.id}
                     onClick={() => onSelectArticle(art)}
-                    className="bg-white border border-stone-200 hover:border-[#35156B]/50 p-4 rounded-xl space-y-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
+                    className="bg-white border border-stone-200 hover:border-amber-400 p-4 rounded-xl space-y-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer group"
                   >
                     <div className="flex items-center justify-between text-[10px] text-stone-500">
-                      <span className="font-bold text-[#35156B] bg-[#35156B]/10 px-2 py-0.5 rounded">
+                      <span className="font-bold text-amber-800 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded">
                         {art.category}
                       </span>
                       {art.gsPaper && (
@@ -246,7 +246,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                       )}
                     </div>
 
-                    <h4 className="text-xs font-bold text-stone-900 group-hover:text-[#35156B] transition-colors line-clamp-2 leading-snug">
+                    <h4 className="text-xs font-bold text-stone-900 group-hover:text-amber-800 transition-colors line-clamp-2 leading-snug">
                       {art.title}
                     </h4>
 
@@ -274,7 +274,7 @@ export const ArchiveBrowserModal: React.FC<ArchiveBrowserModalProps> = ({
                             : 'News / Secondary'}
                         </span>
                       </div>
-                      <span className="text-[#35156B] font-bold group-hover:underline">Read →</span>
+                      <span className="text-amber-800 font-bold group-hover:underline">Read →</span>
                     </div>
                   </div>
                 ))}

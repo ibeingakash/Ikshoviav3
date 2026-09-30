@@ -608,7 +608,14 @@ export function validateQuestionAccuracy(q: Question): {
   }
 
   // 2. Options Validation (minimum 2 options, standard 4 or 5)
-  const opts = q.options || [];
+  const rawOpts = q.options || [];
+  const opts: { id: string; text: string }[] = rawOpts.map((opt, idx) => {
+    if (typeof opt === 'string') {
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+      return { id: letters[idx] || String(idx + 1), text: opt };
+    }
+    return { id: opt.id, text: opt.text };
+  });
   if (!opts || opts.length < 2) {
     errors.push(`Incomplete options: Only ${opts.length} option(s) detected (min 2 required).`);
     optionsConf = 'LOW';
@@ -1067,7 +1074,7 @@ export function extractQuestionsDeterministically(params: {
           detectedMarkers++;
         }
       } else {
-        const curQ = currentUnit.qNum;
+        const curQ: number = currentUnit.qNum ?? 0;
 
         // If number is <= current question, it's definitely internal (statement, year, article, etc.)
         if (detectedQNum <= curQ) {

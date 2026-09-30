@@ -6,6 +6,9 @@ import { useAuth } from './AuthContext.js';
 export type NavigationSection =
   | 'dashboard'
   | 'learn'
+  | 'exam-engine'
+  | 'mains'
+  | 'interview'
   | 'ai-tutor'
   | 'daily-quiz'
   | 'pyq-practice'
@@ -55,15 +58,34 @@ export type NavigationSection =
   | 'admin-releases'
   | 'admin-settings'
   | 'courses-catalog'
+  | 'course-catalog'
   | 'test-series'
+  | 'test-series-marketplace'
+  | 'mock'
+  | 'ypt-groups'
+  | 'admin-resource-studio'
+  | 'admin-offers'
   | 'learner-purchases'
   | 'super-admin'
+  | 'superadmin-console'
   | 'super-admin-dashboard'
   | 'super-admin-users'
   | 'super-admin-admins'
   | 'super-admin-permissions'
   | 'super-admin-audit'
-  | 'super-admin-settings';
+  | 'super-admin-settings'
+  | 'teacher-dashboard'
+  | 'teacher-classes'
+  | 'teacher-students'
+  | 'teacher-assignments'
+  | 'teacher-evaluations'
+  | 'teacher-quizzes'
+  | 'teacher-resources'
+  | 'teacher-live'
+  | 'teacher-announcements'
+  | 'teacher-analytics'
+  | 'learner-classes'
+  | 'learner-assignments';
 
 export type AppTheme = 'futuristic-glass' | 'upsc-parchment' | 'bpsc-navy';
 
@@ -87,8 +109,10 @@ interface LearnerContextType {
   setAiContext: (ctx: AiContextData | null) => void;
   pendingAiPrompt: { prompt: string; quickAction?: string } | null;
   setPendingAiPrompt: (p: { prompt: string; quickAction?: string } | null) => void;
-  askTutorWithContext: (userText: string, ctx?: AiContextData, quickAction?: string) => void;
+  askTutorWithContext: (userText: string, ctx?: AiContextData | string, quickAction?: string) => void;
   refreshLearnerData: () => Promise<void>;
+  markNotificationAsRead: (id: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
   navigateToConcept: (conceptId: string) => void;
   navigateBack: () => boolean;
 }
@@ -125,22 +149,57 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setEntitlements([]);
         return;
       }
-      const data = await api.getLearnerModel(user.id);
-      if (data && typeof data === 'object') {
+
+      // Fetch model, notifications, and entitlements resiliently
+      const [modelRes, notifsRes, entsRes] = await Promise.allSettled([
+        api.getLearnerModel(user.id),
+        api.getNotifications(),
+        api.getLearnerEntitlements(),
+      ]);
+
+      if (modelRes.status === 'fulfilled' && modelRes.value && typeof modelRes.value === 'object') {
+        const data = modelRes.value;
         if (data.model) setLearnerModel(data.model);
         if (data.nextBestAction) setNextBestAction(data.nextBestAction);
         if (data.aiInsight) setAiInsight(data.aiInsight);
       }
 
-      const notifs = await api.getNotifications(user.id);
-      setNotifications(Array.isArray(notifs) ? notifs : []);
+      if (notifsRes.status === 'fulfilled' && notifsRes.value) {
+        const notifs = Array.isArray(notifsRes.value)
+          ? notifsRes.value
+          : (notifsRes.value?.notifications || []);
+        setNotifications(notifs);
+      } else {
+        setNotifications([]);
+      }
 
-      const ents = await api.getLearnerEntitlements();
-      setEntitlements(Array.isArray(ents) ? ents : []);
+      if (entsRes.status === 'fulfilled' && entsRes.value) {
+        setEntitlements(Array.isArray(entsRes.value) ? entsRes.value : []);
+      } else {
+        setEntitlements([]);
+      }
     } catch (err) {
-      console.error('Failed to load learner data:', err);
+      console.warn('[LearnerContext] Failed to load learner data notice:', err);
       setNotifications([]);
       setEntitlements([]);
+    }
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await api.markNotificationRead(id);
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    } catch (err) {
+      console.warn('Failed to mark notification read:', err);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      await api.markAllNotificationsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.warn('Failed to mark all notifications read:', err);
     }
   };
 
@@ -227,9 +286,13 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveSection('learn');
   };
 
-  const askTutorWithContext = (userText: string, ctx?: AiContextData, quickAction?: string) => {
+  const askTutorWithContext = (userText: string, ctx?: AiContextData | string, quickAction?: string) => {
     if (ctx) {
-      setAiContext(ctx);
+      if (typeof ctx === 'string') {
+        setAiContext({ contextSummary: ctx });
+      } else {
+        setAiContext(ctx);
+      }
     }
     setPendingAiPrompt({ prompt: userText, quickAction });
     setActiveSection('ai-tutor');
@@ -259,6 +322,8 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setPendingAiPrompt,
         askTutorWithContext,
         refreshLearnerData,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
         navigateToConcept,
         navigateBack,
       }}

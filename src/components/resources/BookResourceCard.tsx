@@ -15,7 +15,8 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { LearningResource } from '../../types/index.js';
-import { useLearner } from '../../context/LearnerContext.js';
+import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
+import { apiUrl } from '../../lib/api.js';
 
 interface BookResourceCardProps {
   resource: LearningResource;
@@ -42,7 +43,16 @@ export const BookResourceCard: React.FC<BookResourceCardProps> = ({
   const progressPct = resource.progress_percentage || resource.progressPercentage || Math.round((lastPage / totalPages) * 100);
 
   // Compute domain-appropriate related learning links
-  const getRelatedMetadata = (subject: string, title: string) => {
+  const getRelatedMetadata = (subject?: string, title?: string): {
+    pyqCount: number;
+    pyqLabel: string;
+    pyqTarget: NavigationSection;
+    notesCount: number;
+    notesLabel: string;
+    notesTarget: NavigationSection;
+    syllabusTopic: string;
+    syllabusTarget: NavigationSection;
+  } => {
     const s = (subject || '').toLowerCase();
     const t = (title || '').toLowerCase();
 
@@ -184,7 +194,7 @@ export const BookResourceCard: React.FC<BookResourceCardProps> = ({
           </button>
 
           <a
-            href={`/api/resources/${resource.id}/download`}
+            href={apiUrl(`/api/resources/${resource.id}/download`)}
             target="_blank"
             rel="noreferrer"
             className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
@@ -358,7 +368,7 @@ export const BookResourceCard: React.FC<BookResourceCardProps> = ({
 
         <div className="flex items-center gap-1.5">
           <a
-            href={`/api/resources/${resource.id}/download`}
+            href={apiUrl(`/api/resources/${resource.id}/download`)}
             target="_blank"
             rel="noreferrer"
             className="p-2 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"

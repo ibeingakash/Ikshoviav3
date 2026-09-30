@@ -12,6 +12,8 @@ import { liveClassRepository } from '../repositories/LiveClassRepository.js';
 import { runMatchQuestionsMigration } from './migrateMatchQuestions.js';
 import { seedCanonicalResources } from './seedResources.js';
 import { runTestSeriesMigration } from './testSeriesMigration.js';
+import { resolveSafeClassification } from './taxonomyResolver.js';
+import { seedMainsAndInterviewData } from './seedMainsAndInterview.js';
 
 export async function ensureSyllabusSeed(): Promise<void> {
   try {
@@ -97,8 +99,8 @@ export async function ensureDatabaseSchema(): Promise<void> {
   try {
     // 1. Check if core tables already exist
     const checkRes = await pool.query(`
-      SELECT table_name
-      FROM information_schema.tables
+      SELECT table_name 
+      FROM information_schema.tables 
       WHERE table_schema = 'public' AND table_name IN ('users', 'current_affairs', 'questions', 'learner_models', 'mock_tests');
     `);
 
@@ -315,7 +317,26 @@ export async function ensureDatabaseSchema(): Promise<void> {
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS summary TEXT;
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS read_time_minutes INT DEFAULT 10;
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS is_bookmarked BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT TRUE;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS deleted_by TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS course_id TEXT;
+      ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'OFFICIAL_COMMISSION';
       ALTER TABLE public.resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+      -- Deleted resources tombstone to prevent resurrection
+      CREATE TABLE IF NOT EXISTS public.deleted_resources_tombstone (
+        id TEXT PRIMARY KEY,
+        file_name TEXT,
+        file_hash TEXT,
+        title TEXT,
+        deleted_by TEXT DEFAULT 'ADMIN',
+        deleted_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      -- Ensure mock_attempts has created_at for migration 011 index compatibility
+      ALTER TABLE public.mock_attempts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
       -- Live Classroom & Direct Calls
       CREATE TABLE IF NOT EXISTS public.direct_video_calls (
@@ -368,7 +389,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
         -- Keep mock_tests.total_questions strictly in sync with actual mock_questions count
         UPDATE public.mock_tests mt
         SET total_questions = (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id),
-            total_marks = CASE
+            total_marks = CASE 
               WHEN mt.title ILIKE '%BPSC%' THEN (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id) * 1
               ELSE (SELECT COUNT(*) FROM public.mock_questions mq WHERE mq.mock_test_id = mt.id) * 2
             END
@@ -515,6 +536,46 @@ export async function ensureDatabaseSchema(): Promise<void> {
       console.log('[DB Schema] Applied Migration 011 (database & egress optimization) successfully.');
     }
 
+    // 2h. Apply Supabase Security Advisor RLS Hardening Migration 012
+    const secHardeningSqlPath = path.resolve(process.cwd(), 'supabase/migrations/012_supabase_security_advisor_rls_hardening.sql');
+    if (fs.existsSync(secHardeningSqlPath)) {
+      const secHardeningSql = fs.readFileSync(secHardeningSqlPath, 'utf8');
+      await pool.query(secHardeningSql);
+      console.log('[DB Schema] Applied Migration 012 (RLS hardening) successfully.');
+    }
+
+    // 2i. Apply Teacher Workspace & Safe User Removal Migration 013
+    const teacherSqlPath = path.resolve(process.cwd(), 'supabase/migrations/013_teacher_workspace_and_safe_user_removal.sql');
+    if (fs.existsSync(teacherSqlPath)) {
+      const teacherSql = fs.readFileSync(teacherSqlPath, 'utf8');
+      await pool.query(teacherSql);
+      console.log('[DB Schema] Applied Migration 013 (teacher workspace & safe user removal) successfully.');
+    }
+
+    // 2j. Apply Production Notifications & Analytics Migration 014
+    const notifSqlPath = path.resolve(process.cwd(), 'supabase/migrations/014_production_notifications_and_analytics.sql');
+    if (fs.existsSync(notifSqlPath)) {
+      const notifSql = fs.readFileSync(notifSqlPath, 'utf8');
+      await pool.query(notifSql);
+      console.log('[DB Schema] Applied Migration 014 (production notifications & analytics) successfully.');
+    }
+
+    // 2k. Apply Unified Exam Engine Migration 015
+    const examEngineSqlPath = path.resolve(process.cwd(), 'supabase/migrations/015_unified_exam_engine.sql');
+    if (fs.existsSync(examEngineSqlPath)) {
+      const examEngineSql = fs.readFileSync(examEngineSqlPath, 'utf8');
+      await pool.query(examEngineSql);
+      console.log('[DB Schema] Applied Migration 015 (unified exam engine) successfully.');
+    }
+
+    // 2l. Apply Personalized Learning & Intelligence Layer Migration 016
+    const intelSqlPath = path.resolve(process.cwd(), 'supabase/migrations/016_personalized_learning_and_intelligence.sql');
+    if (fs.existsSync(intelSqlPath)) {
+      const intelSql = fs.readFileSync(intelSqlPath, 'utf8');
+      await pool.query(intelSql);
+      console.log('[DB Schema] Applied Migration 016 (personalized learning & intelligence layer) successfully.');
+    }
+
     // 3. Ensure authentic syllabus, question bank, official PYQ, and canonical courses seeds exist
     await ensureSyllabusSeed();
     await ensureQuestionBankSeed();
@@ -530,12 +591,13 @@ export async function ensureDatabaseSchema(): Promise<void> {
     await ensureContentOriginSeparation();
     await seedCanonicalResources();
     await runTestSeriesMigration();
+    await seedMainsAndInterviewData();
 
     // 4. Verify total tables
     const tableRes = await pool.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
       ORDER BY table_name;
     `);
 
@@ -567,8 +629,8 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.pyq_papers
       SET source_type = 'ADMIN_IMPORTED'
-      WHERE id ILIKE '%flt%'
-         OR id ILIKE '%mock%'
+      WHERE id ILIKE '%flt%' 
+         OR id ILIKE '%mock%' 
          OR id ILIKE '%bpsc_2026%'
          OR paper_name ILIKE '%flt%'
          OR paper_name ILIKE '%mock%'
@@ -577,7 +639,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
       UPDATE public.pyq_papers
       SET source_type = 'OFFICIAL_COMMISSION'
-      WHERE id NOT ILIKE '%flt%'
+      WHERE id NOT ILIKE '%flt%' 
         AND id NOT ILIKE '%mock%'
         AND id NOT ILIKE '%bpsc_2026%'
         AND (source_domain IN ('upsc.gov.in', 'bpsc.bihar.gov.in', 'official') OR official_source_url ILIKE '%upsc.gov.in%' OR official_source_url ILIKE '%bpsc.bihar.gov.in%');
@@ -596,7 +658,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
     await pool.query(`
       UPDATE public.questions
       SET source_type = 'ADMIN_IMPORTED', is_pyq = false
-      WHERE source = 'OCR_VERIFIED_IMPORT'
+      WHERE source = 'OCR_VERIFIED_IMPORT' 
          OR source_job_id IS NOT NULL
          OR exam_tag ILIKE '%FLT%'
          OR paper ILIKE '%FLT%'
@@ -621,7 +683,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 1: BPSC 2026 FLT 2 (149 questions)
     const flt2Questions = await pool.query(`
-      SELECT * FROM public.pyq_questions
+      SELECT * FROM public.pyq_questions 
       WHERE paper_id = 'bpsc_2026_flt_2'
       ORDER BY question_number ASC;
     `);
@@ -652,8 +714,15 @@ async function ensureContentOriginSeparation(): Promise<void> {
       `, [flt2Questions.rows.length]);
 
       for (const q of flt2Questions.rows) {
-        // Ensure question exists in questions table
+        // Ensure question exists in questions table with guaranteed foreign key safety
         const qId = `admin_q_flt2_${q.question_number}`;
+        const classification = resolveSafeClassification({
+          subjectId: q.subject_id,
+          topic: q.topic,
+          questionType: q.question_type,
+          paper: '71st BPSC Prelims FLT 02'
+        });
+
         await pool.query(`
           INSERT INTO public.questions (
             id, question, question_hi, options, options_hi, correct_answer, explanation, explanation_hi,
@@ -678,9 +747,9 @@ async function ensureContentOriginSeparation(): Promise<void> {
           q.solution || 'Verified explanation',
           q.solution || null,
           q.difficulty || 'MEDIUM',
-          q.subject_id || 'sub_polity',
-          q.topic || 'top_rights',
-          'c_art32'
+          classification.subjectId,
+          classification.topicId,
+          classification.conceptId
         ]);
 
         await pool.query(`
@@ -693,7 +762,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     // Paper 2: BPSC 2026 Prelims (146 questions)
     const prelimsQuestions = await pool.query(`
-      SELECT * FROM public.pyq_questions
+      SELECT * FROM public.pyq_questions 
       WHERE paper_id = 'bpsc_2026_bpsc_prelims'
       ORDER BY question_number ASC;
     `);
@@ -725,6 +794,13 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
       for (const q of prelimsQuestions.rows) {
         const qId = `admin_q_prelims_${q.question_number}`;
+        const classification = resolveSafeClassification({
+          subjectId: q.subject_id,
+          topic: q.topic,
+          questionType: q.question_type,
+          paper: '71st BPSC Prelims Mock'
+        });
+
         await pool.query(`
           INSERT INTO public.questions (
             id, question, question_hi, options, options_hi, correct_answer, explanation, explanation_hi,
@@ -749,9 +825,9 @@ async function ensureContentOriginSeparation(): Promise<void> {
           q.solution || 'Verified explanation',
           q.solution || null,
           q.difficulty || 'MEDIUM',
-          q.subject_id || 'sub_polity',
-          q.topic || 'top_rights',
-          'c_art32'
+          classification.subjectId,
+          classification.topicId,
+          classification.conceptId
         ]);
 
         await pool.query(`
@@ -780,7 +856,7 @@ async function ensureContentOriginSeparation(): Promise<void> {
 
     for (const job of publishedOcrJobs.rows) {
       const qRes = await pool.query(`
-        SELECT * FROM public.ocr_extracted_questions
+        SELECT * FROM public.ocr_extracted_questions 
         WHERE job_id = $1 AND correct_answer IS NOT NULL AND correct_answer != ''
         ORDER BY question_num ASC;
       `, [job.id]);
@@ -825,6 +901,14 @@ async function ensureContentOriginSeparation(): Promise<void> {
         if (parseInt(existingMq.rows[0]?.count || '0', 10) === 0) {
           for (const eq of qRes.rows) {
             const qId = eq.id;
+            const classification = resolveSafeClassification({
+              subjectId: eq.subject_id,
+              topicId: eq.topic_id,
+              conceptId: eq.concept_id,
+              paper: job.paper,
+              paperId: mockTestId
+            });
+
             await pool.query(`
               INSERT INTO public.questions (
                 id, question, question_hi, options, options_hi, correct_answer, explanation, explanation_hi,
@@ -849,9 +933,9 @@ async function ensureContentOriginSeparation(): Promise<void> {
               eq.explanation || 'Verified answer',
               eq.explanation_hi,
               eq.difficulty || 'MEDIUM',
-              eq.subject_id || 'sub_polity',
-              eq.topic_id || 'top_rights',
-              eq.concept_id || 'c_art32',
+              classification.subjectId,
+              classification.topicId,
+              classification.conceptId,
               job.paper || `${job.exam} Prelims`,
               job.year || 2026
             ]);

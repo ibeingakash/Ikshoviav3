@@ -4,7 +4,7 @@ import {
   YptStudySession,
   YptTodaySummary
 } from '../types/index.js';
-import { apiUrl, getAuthHeaders } from '../lib/api.js';
+import { apiFetch, getAuthHeaders } from '../lib/api.js';
 
 const yptFetch = async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
   const authHeaders = getAuthHeaders();
@@ -12,7 +12,7 @@ const yptFetch = async (endpoint: string, options: RequestInit = {}): Promise<Re
     ...authHeaders,
     ...(options.headers || {})
   };
-  return fetch(apiUrl(endpoint), {
+  return apiFetch(endpoint, {
     ...options,
     headers
   });
@@ -20,17 +20,55 @@ const yptFetch = async (endpoint: string, options: RequestInit = {}): Promise<Re
 
 export const yptService = {
   async getTodaySummary(): Promise<YptTodaySummary> {
-    const res = await yptFetch('/api/ypt/today');
-    if (!res.ok) throw new Error('Failed to fetch today study summary');
-    return res.json();
+    try {
+      const res = await yptFetch('/api/ypt/today');
+      if (!res.ok) {
+        return {
+          todaySeconds: 0,
+          todayMinutes: 0,
+          dailyGoalMinutes: 120,
+          goalProgressPercent: 0,
+          sessionsCount: 0,
+          activeStudying: false,
+          activeGroupsCount: 0,
+        };
+      }
+      return await res.json();
+    } catch {
+      return {
+        todaySeconds: 0,
+        todayMinutes: 0,
+        dailyGoalMinutes: 120,
+        goalProgressPercent: 0,
+        sessionsCount: 0,
+        activeStudying: false,
+        activeGroupsCount: 0,
+      };
+    }
   },
 
   async startSession(subjectId: string, subjectName: string, topic?: string): Promise<{ session: YptStudySession }> {
-    const res = await yptFetch('/api/ypt/session/start', {
+    let res = await yptFetch('/api/ypt/session/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subjectId, subjectName, topic }),
     });
+    // Fallback for older backend versions that only accept /api/ypt/sessions
+    if (!res.ok && res.status === 404) {
+      res = await yptFetch('/api/ypt/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: subjectName || subjectId || 'General Study',
+          durationSeconds: 1,
+          startedAt: new Date().toISOString(),
+        }),
+      });
+      if (res.ok) {
+        const legacySession = await res.json();
+        return { session: legacySession };
+      }
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to start study session');
@@ -38,25 +76,56 @@ export const yptService = {
     return res.json();
   },
 
-  async stopSession(sessionId: string): Promise<{ session: YptStudySession }> {
-    const res = await yptFetch('/api/ypt/session/stop', {
+  async stopSession(
+    sessionId: string,
+    options?: { durationSeconds?: number; endedAt?: string; subject?: string }
+  ): Promise<{ session: YptStudySession }> {
+    let res = await yptFetch('/api/ypt/session/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({
+        sessionId,
+        durationSeconds: options?.durationSeconds,
+        endedAt: options?.endedAt,
+      }),
     });
-    if (!res.ok) throw new Error('Failed to stop study session');
+    // Fallback for older backend versions that only accept /api/ypt/sessions
+    if (!res.ok && res.status === 404) {
+      res = await yptFetch('/api/ypt/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: options?.subject || 'General Study',
+          durationSeconds: Math.max(1, options?.durationSeconds || 60),
+          endedAt: options?.endedAt || new Date().toISOString(),
+        }),
+      });
+      if (res.ok) {
+        const legacySession = await res.json();
+        return { session: legacySession };
+      }
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to stop study session');
+    }
     return res.json();
   },
 
   async getGroups(filters?: { search?: string; category?: string; myGroups?: boolean }): Promise<{ groups: YptGroup[] }> {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.category) params.append('category', filters.category);
-    if (filters?.myGroups) params.append('myGroups', 'true');
+    try {
+      const params = new URLSearchParams();
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.category) params.append('category', filters.category);
+      if (filters?.myGroups) params.append('myGroups', 'true');
 
-    const res = await yptFetch(`/api/ypt/groups?${params.toString()}`);
-    if (!res.ok) throw new Error('Failed to fetch groups');
-    return res.json();
+      const res = await yptFetch(`/api/ypt/groups?${params.toString()}`);
+      if (!res.ok) return { groups: [] };
+      const data = await res.json();
+      return { groups: Array.isArray(data.groups) ? data.groups : [] };
+    } catch {
+      return { groups: [] };
+    }
   },
 
   async createGroup(data: {
@@ -116,8 +185,13 @@ export const yptService = {
   },
 
   async getLeaderboard(groupId: string): Promise<{ leaderboard: YptMember[] }> {
-    const res = await yptFetch(`/api/ypt/groups/${groupId}/leaderboard`);
-    if (!res.ok) throw new Error('Failed to fetch group leaderboard');
-    return res.json();
+    try {
+      const res = await yptFetch(`/api/ypt/groups/${groupId}/leaderboard`);
+      if (!res.ok) return { leaderboard: [] };
+      const data = await res.json();
+      return { leaderboard: Array.isArray(data.leaderboard) ? data.leaderboard : [] };
+    } catch {
+      return { leaderboard: [] };
+    }
   },
 };

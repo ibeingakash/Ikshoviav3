@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { resourceRepository, DbResource, ResourceType, ResourceVisibility } from '../repositories/ResourceRepository.js';
 import { getStorageProvider } from './storage/index.js';
 import { pool } from '../db/pool.js';
@@ -170,15 +172,15 @@ export class ResourceIngestionService {
       subject: validatedSubjectName,
       topic: topic || '',
       exam: exam || 'ALL',
-      edition: edition || null,
+      edition: edition || undefined,
       publication_year: publicationYear ? Number(publicationYear) : undefined,
-      publisher: publisher || null,
+      publisher: publisher || undefined,
       language: language || 'English',
-      isbn: isbn || null,
+      isbn: isbn || undefined,
       license_status: licenseStatus || 'REQUIRES_REVIEW',
-      cover_image_url: coverImageUrl || null,
-      tags: tags || null,
-      source_attribution: sourceAttribution || null,
+      cover_image_url: coverImageUrl || undefined,
+      tags: tags || undefined,
+      source_attribution: sourceAttribution || undefined,
       storage_provider: 'GOOGLE_DRIVE',
       file_hash: fileHash,
       file_name: sanitizedFileName,
@@ -208,6 +210,14 @@ export class ResourceIngestionService {
         drive_folder_id: uploadResult.folderId,
         status: 'PROCESSING',
       });
+
+      // Persist original PDF asset to local storage
+      try {
+        const localSavePath = path.resolve(process.cwd(), 'public/resources', `${resource.id}.pdf`);
+        fs.writeFileSync(localSavePath, buffer);
+      } catch (saveErr) {
+        console.warn(`[ResourceIngestion] Could not write local PDF cache for ${resource.id}:`, saveErr);
+      }
 
       // 4. Text Extraction & OCR
       console.log(`[ResourceIngestion] Extracting text and page structure for ${resource.id}...`);

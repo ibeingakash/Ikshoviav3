@@ -371,7 +371,7 @@ export class CouponRepository {
       };
     }
 
-    if (coupon.usageLimit !== null && coupon.timesUsed >= coupon.usageLimit) {
+    if (coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.timesUsed >= coupon.usageLimit) {
       return {
         isValid: false,
         coupon,

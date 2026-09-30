@@ -99,7 +99,7 @@ export const CouponsAdminView: React.FC = () => {
       code: coupon.code,
       name: coupon.name,
       description: coupon.description || '',
-      discountType: coupon.discountType,
+      discountType: coupon.discountType === 'FIXED_AMOUNT' ? 'FLAT' : (coupon.discountType as 'PERCENTAGE' | 'FLAT'),
       discountValue: coupon.discountValue,
       maxDiscount: coupon.maxDiscount !== null && coupon.maxDiscount !== undefined ? coupon.maxDiscount : '',
       minOrderValue: coupon.minOrderValue || 0,
@@ -222,7 +222,7 @@ export const CouponsAdminView: React.FC = () => {
               <Tag className="w-5 h-5 text-amber-800" />
             </div>
             <div>
-              <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+              <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
                 Coupons & Promotional Offers
               </h1>
               <p className="text-xs text-stone-500 font-medium">
@@ -242,7 +242,7 @@ export const CouponsAdminView: React.FC = () => {
           </button>
           <button
             onClick={openCreateModal}
-            className="px-4 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs cursor-pointer border border-amber-500/30"
+            className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs cursor-pointer border border-amber-500/30"
           >
             <Plus className="w-4 h-4" />
             <span>Create Coupon</span>
@@ -280,7 +280,7 @@ export const CouponsAdminView: React.FC = () => {
             <span className="text-xs font-medium">Total Coupons</span>
             <Tag className="w-4 h-4 text-amber-700" />
           </div>
-          <div className="text-2xl font-bold font-serif-editorial text-[#111426]">{totalCoupons}</div>
+          <div className="text-2xl font-bold font-serif-editorial text-stone-900">{totalCoupons}</div>
           <div className="text-[11px] text-stone-400 mt-1">Configured in registry</div>
         </div>
 
@@ -751,7 +751,7 @@ export const CouponsAdminView: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs border border-amber-500/30"
+                className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs border border-amber-500/30"
               >
                 {isSubmitting ? (
                   <>

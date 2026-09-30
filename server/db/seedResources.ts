@@ -112,14 +112,14 @@ export const CANONICAL_SEED_RESOURCES: SeedItem[] = [
   },
   {
     id: 'res_modern_history_chandra',
-    title: 'Modern Indian History & Freedom Struggle',
+    title: 'Modern Indian History – Comprehensive Revision Notes',
     author: 'Bipin Chandra',
     description:
-      'Comprehensive analytical review of the British colonial exploitation, socio-religious renaissance, the Revolt of 1857, early political nationalism, Moderate and Extremist phases, and Gandhian mass satyagrahas.',
+      'BPSC Prelims & Mains Comprehensive Notes • 120 Pages • PDF',
     subject: 'Modern History',
     subject_id: 'sub_history',
     topic: 'Indian National Movement (1857-1947)',
-    exam: 'ALL',
+    exam: 'BPSC',
     resource_type: 'BOOK',
     visibility: 'PUBLIC',
     status: 'PUBLISHED',
@@ -432,8 +432,8 @@ export async function seedCanonicalResources(): Promise<void> {
         `INSERT INTO public.resources (
           id, title, author, description, resource_type, type, subject, subject_id,
           topic, exam, exam_tag, file_name, file_size, mime_type, page_count,
-          status, visibility, url, summary, read_time_minutes, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW())
+          status, visibility, is_published, is_deleted, url, summary, read_time_minutes, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, FALSE, $19, $20, $21, NOW(), NOW())
         ON CONFLICT (id) DO UPDATE SET
           title = EXCLUDED.title,
           author = EXCLUDED.author,
@@ -447,7 +447,8 @@ export async function seedCanonicalResources(): Promise<void> {
           file_name = EXCLUDED.file_name,
           file_size = EXCLUDED.file_size,
           page_count = EXCLUDED.page_count,
-          status = EXCLUDED.status,
+          status = COALESCE(public.resources.status, EXCLUDED.status),
+          is_published = COALESCE(public.resources.is_published, (EXCLUDED.status = 'PUBLISHED')),
           visibility = EXCLUDED.visibility,
           updated_at = NOW()`,
         [
@@ -468,6 +469,7 @@ export async function seedCanonicalResources(): Promise<void> {
           item.pages.length,
           item.status,
           item.visibility,
+          item.status === 'PUBLISHED',
           `/api/resources/${item.id}/stream`,
           item.description,
           item.read_time_minutes,

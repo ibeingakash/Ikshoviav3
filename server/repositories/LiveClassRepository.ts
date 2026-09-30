@@ -309,8 +309,8 @@ export class LiveClassRepository {
         (SELECT COUNT(*) FROM public.live_class_participants p WHERE p.live_class_id = c.id AND p.status = 'JOINED') as active_count
       FROM public.live_classes c
       WHERE ${conditions.join(' AND ')}
-      ORDER BY
-        CASE
+      ORDER BY 
+        CASE 
           WHEN c.status = 'LIVE' THEN 1
           WHEN c.status = 'SCHEDULED' THEN 2
           WHEN c.status = 'COMPLETED' THEN 3
@@ -338,7 +338,7 @@ export class LiveClassRepository {
 
   async createLiveClass(data: Partial<LiveClass>, creatorUser: any): Promise<LiveClass> {
     const classId = `live_cls_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
+    
     // Generate human-readable clean meeting ID: e.g. IK-BPSC-7F42 or IK-UPSC-9A13
     const examCode = data.exam === 'BPSC' ? 'BPSC' : data.exam === 'UPSC' ? 'UPSC' : 'IK';
     const randCode = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -607,10 +607,24 @@ export class LiveClassRepository {
 
   async getActiveDirectCallForUser(userId: string): Promise<any | null> {
     await this.ensureSchema();
+    // Auto-expire any ringing calls older than 45 seconds to prevent stuck ringing states
+    try {
+      await pool.query(
+        `UPDATE public.direct_video_calls 
+         SET status = 'MISSED', ended_at = NOW(), updated_at = NOW() 
+         WHERE status = 'RINGING' AND created_at < NOW() - INTERVAL '45 seconds'`
+      );
+    } catch {
+      // quiet
+    }
+
     const res = await pool.query(
-      `SELECT * FROM public.direct_video_calls
+      `SELECT * FROM public.direct_video_calls 
        WHERE (callee_id = $1 OR caller_id = $1)
-         AND status IN ('RINGING', 'ACCEPTED')
+         AND (
+           status = 'ACCEPTED' 
+           OR (status = 'RINGING' AND created_at > NOW() - INTERVAL '45 seconds')
+         )
          AND created_at > NOW() - INTERVAL '10 minutes'
        ORDER BY created_at DESC LIMIT 1`,
       [userId]
@@ -642,10 +656,10 @@ export class LiveClassRepository {
     }
 
     const res = await pool.query(
-      `SELECT id, name, email, role, avatar_url, created_at
-       FROM public.users
+      `SELECT id, name, email, role, avatar_url, created_at 
+       FROM public.users 
        WHERE ${conditions.join(' AND ')}
-       ORDER BY
+       ORDER BY 
          CASE WHEN role IN ('TEACHER', 'ADMIN', 'SUPER_ADMIN') THEN 1 ELSE 2 END,
          created_at DESC NULLS LAST, name ASC
        LIMIT 30`,
@@ -733,7 +747,7 @@ export class LiveClassRepository {
     const res = await pool.query(`
       SELECT * FROM public.live_class_participants
       WHERE live_class_id = $1
-      ORDER BY
+      ORDER BY 
         CASE WHEN role = 'TEACHER' THEN 1 WHEN role = 'ADMIN' THEN 2 ELSE 3 END,
         hand_raised DESC,
         display_name ASC;
@@ -798,7 +812,7 @@ export class LiveClassRepository {
         `, [existing.rows[0].id]);
       } else {
         // Determine if late (e.g. joined > 15 min after actual or scheduled start)
-        const scheduledStart = new Date(currentClass.scheduledStartIso).getTime();
+        const scheduledStart = new Date(currentClass.scheduledStartIso || currentClass.scheduledAt || Date.now()).getTime();
         const nowMs = Date.now();
         const isLate = (nowMs - scheduledStart) > 15 * 60 * 1000;
 
@@ -1463,7 +1477,7 @@ export class LiveClassRepository {
   // Admin Analytics
   async getAdminAnalytics(): Promise<LiveClassAnalytics> {
     const statsRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(*) as total_classes,
         COUNT(*) FILTER (WHERE status = 'LIVE') as live_now_count,
         COUNT(*) FILTER (WHERE status = 'SCHEDULED') as upcoming_count,
@@ -1473,7 +1487,7 @@ export class LiveClassRepository {
     const s = statsRes.rows[0];
 
     const attRes = await pool.query(`
-      SELECT
+      SELECT 
         COUNT(DISTINCT user_id) as total_unique_students,
         AVG(total_duration_seconds) as avg_duration_seconds
       FROM public.live_class_attendance;

@@ -37,7 +37,7 @@ export interface YptStudySession {
   subject: string;
   durationSeconds: number;
   startedAt: string;
-  endedAt: string;
+  endedAt?: string;
   sessionDate: string;
   createdAt: string;
 }
@@ -124,7 +124,7 @@ export class YptRepository {
 
   async getUserGroups(userId: string): Promise<YptGroup[]> {
     const res = await pool.query(
-      `SELECT
+      `SELECT 
         g.*,
         m.role AS user_role,
         (SELECT COUNT(*) FROM public.ypt_group_members m2 WHERE m2.group_id = g.id) AS member_count,
@@ -166,7 +166,7 @@ export class YptRepository {
     }
 
     const res = await pool.query(
-      `SELECT
+      `SELECT 
         g.*,
         (SELECT COUNT(*) FROM public.ypt_group_members m2 WHERE m2.group_id = g.id) AS member_count,
         (SELECT COUNT(*) FROM public.ypt_group_members m3 WHERE m3.group_id = g.id AND m3.is_active_studying = TRUE) AS active_studying_count,
@@ -198,7 +198,7 @@ export class YptRepository {
 
   async getGroupById(groupId: string, userId?: string): Promise<{ group: YptGroup; members: YptMember[] } | null> {
     const groupRes = await pool.query(
-      `SELECT
+      `SELECT 
         g.*,
         (SELECT COUNT(*) FROM public.ypt_group_members m2 WHERE m2.group_id = g.id) AS member_count,
         (SELECT COUNT(*) FROM public.ypt_group_members m3 WHERE m3.group_id = g.id AND m3.is_active_studying = TRUE) AS active_studying_count,
@@ -230,7 +230,7 @@ export class YptRepository {
 
     // Fetch members with today's study duration
     const membersRes = await pool.query(
-      `SELECT
+      `SELECT 
         m.*,
         COALESCE((
           SELECT SUM(s.duration_seconds)
@@ -340,8 +340,8 @@ export class YptRepository {
     // If creator leaves, check if there are other members
     if (check.rows[0].role === 'CREATOR') {
       const nextMember = await pool.query(
-        `SELECT user_id, user_name FROM public.ypt_group_members
-         WHERE group_id = $1 AND user_id != $2
+        `SELECT user_id, user_name FROM public.ypt_group_members 
+         WHERE group_id = $1 AND user_id != $2 
          ORDER BY joined_at ASC LIMIT 1`,
         [groupId, userId]
       );
@@ -413,8 +413,8 @@ export class YptRepository {
 
     // Reset is_active_studying
     await pool.query(
-      `UPDATE public.ypt_group_members
-       SET is_active_studying = FALSE, current_subject = NULL, last_active_at = NOW()
+      `UPDATE public.ypt_group_members 
+       SET is_active_studying = FALSE, current_subject = NULL, last_active_at = NOW() 
        WHERE user_id = $1`,
       [data.userId]
     );
@@ -435,8 +435,8 @@ export class YptRepository {
 
   async updateStudyStatus(userId: string, isStudying: boolean, subject?: string): Promise<void> {
     await pool.query(
-      `UPDATE public.ypt_group_members
-       SET is_active_studying = $1, current_subject = $2, last_active_at = NOW()
+      `UPDATE public.ypt_group_members 
+       SET is_active_studying = $1, current_subject = $2, last_active_at = NOW() 
        WHERE user_id = $3`,
       [isStudying, subject || null, userId]
     );
@@ -444,10 +444,10 @@ export class YptRepository {
 
   async getUserTodaySummary(userId: string): Promise<YptTodaySummary> {
     const secRes = await pool.query(
-      `SELECT
+      `SELECT 
         COALESCE(SUM(duration_seconds), 0) AS total_seconds,
         COUNT(*) AS sessions_count
-       FROM public.ypt_study_sessions
+       FROM public.ypt_study_sessions 
        WHERE user_id = $1 AND session_date = CURRENT_DATE`,
       [userId]
     );
@@ -457,9 +457,9 @@ export class YptRepository {
     const todayMinutes = Math.floor(totalSeconds / 60);
 
     const statusRes = await pool.query(
-      `SELECT is_active_studying, current_subject
-       FROM public.ypt_group_members
-       WHERE user_id = $1
+      `SELECT is_active_studying, current_subject 
+       FROM public.ypt_group_members 
+       WHERE user_id = $1 
        ORDER BY is_active_studying DESC LIMIT 1`,
       [userId]
     );
@@ -468,7 +468,7 @@ export class YptRepository {
 
     // Get primary active group
     const groupRes = await pool.query(
-      `SELECT
+      `SELECT 
         g.id, g.name, g.daily_goal_minutes,
         (SELECT COUNT(*) FROM public.ypt_group_members m WHERE m.group_id = g.id) AS member_count,
         (SELECT COUNT(*) FROM public.ypt_group_members m WHERE m.group_id = g.id AND m.is_active_studying = TRUE) AS active_studying_count
@@ -512,6 +512,177 @@ export class YptRepository {
       currentSubject,
       activeGroupsCount,
       primaryGroup,
+    };
+  }
+
+  async startFocusSession(userId: string, subject: string, groupId?: string): Promise<YptStudySession> {
+    const sessionId = `ypt_ses_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const now = new Date().toISOString();
+    
+    // 1. Auto-close any lingering unended sessions for this user to prevent duration corruption
+    await pool.query(
+      `UPDATE public.ypt_study_sessions
+       SET ended_at = LEAST(NOW(), started_at + INTERVAL '4 hours'),
+           duration_seconds = LEAST(14400, GREATEST(1, ROUND(EXTRACT(EPOCH FROM (LEAST(NOW(), started_at + INTERVAL '4 hours') - started_at)))))
+       WHERE user_id = $1 AND ended_at IS NULL`,
+      [userId]
+    );
+
+    // 2. Insert initial session record with duration_seconds = 0
+    const res = await pool.query(
+      `INSERT INTO public.ypt_study_sessions (
+        id, user_id, group_id, subject, duration_seconds, started_at, session_date
+      ) VALUES ($1, $2, $3, $4, 0, $5, CURRENT_DATE)
+      RETURNING *`,
+      [sessionId, userId, groupId || null, subject, now]
+    );
+
+    // 3. Update study status across group memberships
+    await pool.query(
+      `UPDATE public.ypt_group_members 
+       SET is_active_studying = TRUE, current_subject = $1, last_active_at = NOW() 
+       WHERE user_id = $2`,
+      [subject, userId]
+    );
+
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      userId: r.user_id,
+      groupId: r.group_id,
+      subject: r.subject,
+      durationSeconds: 0,
+      startedAt: r.started_at,
+      sessionDate: r.session_date,
+      createdAt: r.created_at,
+    };
+  }
+
+  async stopFocusSession(
+    userId: string,
+    sessionId?: string,
+    options?: { durationSeconds?: number; endedAt?: string }
+  ): Promise<YptStudySession> {
+    let sessionRow: any = null;
+    const specifiedDuration = options?.durationSeconds && options.durationSeconds > 0
+      ? Math.min(43200, Math.max(1, Math.round(options.durationSeconds)))
+      : null;
+    const specifiedEndedAt = options?.endedAt ? new Date(options.endedAt).toISOString() : null;
+
+    if (sessionId) {
+      const res = await pool.query(
+        `UPDATE public.ypt_study_sessions
+         SET ended_at = COALESCE($3::timestamp with time zone, NOW()),
+             duration_seconds = COALESCE($4, GREATEST(1, LEAST(43200, ROUND(EXTRACT(EPOCH FROM (COALESCE($3::timestamp with time zone, NOW()) - started_at))))))
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [sessionId, userId, specifiedEndedAt, specifiedDuration]
+      );
+      if (res.rows.length > 0) {
+        sessionRow = res.rows[0];
+      }
+    }
+
+    if (!sessionRow) {
+      const res = await pool.query(
+        `UPDATE public.ypt_study_sessions
+         SET ended_at = COALESCE($2::timestamp with time zone, NOW()),
+             duration_seconds = COALESCE($3, GREATEST(1, LEAST(43200, ROUND(EXTRACT(EPOCH FROM (COALESCE($2::timestamp with time zone, NOW()) - started_at))))))
+         WHERE id = (
+           SELECT id FROM public.ypt_study_sessions
+           WHERE user_id = $1 AND ended_at IS NULL
+           ORDER BY started_at DESC LIMIT 1
+         )
+         RETURNING *`,
+        [userId, specifiedEndedAt, specifiedDuration]
+      );
+      if (res.rows.length > 0) {
+        sessionRow = res.rows[0];
+      }
+    }
+
+    // Reset is_active_studying
+    await pool.query(
+      `UPDATE public.ypt_group_members 
+       SET is_active_studying = FALSE, current_subject = NULL, last_active_at = NOW() 
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (!sessionRow) {
+      return {
+        id: sessionId || `ypt_ses_${Date.now()}`,
+        userId,
+        subject: 'General Revision',
+        durationSeconds: specifiedDuration || 1,
+        startedAt: new Date().toISOString(),
+        endedAt: specifiedEndedAt || new Date().toISOString(),
+        sessionDate: new Date().toISOString().split('T')[0],
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    return {
+      id: sessionRow.id,
+      userId: sessionRow.user_id,
+      groupId: sessionRow.group_id,
+      subject: sessionRow.subject,
+      durationSeconds: sessionRow.duration_seconds || 0,
+      startedAt: sessionRow.started_at,
+      endedAt: sessionRow.ended_at,
+      sessionDate: sessionRow.session_date,
+      createdAt: sessionRow.created_at,
+    };
+  }
+
+  async joinGroupById(groupId: string, user: { id: string; name: string }, accessCode?: string): Promise<YptGroup> {
+    const groupRes = await pool.query(
+      `SELECT * FROM public.ypt_groups WHERE id = $1 AND is_archived = FALSE`,
+      [groupId]
+    );
+
+    if (groupRes.rows.length === 0) {
+      throw new Error('Study group not found or archived');
+    }
+
+    const group = groupRes.rows[0];
+
+    if (group.invite_code && accessCode && accessCode.trim().toUpperCase() !== group.invite_code.toUpperCase()) {
+      throw new Error('Invalid access code for this private study group');
+    }
+
+    const memberId = `ypt_mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await pool.query(
+      `INSERT INTO public.ypt_group_members (
+        id, group_id, user_id, user_name, role, joined_at
+      ) VALUES ($1, $2, $3, $4, 'MEMBER', NOW())
+      ON CONFLICT (group_id, user_id) DO NOTHING`,
+      [memberId, groupId, user.id, user.name]
+    );
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int as count,
+              COUNT(CASE WHEN is_active_studying = TRUE THEN 1 END)::int as active_count
+       FROM public.ypt_group_members WHERE group_id = $1`,
+      [groupId]
+    );
+    const counts = countRes.rows[0] || { count: 1, active_count: 0 };
+
+    return {
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      exam: group.exam,
+      creatorId: group.creator_id,
+      creatorName: group.creator_name,
+      inviteCode: group.invite_code,
+      dailyGoalMinutes: group.daily_goal_minutes,
+      isArchived: group.is_archived,
+      memberCount: counts.count || 1,
+      activeStudyingCount: counts.active_count || 0,
+      userRole: 'MEMBER',
+      createdAt: group.created_at,
+      updatedAt: group.updated_at,
     };
   }
 }

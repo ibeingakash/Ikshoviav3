@@ -2,8 +2,25 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { syncQueuedAnswers } from './offlineQueue.js';
 
-export const isNativeApp = (): boolean => Capacitor.isNativePlatform();
-export const isCapacitor = (): boolean => Capacitor.isNativePlatform();
+export const isNativeApp = (): boolean => {
+  try {
+    return typeof window !== 'undefined' && Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+};
+
+export const isNativeAndroidApp = (): boolean => {
+  try {
+    return typeof window !== 'undefined' && Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  } catch {
+    return false;
+  }
+};
+
+export const isWebPlatform = (): boolean => !isNativeApp();
+
+export const isCapacitor = (): boolean => isNativeApp();
 
 type BackButtonHandler = () => boolean | Promise<boolean>;
 const backButtonHandlers: BackButtonHandler[] = [];

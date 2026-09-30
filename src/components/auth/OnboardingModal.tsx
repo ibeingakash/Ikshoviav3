@@ -43,8 +43,8 @@ export const OnboardingModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FAF7F0]/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans-editorial overflow-y-auto">
-      <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto bg-[#0C1024] border border-amber-500/30 rounded-3xl p-4 sm:p-8 shadow-2xl relative space-y-5 sm:space-y-6 text-white">
+    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans-editorial overflow-y-auto">
+      <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto bg-[#1C1917] border border-amber-500/25 rounded-3xl p-4 sm:p-8 shadow-2xl relative space-y-5 sm:space-y-6 text-white">
         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Header */}
@@ -54,7 +54,7 @@ export const OnboardingModal: React.FC = () => {
               variant="horizontal"
               size="sm"
             />
-            <div className="text-[10px] uppercase font-mono font-bold text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full bg-[#121027]">
+            <div className="text-[10px] uppercase font-mono font-bold text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full bg-[#292524]">
               Step {step} of 3 • Learner Setup
             </div>
           </div>
@@ -75,7 +75,7 @@ export const OnboardingModal: React.FC = () => {
               <select
                 value={targetExam}
                 onChange={e => setTargetExam(e.target.value)}
-                className="w-full bg-[#121027] border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                className="w-full bg-[#292524] border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
               >
                 <option value="UPSC CSE 2026">UPSC CSE 2026 (Target Prelims May 2026)</option>
                 <option value="UPSC CSE 2027">UPSC CSE 2027</option>
@@ -94,8 +94,8 @@ export const OnboardingModal: React.FC = () => {
                     onClick={() => setExperienceLevel(lvl)}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                       experienceLevel === lvl
-                        ? 'bg-[#35156B] text-amber-300 border-amber-400 shadow-xs'
-                        : 'bg-[#121027] text-stone-300 border-stone-800 hover:bg-[#17132B]'
+                        ? 'bg-amber-700 text-amber-100 border-amber-500/40 shadow-xs'
+                        : 'bg-[#292524] text-stone-300 border-stone-800 hover:bg-[#383330]'
                     }`}
                   >
                     {lvl}
@@ -106,7 +106,7 @@ export const OnboardingModal: React.FC = () => {
 
             <button
               onClick={() => setStep(2)}
-              className="w-full py-3 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-xs border border-amber-500/30 flex items-center justify-center gap-2 mt-4 cursor-pointer"
+              className="w-full py-3 bg-amber-700 hover:bg-amber-800 text-amber-50 font-bold text-xs rounded-xl shadow-xs border border-amber-500/30 flex items-center justify-center gap-2 mt-4 cursor-pointer"
             >
               <span>Continue to Core Subjects</span>
               <ArrowRight className="w-4 h-4" />
@@ -133,8 +133,8 @@ export const OnboardingModal: React.FC = () => {
                     onClick={() => toggleSubject(sub.id)}
                     className={`p-3.5 rounded-2xl border cursor-pointer transition-all space-y-1 ${
                       isSelected
-                        ? 'bg-[#35156B] border-amber-400 text-white shadow-xs'
-                        : 'bg-[#121027] border-stone-800 text-stone-300 hover:bg-[#17132B]'
+                        ? 'bg-amber-800/80 border-amber-400/80 text-white shadow-xs'
+                        : 'bg-[#292524] border-stone-800 text-stone-300 hover:bg-[#383330]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -156,7 +156,7 @@ export const OnboardingModal: React.FC = () => {
               </button>
               <button
                 onClick={() => setStep(3)}
-                className="py-2.5 px-6 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-xs border border-amber-500/30 flex items-center gap-2 cursor-pointer"
+                className="py-2.5 px-6 bg-amber-700 hover:bg-amber-800 text-amber-50 font-bold text-xs rounded-xl shadow-xs border border-amber-500/30 flex items-center gap-2 cursor-pointer"
               >
                 <span>Set Daily Target</span>
                 <ArrowRight className="w-4 h-4" />
@@ -178,8 +178,8 @@ export const OnboardingModal: React.FC = () => {
                     onClick={() => setDailyGoalMinutes(mins)}
                     className={`py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer font-mono ${
                       dailyGoalMinutes === mins
-                        ? 'bg-[#35156B] text-amber-300 border-amber-400 shadow-xs'
-                        : 'bg-[#121027] text-stone-300 border-stone-800 hover:bg-[#17132B]'
+                        ? 'bg-amber-700 text-amber-100 border-amber-500/40 shadow-xs'
+                        : 'bg-[#292524] text-stone-300 border-stone-800 hover:bg-[#383330]'
                     }`}
                   >
                     {mins}m
@@ -194,7 +194,7 @@ export const OnboardingModal: React.FC = () => {
                 type="text"
                 value={goalStatement}
                 onChange={e => setGoalStatement(e.target.value)}
-                className="w-full bg-[#121027] border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                className="w-full bg-[#292524] border border-stone-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400"
               />
             </div>
 
@@ -208,7 +208,7 @@ export const OnboardingModal: React.FC = () => {
               <button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="py-3 px-6 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="py-3 px-6 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting ? 'Initializing Engine...' : 'Launch IKSHOVIA Platform'}
               </button>

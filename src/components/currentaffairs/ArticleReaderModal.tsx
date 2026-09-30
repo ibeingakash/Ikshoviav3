@@ -18,7 +18,8 @@ import {
   ExternalLink,
   HelpCircle,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ArrowRight
 } from 'lucide-react';
 import { CurrentAffairArticle } from '../../types/index.js';
 import { useLearner } from '../../context/LearnerContext.js';
@@ -37,10 +38,29 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
   onBookmark,
   isBookmarked = false,
 }) => {
-  const { askTutorWithContext } = useLearner();
+  const { askTutorWithContext, setActiveSection, setSelectedSubjectId, learnerModel } = useLearner();
   const [copied, setCopied] = useState(false);
 
   if (!article) return null;
+
+  // Resolve matching subject id and check if it is an identified weak area
+  const resolveSubjectId = (): { id: string; name: string } | null => {
+    const cat = (article.category || '').toLowerCase();
+    const rel = (article.relatedSubject || '').toLowerCase();
+    if (cat.includes('polity') || rel.includes('polity')) return { id: 'sub_polity', name: 'Indian Polity & Governance' };
+    if (cat.includes('economy') || rel.includes('economy')) return { id: 'sub_economy', name: 'Indian Economy' };
+    if (cat.includes('environment') || rel.includes('environment') || cat.includes('ecology')) return { id: 'sub_environment', name: 'Environment & Ecology' };
+    if (cat.includes('science') || rel.includes('sci') || cat.includes('tech')) return { id: 'sub_sci_tech', name: 'Science & Technology' };
+    if (cat.includes('history') || rel.includes('history')) return { id: 'sub_history', name: 'History & Culture' };
+    if (cat.includes('bihar') || rel.includes('bihar')) return { id: 'sub_bihar_special', name: 'Bihar Special (BPSC)' };
+    return null;
+  };
+
+  const matchedSubject = resolveSubjectId();
+  const subjectMastery = matchedSubject && learnerModel?.subjectMastery
+    ? Number(learnerModel.subjectMastery[matchedSubject.id] ?? 50)
+    : null;
+  const isWeakArea = subjectMastery !== null && subjectMastery < 65;
 
   const handleAskTutor = () => {
     askTutorWithContext(
@@ -186,6 +206,40 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
               {article.title}
             </h1>
           </div>
+
+          {/* Exam Intelligence Weak-Area Alert */}
+          {matchedSubject && isWeakArea && (
+            <div className="bg-gradient-to-r from-amber-900 via-stone-900 to-amber-950 text-white p-4 rounded-2xl border border-amber-600/40 shadow-sm space-y-2 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300">
+                    High-Yield Exam Intelligence Alert • Weak Area Intersection
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-amber-200 bg-amber-800/60 px-2 py-0.5 rounded-md border border-amber-500/40">
+                  {matchedSubject.name}: {subjectMastery}% Mastery
+                </span>
+              </div>
+              <p className="text-xs text-stone-200 leading-relaxed">
+                This Current Affairs development directly intersects with your identified priority weak subject: <strong className="text-amber-300">{matchedSubject.name}</strong>. Linking this news to static constitutional & syllabus provisions is high-yield for both Prelims elimination and multi-dimensional Mains scoring.
+              </p>
+              <div className="flex items-center justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSubjectId(matchedSubject.id);
+                    onClose();
+                    setActiveSection('exam-engine');
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold font-mono transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span>Practice {matchedSubject.name.split(' ')[0]} PYQs</span>
+                  <ArrowRight className="w-3 h-3 text-amber-200" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Why in News? */}
           <div className="bg-amber-50/70 border border-amber-200/80 p-4 rounded-2xl space-y-1.5">
@@ -376,7 +430,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
               </h3>
               <div className="space-y-2">
                 {article.editorialAnalysis.pyqLinkages.map((pyq, idx) => (
-                  <div key={idx} className="bg-white p-3.5 rounded-xl border border-[#EAE6DF] space-y-1">
+                  <div key={idx} className="bg-white p-3.5 rounded-xl border border-[#EAE6DF] space-y-2">
                     <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 font-mono">
                       <span>{pyq.exam} {pyq.year} • {pyq.paper}</span>
                       <span className="text-stone-500 font-normal">{pyq.topic}</span>
@@ -384,6 +438,54 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
                     <p className="text-xs text-stone-800 font-serif-editorial italic">
                       "{pyq.questionText}"
                     </p>
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        onClick={() => {
+                          if (article.relatedSubject) setSelectedSubjectId(article.relatedSubject);
+                          onClose();
+                          setActiveSection('exam-engine');
+                        }}
+                        className="text-[11px] font-bold text-amber-800 hover:text-amber-950 font-mono flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Practice in Exam Engine</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Connected Mains Questions */}
+          {article.mainsQuestions && article.mainsQuestions.length > 0 && (
+            <div className="bg-[#FAF8F5] border border-[#EAE6DF] p-4 rounded-2xl space-y-3">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-stone-900 flex items-center gap-1.5 font-mono">
+                <Layers className="w-4 h-4 text-emerald-700" />
+                <span>Probable Mains Analytical Questions</span>
+              </h3>
+              <div className="space-y-2">
+                {article.mainsQuestions.map((qText, idx) => (
+                  <div key={idx} className="bg-white p-3.5 rounded-xl border border-[#EAE6DF] space-y-2">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase font-mono">
+                      Question {idx + 1} • Mains 15 Marks (250 Words)
+                    </span>
+                    <p className="text-xs text-stone-800 font-serif-editorial italic">
+                      "{qText}"
+                    </p>
+                    <div className="flex items-center justify-end pt-1">
+                      <button
+                        onClick={() => {
+                          if (article.relatedSubject) setSelectedSubjectId(article.relatedSubject);
+                          onClose();
+                          setActiveSection('exam-engine');
+                        }}
+                        className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 font-mono flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Write Answer in Mains Engine</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

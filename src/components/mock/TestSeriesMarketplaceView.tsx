@@ -31,7 +31,7 @@ import { useAuth } from '../../context/AuthContext.js';
 import { useLearner } from '../../context/LearnerContext.js';
 
 interface TestSeriesMarketplaceViewProps {
-  onStartMockTest?: (mockTestId: string) => void;
+  onStartMockTest?: (mockTestId: string, seriesId?: string, forceNew?: boolean) => void;
   initialSeriesId?: string;
 }
 
@@ -229,12 +229,21 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
   };
 
   // Proceed to Checkout
-  const handleProceedToCheckout = async () => {
-    const targetSeries = detailSeries || seriesList.find(s => s.id === selectedSeriesId);
+  const handleProceedToCheckout = async (specificSeries?: TestSeries) => {
+    const targetSeries = specificSeries || detailSeries || seriesList.find(s => s.id === selectedSeriesId);
     if (!targetSeries) return;
 
+    if (isProcessingCheckout) return; // Prevent duplicate order creation
+
+    if (!user) {
+      setCheckoutError('Please sign in to complete your enrollment in this Test Series.');
+      setShowCheckoutModal(true);
+      return;
+    }
+
     if (!gatewayConfig?.isConfigured) {
-      setCheckoutError('Payment gateway is not currently configured. Please contact support.');
+      setCheckoutError('PAYMENT CONFIGURATION REQUIRED: Server payment gateway credentials (RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET) are not configured. Transactions are safely disabled.');
+      setShowCheckoutModal(true);
       return;
     }
 
@@ -248,8 +257,19 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
         throw new Error('Unable to connect to Razorpay secure checkout service.');
       }
 
-      // 2. Create Order on backend (Server calculates canonical price with verified coupon discount)
+      // 2. Create Order on backend (Server authoritatively calculates canonical price with verified coupon discount)
       const orderData = await api.createTestSeriesPaymentOrder(targetSeries.id, appliedCoupon?.code);
+
+      // Handle 100% discount / free entitlement directly
+      if (orderData.amount === 0 || (orderData as any).zeroAmount) {
+        setCheckoutSuccess(true);
+        setIsProcessingCheckout(false);
+        if (detailSeries) {
+          await loadSeriesDetail(detailSeries.id);
+        }
+        loadCatalog();
+        return;
+      }
 
       // 3. Configure Razorpay checkout options
       const options = {
@@ -264,7 +284,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
           email: user?.email || '',
         },
         theme: {
-          color: '#35156B',
+          color: '#1C1917',
         },
         modal: {
           ondismiss: () => {
@@ -297,6 +317,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
           } catch (err: any) {
             setCheckoutError(err.message || 'Payment verification failed. Please contact support.');
             setIsProcessingCheckout(false);
+            setShowCheckoutModal(true);
           }
         },
       };
@@ -305,18 +326,20 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
       rzp.on('payment.failed', (resp: any) => {
         setCheckoutError(resp.error?.description || 'Payment transaction failed. Please try again.');
         setIsProcessingCheckout(false);
+        setShowCheckoutModal(true);
       });
       rzp.open();
     } catch (err: any) {
       setCheckoutError(err.message || 'Failed to initialize payment.');
       setIsProcessingCheckout(false);
+      setShowCheckoutModal(true);
     }
   };
 
   // Launch mock test
-  const handleLaunchTest = (mockTestId: string) => {
+  const handleLaunchTest = (mockTestId: string, forceNew = false) => {
     if (onStartMockTest) {
-      onStartMockTest(mockTestId);
+      onStartMockTest(mockTestId, detailSeries?.id, forceNew);
     } else {
       setActiveSection('mock-tests');
     }
@@ -349,7 +372,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
     }
 
     const isEnrolled = detailSeries.isEnrolled;
-    const canAccessAll = isEnrolled;
+    const canAccessAll = isEnrolled || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
     return (
       <div className="space-y-6 pb-20">
@@ -453,11 +476,18 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
                     )}
                   </div>
                   <button
-                    onClick={() => handleOpenCheckout(detailSeries)}
-                    className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-lg transition-colors shadow-md flex items-center justify-center gap-1.5"
+                    onClick={() => handleProceedToCheckout(detailSeries)}
+                    disabled={isProcessingCheckout}
+                    className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs rounded-lg transition-colors shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-98"
                   >
                     <CreditCard className="w-3.5 h-3.5" />
-                    Enroll Now • ₹{detailSeries.salePrice}
+                    {isProcessingCheckout ? 'Creating Order...' : `Enroll Now • ₹${detailSeries.salePrice}`}
+                  </button>
+                  <button
+                    onClick={() => handleOpenCheckout(detailSeries)}
+                    className="text-[11px] text-stone-400 hover:text-amber-300 underline underline-offset-2 transition-colors"
+                  >
+                    Have a coupon code?
                   </button>
                   <p className="text-[11px] text-stone-400">
                     Or take the free preview tests below first.
@@ -535,7 +565,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>Score: <strong>{attempt.score}</strong></span>
                             <span>•</span>
-                            <span>Accuracy: <strong>{attempt.percentage}%</strong></span>
+                            <span>Accuracy: <strong>{attempt.accuracy}%</strong></span>
                           </div>
                         )}
                       </div>
@@ -545,7 +575,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
                     <div className="self-end sm:self-center shrink-0">
                       {canTake ? (
                         <button
-                          onClick={() => handleLaunchTest(item.mockTestId)}
+                          onClick={() => handleLaunchTest(item.mockTestId, !!attempt)}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
                         >
                           {attempt ? (
@@ -875,7 +905,7 @@ export const TestSeriesMarketplaceView: React.FC<TestSeriesMarketplaceViewProps>
 
                 <button
                   type="button"
-                  onClick={handleProceedToCheckout}
+                  onClick={() => handleProceedToCheckout()}
                   disabled={isProcessingCheckout}
                   className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >

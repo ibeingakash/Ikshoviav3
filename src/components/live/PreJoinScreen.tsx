@@ -204,11 +204,11 @@ export const PreJoinScreen: React.FC<PreJoinScreenProps> = ({
 
       {/* Main Content Area */}
       <div className="max-w-6xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto py-6">
-
+        
         {/* Left Column: Interactive Video Preview (7 cols) */}
         <div className="lg:col-span-7 flex flex-col">
           <div className="relative w-full aspect-video bg-[#0D1220] border-2 border-stone-800/90 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center group">
-
+            
             {/* Real Video Feed */}
             <video
               ref={videoRef}
@@ -222,7 +222,7 @@ export const PreJoinScreen: React.FC<PreJoinScreenProps> = ({
             {videoMuted && (
               <div className="flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
                 <div className="w-24 h-24 rounded-full bg-linear-to-br from-amber-600/30 to-stone-800 border-2 border-amber-500/30 flex items-center justify-center text-amber-200 text-3xl font-bold shadow-xl mb-3">
-                  {(displayName || 'U').substring(0, 2).toUpperCase()}
+                  {String(displayName || user?.name || 'Scholar').substring(0, 2).toUpperCase()}
                 </div>
                 <div className="text-stone-300 text-sm font-semibold">{displayName}</div>
                 <div className="text-stone-500 text-xs mt-0.5">Camera is turned off</div>
@@ -337,7 +337,7 @@ export const PreJoinScreen: React.FC<PreJoinScreenProps> = ({
         {/* Right Column: Class Info & Join CTA (5 cols) */}
         <div className="lg:col-span-5 flex flex-col justify-between space-y-6">
           <div className="bg-[#0F1424] border border-stone-800 rounded-2xl p-6 shadow-xl space-y-5">
-
+            
             {/* Subject & Exam Badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs">
@@ -364,10 +364,10 @@ export const PreJoinScreen: React.FC<PreJoinScreenProps> = ({
             <div className="p-3.5 bg-stone-900/80 rounded-xl border border-stone-800/80 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-linear-to-br from-amber-600/40 to-stone-800 border border-amber-500/30 flex items-center justify-center font-bold text-amber-300">
-                  {liveClass.teacherName.substring(0, 2).toUpperCase()}
+                  {String(liveClass.teacherName || 'Faculty').substring(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-stone-200">{liveClass.teacherName}</div>
+                  <div className="text-xs font-bold text-stone-200">{liveClass.teacherName || 'Faculty Mentor'}</div>
                   <div className="text-[11px] text-amber-400/90 font-medium">Faculty Mentor</div>
                 </div>
               </div>

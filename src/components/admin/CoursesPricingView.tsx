@@ -218,7 +218,7 @@ export const CoursesPricingView: React.FC = () => {
               <Package className="w-5 h-5 text-amber-800" />
             </div>
             <div>
-              <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
+              <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
                 Courses, Products & Pricing
               </h1>
               <p className="text-xs text-stone-500 font-medium">
@@ -238,7 +238,7 @@ export const CoursesPricingView: React.FC = () => {
           </button>
           <button
             onClick={openNewCourseModal}
-            className="px-4 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 cursor-pointer transition-all"
+            className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 flex items-center gap-2 cursor-pointer transition-all"
           >
             <Plus className="w-4 h-4 text-amber-300" />
             <span>Add Course / Product</span>
@@ -275,7 +275,7 @@ export const CoursesPricingView: React.FC = () => {
           onClick={() => setActiveTab('COURSES')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === 'COURSES'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white hover:bg-stone-50 text-stone-600 border border-stone-200/90'
           }`}
         >
@@ -286,7 +286,7 @@ export const CoursesPricingView: React.FC = () => {
           onClick={() => setActiveTab('PRICING')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === 'PRICING'
-              ? 'bg-[#35156B] text-amber-300 shadow-2xs'
+              ? 'bg-[#1C1917] text-amber-300 shadow-2xs'
               : 'bg-white hover:bg-stone-50 text-stone-600 border border-stone-200/90'
           }`}
         >
@@ -351,7 +351,7 @@ export const CoursesPricingView: React.FC = () => {
                               ₹{course.currentPrice.basePrice}
                             </span>
                           )}
-                          <span className="text-sm font-bold text-[#111426] font-mono">
+                          <span className="text-sm font-bold text-stone-900 font-mono">
                             ₹{hasSale ? course.currentPrice.salePrice : course.currentPrice.basePrice}
                           </span>
                         </div>
@@ -667,7 +667,7 @@ export const CoursesPricingView: React.FC = () => {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
-                          className="mt-0.5 accent-[#35156B]"
+                          className="mt-0.5 accent-amber-800"
                         />
                         <div>
                           <div className="flex items-center gap-1.5 font-bold text-xs">
@@ -694,7 +694,7 @@ export const CoursesPricingView: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : editingCourseId ? 'Save Changes' : 'Create Course'}
               </button>
@@ -767,7 +767,7 @@ export const CoursesPricingView: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSavingPrice}
-                className="px-5 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold rounded-xl shadow-2xs border border-amber-500/30 cursor-pointer disabled:opacity-50"
               >
                 {isSavingPrice ? 'Saving Price...' : 'Update Price'}
               </button>

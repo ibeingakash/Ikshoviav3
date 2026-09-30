@@ -55,7 +55,7 @@ export const CreateLiveClassModal: React.FC<CreateLiveClassModalProps> = ({
   const [description, setDescription] = useState('');
   const [exam, setExam] = useState<'UPSC' | 'BPSC' | 'BOTH'>('UPSC');
   const [subject, setSubject] = useState(UPSC_BPSC_SUBJECTS[2]);
-
+  
   // Default scheduled time: next hour
   const getNextHourIso = () => {
     const d = new Date();
@@ -123,7 +123,7 @@ export const CreateLiveClassModal: React.FC<CreateLiveClassModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="relative w-full max-w-2xl bg-[#0F1424] border border-stone-800 text-stone-100 rounded-2xl shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
-
+        
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-stone-800 bg-[#141A2E]">
           <div className="flex items-center gap-3">

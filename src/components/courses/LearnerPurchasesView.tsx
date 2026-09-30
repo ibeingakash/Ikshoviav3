@@ -72,8 +72,8 @@ export const LearnerPurchasesView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <Receipt className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <Receipt className="w-6 h-6 text-amber-700" />
             <span>My Purchases & Receipts</span>
           </h1>
           <p className="text-xs text-stone-500 mt-0.5 font-medium">
@@ -83,9 +83,9 @@ export const LearnerPurchasesView: React.FC = () => {
 
         <button
           onClick={() => setActiveSection('courses-catalog')}
-          className="px-4 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs self-start transition-colors"
+          className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-2xs self-start transition-colors"
         >
-          <Tag className="w-3.5 h-3.5" />
+          <Tag className="w-3.5 h-3.5 text-amber-400" />
           <span>Explore Course Catalog</span>
         </button>
       </div>
@@ -93,13 +93,13 @@ export const LearnerPurchasesView: React.FC = () => {
       {/* Purchases List */}
       {loading ? (
         <div className="p-12 text-center text-stone-400 bg-white border border-stone-200 rounded-2xl">
-          <Clock className="w-6 h-6 animate-spin mx-auto mb-2 text-[#35156B]" />
+          <Clock className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-700" />
           <p className="text-xs">Loading your enrollment history...</p>
         </div>
       ) : purchases.length === 0 ? (
         <div className="p-12 text-center text-stone-500 bg-white border border-stone-200 rounded-2xl space-y-3">
           <div className="w-12 h-12 bg-amber-50 text-amber-800 rounded-full flex items-center justify-center mx-auto">
-            <Receipt className="w-6 h-6" />
+            <Receipt className="w-6 h-6 text-amber-700" />
           </div>
           <div>
             <h3 className="text-base font-bold text-stone-900 font-serif-editorial">No Active Purchases Yet</h3>
@@ -110,10 +110,10 @@ export const LearnerPurchasesView: React.FC = () => {
           </div>
           <button
             onClick={() => setActiveSection('courses-catalog')}
-            className="mt-2 px-5 py-2.5 bg-[#35156B] hover:bg-[#250d4d] text-amber-300 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-2 transition-colors"
+            className="mt-2 px-5 py-2.5 bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-2 transition-colors"
           >
             <span>Browse Available Courses</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
           </button>
         </div>
       ) : (
@@ -216,11 +216,11 @@ export const LearnerPurchasesView: React.FC = () => {
                     {isAccessActive && (
                       <button
                         onClick={() => setActiveSection('pyq-practice')}
-                        className="px-4 py-2 bg-[#0C1024] hover:bg-[#1A1F36] text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                        className="px-4 py-2 bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
                       >
                         <BookOpen className="w-3.5 h-3.5" />
                         <span>Start Learning</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
                       </button>
                     )}
                   </div>
@@ -238,7 +238,7 @@ export const LearnerPurchasesView: React.FC = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[#35156B]" />
+                <Receipt className="w-5 h-5 text-amber-700" />
                 <h2 className="text-lg font-serif-editorial font-bold text-stone-900">
                   Payment Receipt
                 </h2>
@@ -255,7 +255,7 @@ export const LearnerPurchasesView: React.FC = () => {
             <div className="border border-stone-200 rounded-2xl p-5 bg-[#FAF8F5] space-y-4 text-xs font-sans-editorial">
               <div className="flex justify-between items-start border-b border-stone-200/80 pb-3">
                 <div>
-                  <h3 className="font-serif-editorial font-bold text-lg text-[#111426]">IKSHOVIA</h3>
+                  <h3 className="font-serif-editorial font-bold text-lg text-stone-900">IKSHOVIA</h3>
                   <p className="text-[10px] text-stone-500 font-mono">UPSC & BPSC Civil Services Mastery</p>
                 </div>
                 <div className="text-right font-mono text-[11px] text-stone-600">

@@ -40,15 +40,15 @@ export const KnowledgeGraphView: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Mastered':
-        return 'bg-[#35156B] text-amber-300 border-amber-500/40';
+        return 'bg-amber-900/90 text-amber-100 border-amber-500/40';
       case 'Strong':
-        return 'bg-[#211646] text-purple-200 border-purple-500/30';
+        return 'bg-stone-800 text-amber-200 border-amber-500/30';
       case 'Developing':
         return 'bg-amber-950/70 text-amber-200 border-amber-500/40';
       case 'Weak':
         return 'bg-rose-950/70 text-rose-200 border-rose-500/30';
       default:
-        return 'bg-[#121027] text-stone-400 border-stone-800';
+        return 'bg-[#262320] text-stone-400 border-stone-800';
     }
   };
 
@@ -57,8 +57,8 @@ export const KnowledgeGraphView: React.FC = () => {
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
         <div>
-          <h1 className="text-2xl font-serif-editorial font-bold text-[#111426] flex items-center gap-2">
-            <GitGraph className="w-6 h-6 text-[#35156B]" />
+          <h1 className="text-2xl font-serif-editorial font-bold text-stone-900 flex items-center gap-2">
+            <GitGraph className="w-6 h-6 text-amber-800" />
             <span>Interactive Concept Knowledge Graph</span>
           </h1>
           <p className="text-stone-600 text-xs mt-1">
@@ -67,7 +67,7 @@ export const KnowledgeGraphView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 text-xs flex-wrap">
-          <span className="flex items-center gap-1 text-amber-700 font-bold"><span className="w-2 h-2 rounded-full bg-[#35156B] shrink-0" /> Mastered</span>
+          <span className="flex items-center gap-1 text-amber-700 font-bold"><span className="w-2 h-2 rounded-full bg-amber-800 shrink-0" /> Mastered</span>
           <span className="flex items-center gap-1 text-amber-800 font-bold"><span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" /> Developing</span>
           <span className="flex items-center gap-1 text-rose-800 font-bold"><span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" /> Weak</span>
         </div>
@@ -75,7 +75,7 @@ export const KnowledgeGraphView: React.FC = () => {
 
       {loading && (
         <div className="py-12 text-center text-stone-500 text-xs flex items-center justify-center gap-2">
-          <Sparkles className="w-4 h-4 animate-spin text-[#35156B]" />
+          <Sparkles className="w-4 h-4 animate-spin text-amber-800" />
           Rendering knowledge network...
         </div>
       )}
@@ -83,7 +83,7 @@ export const KnowledgeGraphView: React.FC = () => {
       {!loading && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Graph Nodes Grid (8 cols) */}
-          <div className="lg:col-span-8 bg-[#0C1024] border border-amber-500/30 rounded-2xl p-6 min-h-[450px] relative overflow-hidden shadow-2xl text-white">
+          <div className="lg:col-span-8 bg-[#1C1917] border border-amber-500/30 rounded-2xl p-6 min-h-[450px] relative overflow-hidden shadow-2xl text-white">
             <div className="text-xs font-bold text-amber-400/90 uppercase tracking-wider mb-4 flex items-center justify-between font-mono">
               <span className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
@@ -101,7 +101,7 @@ export const KnowledgeGraphView: React.FC = () => {
                     onClick={() => setSelectedNode(n)}
                     className={`p-4 rounded-xl border cursor-pointer transition-all ${getStatusColor(
                       n.status
-                    )} ${isSelected ? 'ring-2 ring-amber-400 bg-[#35156B] text-amber-300 shadow-xl scale-[1.02]' : 'hover:scale-[1.01]'}`}
+                    )} ${isSelected ? 'ring-2 ring-amber-400 bg-amber-900/90 text-amber-100 shadow-xl scale-[1.02]' : 'hover:scale-[1.01]'}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">
@@ -114,7 +114,7 @@ export const KnowledgeGraphView: React.FC = () => {
 
                     <div className="mt-3 flex items-center justify-between text-[10px]">
                       <span className="font-mono">{n.status}</span>
-                      <span className="bg-[#0C1024]/80 px-1.5 py-0.5 rounded border border-amber-500/20">
+                      <span className="bg-[#1C1917]/80 px-1.5 py-0.5 rounded border border-amber-500/20">
                         {n.importance}
                       </span>
                     </div>
@@ -125,7 +125,7 @@ export const KnowledgeGraphView: React.FC = () => {
           </div>
 
           {/* Node Inspector Panel (4 cols) */}
-          <div className="lg:col-span-4 bg-[#0C1024] border border-amber-500/30 rounded-2xl p-6 space-y-5 shadow-xl text-white">
+          <div className="lg:col-span-4 bg-[#1C1917] border border-amber-500/30 rounded-2xl p-6 space-y-5 shadow-xl text-white">
             {selectedNode ? (
               <>
                 <div className="border-b border-stone-800 pb-3 space-y-1">
@@ -137,7 +137,7 @@ export const KnowledgeGraphView: React.FC = () => {
                 </div>
 
                 <div className="space-y-3 text-xs">
-                  <div className="bg-[#121027] p-3 rounded-xl border border-stone-800 space-y-2">
+                  <div className="bg-[#262320] p-3 rounded-xl border border-stone-800 space-y-2">
                     <div className="flex justify-between font-semibold">
                       <span className="text-stone-400">Mastery Level</span>
                       <span className="text-amber-300 font-mono font-bold">
@@ -166,7 +166,7 @@ export const KnowledgeGraphView: React.FC = () => {
 
                 <button
                   onClick={() => navigateToConcept(selectedNode.id)}
-                  className="w-full py-2.5 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer border border-amber-500/30"
+                  className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer border border-amber-500/30"
                 >
                   <span>Study Concept Details</span>
                   <ArrowRight className="w-4 h-4" />

@@ -215,8 +215,8 @@ export class LearnerRepository {
       incorrectCount: row.incorrect_count,
       timeSpentSeconds: row.time_spent_seconds,
       lastStudiedAt: row.last_studied_at ? new Date(row.last_studied_at).toISOString() : new Date().toISOString(),
-      lastReviewedAt: row.last_reviewed_at ? new Date(row.last_reviewed_at).toISOString() : undefined,
-      nextReviewDate: row.next_review_date ? new Date(row.next_review_date).toISOString() : undefined,
+      lastReviewedAt: row.last_reviewed_at ? new Date(row.last_reviewed_at).toISOString() : null,
+      nextReviewDate: row.next_review_date ? new Date(row.next_review_date).toISOString() : null,
       confusionPartners: typeof row.confusion_partners === 'string' ? JSON.parse(row.confusion_partners) : (row.confusion_partners || []),
     };
   }

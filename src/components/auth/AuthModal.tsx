@@ -59,14 +59,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FAF7F0]/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-      <div className="w-full max-w-md bg-[#0C1024] border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6 text-white">
+    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+      <div className="w-full max-w-md bg-[#1C1917] border border-amber-500/25 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6 text-white">
         
         {/* Close Button */}
         {onClose && (
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-xl bg-[#17132B] hover:bg-[#35156B] text-stone-300 hover:text-white transition-colors cursor-pointer"
+            className="absolute top-4 right-4 p-2 rounded-xl bg-[#292524] hover:bg-stone-800 text-stone-300 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -90,12 +90,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="flex items-center gap-1 bg-[#121027] border border-slate-800 p-1 rounded-xl text-xs font-bold">
+        <div className="flex items-center gap-1 bg-[#141210] border border-stone-800 p-1 rounded-xl text-xs font-bold">
           <button
             type="button"
             onClick={() => { setMode('login'); setError(''); setMessage(''); }}
             className={`flex-1 py-2 rounded-lg transition-all cursor-pointer ${
-              mode === 'login' ? 'bg-[#35156B] text-amber-300 shadow-xs border border-amber-500/30' : 'text-stone-400 hover:text-white'
+              mode === 'login' ? 'bg-amber-700 text-amber-50 shadow-xs border border-amber-500/30' : 'text-stone-400 hover:text-white'
             }`}
           >
             Log In
@@ -104,7 +104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             type="button"
             onClick={() => { setMode('register'); setError(''); setMessage(''); }}
             className={`flex-1 py-2 rounded-lg transition-all cursor-pointer ${
-              mode === 'register' ? 'bg-[#35156B] text-amber-300 shadow-xs border border-amber-500/30' : 'text-stone-400 hover:text-white'
+              mode === 'register' ? 'bg-amber-700 text-amber-50 shadow-xs border border-amber-500/30' : 'text-stone-400 hover:text-white'
             }`}
           >
             Register
@@ -137,7 +137,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={name}
                   onChange={e => setName(e.target.value)}
                   placeholder="e.g. Akash Kumar"
-                  className="w-full bg-[#121027] border border-stone-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-amber-400"
+                  className="w-full bg-[#292524] border border-stone-700 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-amber-400"
                 />
               </div>
             </div>
@@ -153,7 +153,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="student@ikshovia.com"
-                className="w-full bg-[#121027] border border-stone-800 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-amber-400"
+                className="w-full bg-[#292524] border border-stone-700 rounded-xl pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-amber-400"
               />
             </div>
           </div>
@@ -169,7 +169,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-[#121027] border border-stone-800 rounded-xl pl-9 pr-10 py-2.5 text-xs text-white placeholder-stone-500 focus:outline-none focus:border-amber-400"
+                  className="w-full bg-[#292524] border border-stone-700 rounded-xl pl-9 pr-10 py-2.5 text-xs text-white placeholder-stone-400 focus:outline-none focus:border-amber-400"
                 />
                 <button
                   type="button"
@@ -185,11 +185,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer border border-amber-500/30"
+            className="w-full py-3 bg-amber-700 hover:bg-amber-800 text-amber-50 font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer border border-amber-500/30"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
                 <span>Authenticating...</span>
               </>
             ) : (
@@ -206,7 +206,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </form>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between text-xs text-stone-400 pt-2 border-t border-slate-800">
+        <div className="flex items-center justify-between text-xs text-stone-400 pt-2 border-t border-stone-800">
           {mode === 'login' && (
             <button
               type="button"

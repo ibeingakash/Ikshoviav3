@@ -112,16 +112,16 @@ export const TopicClusterExplorer: React.FC = () => {
         <button
           onClick={handleAskTutorSynthesis}
           disabled={!clusterDetails}
-          className="text-xs font-bold text-white bg-[#35156B] hover:bg-[#4B1F78] px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
+          className="text-xs font-bold text-amber-300 bg-[#1C1917] hover:bg-[#292524] border border-amber-500/20 px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
         >
-          <Sparkles className="w-4 h-4 text-amber-300" />
+          <Sparkles className="w-4 h-4 text-amber-400" />
           <span>Synthesize with AI Tutor</span>
         </button>
       </div>
 
       {loading && (
         <div className="py-16 text-center text-stone-500 text-xs flex flex-col items-center justify-center gap-2 font-medium">
-          <Sparkles className="w-6 h-6 animate-spin text-[#35156B]" />
+          <Sparkles className="w-6 h-6 animate-spin text-amber-700" />
           <span>Aggregating multi-source news clusters...</span>
         </div>
       )}
@@ -150,7 +150,7 @@ export const TopicClusterExplorer: React.FC = () => {
                   onClick={() => setSelectedClusterId(cl.id)}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer text-left space-y-2 ${
                     selectedClusterId === cl.id
-                      ? 'bg-white border-[#35156B] shadow-xs ring-1 ring-[#35156B]'
+                      ? 'bg-white border-amber-600 shadow-xs ring-1 ring-amber-600'
                       : 'bg-white border-stone-200 hover:border-stone-300'
                   }`}
                 >
@@ -169,7 +169,7 @@ export const TopicClusterExplorer: React.FC = () => {
 
                   <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1 border-t border-stone-100">
                     <span>{cl.editorialsCount} Editorials</span>
-                    <span className="flex items-center gap-0.5 text-[#35156B] font-bold">
+                    <span className="flex items-center gap-0.5 text-amber-800 font-bold">
                       <span>Explore</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </span>
@@ -183,7 +183,7 @@ export const TopicClusterExplorer: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
             {loadingDetails && (
               <div className="bg-white border border-stone-200 rounded-2xl p-12 text-center text-xs text-stone-500 flex flex-col items-center justify-center gap-2">
-                <RefreshCw className="w-5 h-5 animate-spin text-[#35156B]" />
+                <RefreshCw className="w-5 h-5 animate-spin text-amber-700" />
                 <span>Loading multi-perspective debate breakdown...</span>
               </div>
             )}
@@ -200,7 +200,7 @@ export const TopicClusterExplorer: React.FC = () => {
                       Aggregated from {clusterDetails.articles?.length || 0} primary & secondary sources
                     </span>
                   </div>
-                  <h2 className="text-xl font-serif font-bold text-[#111426]">
+                  <h2 className="text-xl font-serif font-bold text-stone-900">
                     {clusterDetails.title}
                   </h2>
                 </div>
@@ -209,7 +209,7 @@ export const TopicClusterExplorer: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Scale className="w-4 h-4 text-[#35156B]" />
+                      <Scale className="w-4 h-4 text-amber-700" />
                       <span>Multi-Source Editorial Perspectives</span>
                     </span>
                   </div>
@@ -318,7 +318,7 @@ export const TopicClusterExplorer: React.FC = () => {
                   <div className="bg-stone-50 border border-stone-200 p-4 sm:p-5 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <GraduationCap className="w-4 h-4 text-[#35156B]" />
+                        <GraduationCap className="w-4 h-4 text-amber-700" />
                         <span>Aggregated PYQ Linkages for this Topic</span>
                       </span>
                     </div>
@@ -326,7 +326,7 @@ export const TopicClusterExplorer: React.FC = () => {
                     <div className="space-y-2">
                       {clusterDetails.combinedPyqs.map((pyq: any, i: number) => (
                         <div key={i} className="bg-white p-3 rounded-xl border border-stone-200 text-xs space-y-1">
-                          <div className="flex items-center justify-between text-[11px] font-bold text-[#35156B]">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-amber-800">
                             <span>{pyq.exam} ({pyq.year}) — {pyq.paper || pyq.topic}</span>
                           </div>
                           <p className="text-stone-800 font-medium">{pyq.questionText}</p>

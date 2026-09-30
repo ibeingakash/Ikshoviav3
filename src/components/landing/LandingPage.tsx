@@ -58,14 +58,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#FAF7F0] text-[#111426] flex flex-col font-sans-editorial selection:bg-[#35156B] selection:text-amber-300">
-
+    <div className="min-h-screen bg-[#FAF7F0] text-stone-900 flex flex-col font-sans-editorial selection:bg-amber-900 selection:text-amber-100">
+      
       {/* ========================================== */}
       {/* 1. BRAND NAVBAR                            */}
       {/* ========================================== */}
       <header className="sticky top-0 z-50 bg-[#FAF7F0]/95 backdrop-blur-md border-b border-stone-200/80 px-4 sm:px-8 py-3.5 transition-colors">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-
+          
           {/* Brand Logo & Preferred Symbol */}
           <BrandLogo
             variant="login"
@@ -75,13 +75,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
           {/* Navigation Links */}
           <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-stone-700">
-            <a href="#intelligence" className="hover:text-[#35156B] transition-colors">Learning Intelligence</a>
-            <a href="#how-it-works" className="hover:text-[#35156B] transition-colors">How It Works</a>
-            <a href="#platform" className="hover:text-[#35156B] transition-colors">Platform</a>
-            <a href="#features" className="hover:text-[#35156B] transition-colors">Features</a>
-            <a href="#ai-system" className="hover:text-[#35156B] transition-colors">AI System</a>
-            <a href="#pricing" className="hover:text-[#35156B] transition-colors">Pricing</a>
-            <a href="/download" onClick={(e) => { e.preventDefault(); window.history.pushState(null, '', '/download'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="text-[#35156B] hover:text-[#4B1F78] transition-colors flex items-center gap-1 font-bold">
+            <a href="#intelligence" className="hover:text-amber-800 transition-colors">Learning Intelligence</a>
+            <a href="#how-it-works" className="hover:text-amber-800 transition-colors">How It Works</a>
+            <a href="#platform" className="hover:text-amber-800 transition-colors">Platform</a>
+            <a href="#features" className="hover:text-amber-800 transition-colors">Features</a>
+            <a href="#ai-system" className="hover:text-amber-800 transition-colors">AI System</a>
+            <a href="#pricing" className="hover:text-amber-800 transition-colors">Pricing</a>
+            <a href="/download" onClick={(e) => { e.preventDefault(); window.history.pushState(null, '', '/download'); window.dispatchEvent(new PopStateEvent('popstate')); }} className="text-amber-800 hover:text-amber-900 transition-colors flex items-center gap-1 font-bold">
               <Smartphone className="w-3.5 h-3.5 text-amber-600" />
               <span>Android App</span>
             </a>
@@ -98,13 +98,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             </button>
             <button
               onClick={() => onOpenAuth('login')}
-              className="text-xs font-bold text-stone-800 hover:text-[#35156B] px-4 py-2 rounded-xl transition-all cursor-pointer"
+              className="text-xs font-bold text-stone-800 hover:text-amber-800 px-4 py-2 rounded-xl transition-all cursor-pointer"
             >
               Log In
             </button>
             <button
               onClick={() => onOpenAuth('register')}
-              className="text-xs font-bold text-white px-5 py-2.5 rounded-full bg-[#0C1024] hover:bg-[#121027] border border-amber-500/30 shadow-xs transition-all flex items-center gap-2 cursor-pointer hover:border-amber-400"
+              className="text-xs font-bold text-white px-5 py-2.5 rounded-full bg-[#1C1917] hover:bg-[#292524] border border-amber-500/30 shadow-xs transition-all flex items-center gap-2 cursor-pointer hover:border-amber-400"
             >
               <span>Get Started</span>
               <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
@@ -148,7 +148,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                   setMobileMenuOpen(false);
                   onOpenAuth('register');
                 }}
-                className="flex-1 py-2 text-xs font-bold bg-[#0C1024] text-amber-400 rounded-xl text-center flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 text-xs font-bold bg-[#1C1917] text-amber-400 rounded-xl text-center flex items-center justify-center gap-1.5"
               >
                 <span>Get Started</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -162,18 +162,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* 2. HERO SECTION & 3D FLOATING DASHBOARD    */}
       {/* ========================================== */}
       <section className="relative px-4 sm:px-8 pt-8 sm:pt-12 pb-16 max-w-7xl mx-auto w-full">
-
+        
         {/* Soft Ambient Radial Lighting */}
-        <div className="absolute top-1/4 right-10 w-96 h-96 bg-[#35156B]/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-1/4 right-10 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-10 left-10 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center relative z-10">
-
+          
           {/* Left Hero Column: Headline & Messaging */}
           <div className="lg:col-span-5 space-y-6 text-left">
-
+            
             {/* AI Pill Badge */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 border border-purple-200/80 text-[#35156B]">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-900">
               <IKBrandMark size="sm" />
               <span className="text-[10px] font-mono font-bold tracking-wider uppercase">
                 AI-POWERED LEARNING PLATFORM
@@ -182,10 +182,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
             {/* HERO HEADLINE */}
             <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl lg:text-[50px] font-serif-editorial font-bold text-[#111426] tracking-tight leading-[1.1]">
+              <h1 className="text-3xl sm:text-4xl lg:text-[50px] font-serif-editorial font-bold text-stone-900 tracking-tight leading-[1.1]">
                 Understand Better. <br />
                 Learn Smarter. <br />
-                <span className="text-[#35156B] italic">
+                <span className="text-amber-800 italic">
                   Achieve Greater.
                 </span>
               </h1>
@@ -200,7 +200,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button
                 onClick={() => onOpenAuth('register')}
-                className="px-6 py-3.5 rounded-full bg-[#0C1024] hover:bg-[#121027] text-white font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer border border-amber-500/30 hover:border-amber-400"
+                className="px-6 py-3.5 rounded-full bg-[#1C1917] hover:bg-[#292524] text-white font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer border border-amber-500/30 hover:border-amber-400"
               >
                 <span>Start Learning Free</span>
                 <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
@@ -219,8 +219,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
             {/* Platform Trust & Capabilities Strip */}
             <div className="pt-3 border-t border-stone-200/80 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-purple-50 border border-purple-200 text-[#35156B]">
-                <Brain className="w-4 h-4 text-[#35156B]" />
+              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <Brain className="w-4 h-4 text-amber-800" />
               </div>
               <div className="text-[11px] text-stone-600">
                 <div className="font-bold text-stone-900">Personalized Learning Intelligence</div>
@@ -289,9 +289,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       {/* 4. 5 INTELLIGENCE PILLARS (DARK PANEL)     */}
       {/* ========================================== */}
-      <section className="py-12 px-4 sm:px-8 bg-[#0C1024] text-white border-b border-amber-500/20">
+      <section className="py-12 px-4 sm:px-8 bg-[#1C1917] text-white border-b border-amber-500/20">
         <div className="max-w-7xl mx-auto space-y-8">
-
+          
           <div className="text-center space-y-2">
             <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-400">
               BUILT FOR DEEP LEARNING
@@ -302,8 +302,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-
-            <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
+            
+            <div className="p-4 rounded-xl bg-[#262320] border border-amber-500/20 space-y-2">
               <Compass className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Learning Intelligence</div>
               <p className="text-xs text-stone-300 leading-relaxed">
@@ -311,7 +311,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
+            <div className="p-4 rounded-xl bg-[#262320] border border-amber-500/20 space-y-2">
               <Target className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Adaptive</div>
               <p className="text-xs text-stone-300 leading-relaxed">
@@ -319,7 +319,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
+            <div className="p-4 rounded-xl bg-[#262320] border border-amber-500/20 space-y-2">
               <Users className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Personalized</div>
               <p className="text-xs text-stone-300 leading-relaxed">
@@ -327,7 +327,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
+            <div className="p-4 rounded-xl bg-[#262320] border border-amber-500/20 space-y-2">
               <BarChart3 className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Insightful</div>
               <p className="text-xs text-stone-300 leading-relaxed">
@@ -335,7 +335,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#121027] border border-amber-500/20 space-y-2">
+            <div className="p-4 rounded-xl bg-[#262320] border border-amber-500/20 space-y-2">
               <Sparkles className="w-5 h-5 text-amber-400" />
               <div className="text-sm font-bold text-white">Predictive</div>
               <p className="text-xs text-stone-300 leading-relaxed">
@@ -353,12 +353,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="how-it-works" className="py-16 px-4 sm:px-8 bg-[#FAF7F0] border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-12">
-
+          
           <div className="text-center max-w-2xl mx-auto space-y-3">
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#35156B]">
+            <span className="text-xs font-mono font-bold uppercase tracking-widest text-amber-800">
               HOW IKSHOVIA WORKS
             </span>
-            <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
+            <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900">
               Understand What You Know. Master What You Don't.
             </h2>
             <p className="text-stone-600 text-xs sm:text-sm leading-relaxed">
@@ -367,7 +367,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-
+            
             {/* Stage 1 */}
             <div className="p-6 rounded-2xl bg-white border border-stone-200/90 space-y-4 shadow-2xs">
               <div className="flex items-center justify-between">
@@ -377,8 +377,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 <Compass className="w-5 h-5 text-amber-700" />
               </div>
               <div>
-                <div className="text-xs font-mono font-bold text-[#35156B]">01 — UNDERSTAND</div>
-                <h3 className="text-base font-serif-editorial font-bold text-[#111426] mt-0.5">What You Know</h3>
+                <div className="text-xs font-mono font-bold text-amber-800">01 — UNDERSTAND</div>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900 mt-0.5">What You Know</h3>
               </div>
               <p className="text-xs text-stone-600 leading-relaxed">
                 Maps what you actually know, verified across practice attempts, topic depth, and syllabus coverage.
@@ -394,8 +394,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 <TrendingUp className="w-5 h-5 text-amber-700" />
               </div>
               <div>
-                <div className="text-xs font-mono font-bold text-[#35156B]">02 — DETECT</div>
-                <h3 className="text-base font-serif-editorial font-bold text-[#111426] mt-0.5">What You're Forgetting</h3>
+                <div className="text-xs font-mono font-bold text-amber-800">02 — DETECT</div>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900 mt-0.5">What You're Forgetting</h3>
               </div>
               <p className="text-xs text-stone-600 leading-relaxed">
                 Calculates memory decay curves to catch retention lapses before they cost you marks in the exam.
@@ -411,8 +411,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 <AlertTriangle className="w-5 h-5 text-amber-700" />
               </div>
               <div>
-                <div className="text-xs font-mono font-bold text-[#35156B]">03 — DIAGNOSE</div>
-                <h3 className="text-base font-serif-editorial font-bold text-[#111426] mt-0.5">Why You Make Mistakes</h3>
+                <div className="text-xs font-mono font-bold text-amber-800">03 — DIAGNOSE</div>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900 mt-0.5">Why You Make Mistakes</h3>
               </div>
               <p className="text-xs text-stone-600 leading-relaxed">
                 Classifies incorrect responses into conceptual gaps vs factual memory slips vs unconfident guessing.
@@ -425,14 +425,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                 <IKBrandMark size="xl" />
               </div>
               <div className="flex items-center justify-between relative z-10">
-                <span className="w-8 h-8 rounded-xl bg-[#0C1024] text-amber-400 font-mono font-bold text-xs flex items-center justify-center border border-amber-500/30">
+                <span className="w-8 h-8 rounded-xl bg-[#1C1917] text-amber-400 font-mono font-bold text-xs flex items-center justify-center border border-amber-500/30">
                   04
                 </span>
                 <IKBrandMark size="md" glow />
               </div>
               <div className="relative z-10">
                 <div className="text-xs font-mono font-bold text-amber-900">04 — GUIDE</div>
-                <h3 className="text-base font-serif-editorial font-bold text-[#111426] mt-0.5">What You Should Learn Next</h3>
+                <h3 className="text-base font-serif-editorial font-bold text-stone-900 mt-0.5">What You Should Learn Next</h3>
               </div>
               <p className="text-xs text-stone-700 leading-relaxed relative z-10 font-medium">
                 Determines your optimal Next Best Action for every study session, eliminating decision paralysis.
@@ -449,9 +449,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="ai-system" className="py-16 px-4 sm:px-8 bg-white border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-12">
-
+          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-
+            
             {/* Testimonial Quote Card */}
             <div className="p-6 rounded-2xl bg-[#FAF7F0] border border-stone-200 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
@@ -462,11 +462,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
               </div>
 
               <div className="flex items-center gap-3 pt-2 border-t border-stone-200">
-                <div className="w-9 h-9 rounded-full bg-[#0C1024] text-amber-400 font-bold font-serif-editorial flex items-center justify-center text-xs">
+                <div className="w-9 h-9 rounded-full bg-[#1C1917] text-amber-400 font-bold font-serif-editorial flex items-center justify-center text-xs">
                   A
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-[#111426]">Ananya Singh</div>
+                  <div className="text-xs font-bold text-stone-900">Ananya Singh</div>
                   <div className="text-[10px] text-stone-500">UPSC Aspirant</div>
                 </div>
                 <div className="ml-auto text-amber-500 text-xs">★★★★★</div>
@@ -474,28 +474,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             </div>
 
             {/* Empowering Learners Across India Stats */}
-            <div className="p-6 rounded-2xl bg-[#0C1024] text-white border border-amber-500/30 flex flex-col justify-between space-y-6">
+            <div className="p-6 rounded-2xl bg-[#1C1917] text-white border border-amber-500/30 flex flex-col justify-between space-y-6">
               <div className="text-center space-y-1">
                 <h3 className="text-lg font-serif-editorial font-bold text-white">Empowering Learners Across India</h3>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
+                <div className="p-3 rounded-xl bg-[#262320] border border-amber-500/20">
                   <div className="text-xl font-bold text-amber-400 font-mono">100%</div>
                   <div className="text-[10px] text-stone-300">Syllabus Coverage</div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
+                <div className="p-3 rounded-xl bg-[#262320] border border-amber-500/20">
                   <div className="text-xl font-bold text-amber-400 font-mono">24/7</div>
                   <div className="text-[10px] text-stone-300">AI Tutor Availability</div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
+                <div className="p-3 rounded-xl bg-[#262320] border border-amber-500/20">
                   <div className="text-xl font-bold text-amber-400 font-mono">100%</div>
                   <div className="text-[10px] text-stone-300">Adaptive AI Intelligence</div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-[#121027] border border-amber-500/20">
+                <div className="p-3 rounded-xl bg-[#262320] border border-amber-500/20">
                   <div className="text-xl font-bold text-amber-400 font-mono">24/7</div>
                   <div className="text-[10px] text-stone-300">AI Support</div>
                 </div>
@@ -505,7 +505,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             {/* AI Assistant Card with 3D Star Trophy Graphic */}
             <div className="p-6 rounded-2xl bg-[#FAF7F0] border border-stone-200 flex flex-col items-center text-center justify-between space-y-4">
               <div className="space-y-1">
-                <h3 className="text-lg font-serif-editorial font-bold text-[#111426]">Your AI Study Assistant</h3>
+                <h3 className="text-lg font-serif-editorial font-bold text-stone-900">Your AI Study Assistant</h3>
                 <p className="text-xs text-stone-600 leading-relaxed">
                   Get instant answers, explanations & guidance whenever you need.
                 </p>
@@ -519,7 +519,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
 
               <button
                 onClick={() => onOpenAuth('register')}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/20 text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Chat with AI</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -536,9 +536,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       <section id="pricing" className="py-16 px-4 sm:px-8 bg-[#FAF7F0] border-b border-stone-200/80">
         <div className="max-w-6xl mx-auto space-y-10">
-
+          
           <div className="text-center max-w-2xl mx-auto space-y-3">
-            <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-[#111426]">
+            <h2 className="text-2xl sm:text-3xl font-serif-editorial font-bold text-stone-900">
               Examination Programs & Transparent Pricing
             </h2>
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
@@ -547,7 +547,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
-
+            
             {/* FREE TIER */}
             <div className="p-5 rounded-2xl bg-white border border-stone-200 flex flex-col justify-between space-y-5 shadow-2xs">
               <div className="space-y-3">
@@ -559,7 +559,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                     Free Diagnostic Account
                   </h3>
                   <div className="flex items-baseline gap-1 mt-2">
-                    <span className="text-3xl font-bold font-serif-editorial text-[#111426]">₹0</span>
+                    <span className="text-3xl font-bold font-serif-editorial text-stone-900">₹0</span>
                     <span className="text-xs text-stone-500">/ forever</span>
                   </div>
                 </div>
@@ -605,12 +605,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                     key={course.id}
                     className={`p-5 rounded-2xl flex flex-col justify-between space-y-5 transition-all relative ${
                       isPopular
-                        ? 'bg-[#0C1024] text-white border-2 border-amber-400 shadow-xl'
+                        ? 'bg-[#1C1917] text-white border-2 border-amber-400 shadow-xl'
                         : 'bg-white text-stone-800 border border-stone-200 shadow-2xs hover:border-amber-400'
                     }`}
                   >
                     {isPopular && (
-                      <div className="absolute -top-3 right-4 bg-[#C9953C] text-[#0C1024] text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      <div className="absolute -top-3 right-4 bg-amber-500 text-stone-950 text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                         POPULAR
                       </div>
                     )}
@@ -637,7 +637,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                         </h3>
                         <div className="flex items-baseline gap-2 mt-2">
                           <span className={`text-3xl font-bold font-serif-editorial ${
-                            isPopular ? 'text-amber-300' : 'text-[#111426]'
+                            isPopular ? 'text-amber-300' : 'text-stone-900'
                           }`}>
                             ₹{salePrice.toLocaleString('en-IN')}
                           </span>
@@ -677,8 +677,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                       onClick={() => onOpenAuth('register')}
                       className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
                         isPopular
-                          ? 'bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 border border-amber-500/30'
-                          : 'bg-[#0C1024] hover:bg-[#1E2548] text-amber-300'
+                          ? 'bg-[#1C1917] hover:bg-[#292524] text-amber-300 border border-amber-500/40'
+                          : 'bg-[#1C1917] hover:bg-[#292524] text-amber-300'
                       }`}
                     >
                       Enroll Now
@@ -689,8 +689,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
             ) : (
               <>
                 {/* Fallback default courses if catalog still loading */}
-                <div className="p-5 rounded-2xl bg-[#0C1024] text-white border-2 border-amber-400 flex flex-col justify-between space-y-5 shadow-xl relative">
-                  <div className="absolute -top-3 right-4 bg-[#C9953C] text-[#0C1024] text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase">
+                <div className="p-5 rounded-2xl bg-[#1C1917] text-white border-2 border-amber-400 flex flex-col justify-between space-y-5 shadow-xl relative">
+                  <div className="absolute -top-3 right-4 bg-amber-500 text-stone-950 text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full uppercase">
                     POPULAR
                   </div>
                   <div className="space-y-3">
@@ -726,7 +726,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                   </div>
                   <button
                     onClick={() => onOpenAuth('register')}
-                    className="w-full py-2.5 rounded-xl bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer border border-amber-500/30"
+                    className="w-full py-2.5 rounded-xl bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer border border-amber-500/40"
                   >
                     Enroll Now
                   </button>
@@ -745,7 +745,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                         72nd BPSC CCE Prelims Test Series
                       </h3>
                       <div className="flex items-baseline gap-2 mt-2">
-                        <span className="text-3xl font-bold font-serif-editorial text-[#111426]">₹249</span>
+                        <span className="text-3xl font-bold font-serif-editorial text-stone-900">₹249</span>
                         <span className="text-xs line-through text-stone-400">₹4,999</span>
                       </div>
                     </div>
@@ -766,7 +766,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                   </div>
                   <button
                     onClick={() => onOpenAuth('register')}
-                    className="w-full py-2.5 rounded-xl bg-[#0C1024] hover:bg-[#1E2548] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-[#1C1917] hover:bg-[#292524] text-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
                   >
                     Enroll Now
                   </button>
@@ -783,9 +783,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* 8. FINAL CALL TO ACTION BANNER             */}
       {/* ========================================== */}
       <section className="py-16 px-4 sm:px-8 bg-white">
-        <div className="max-w-4xl mx-auto rounded-3xl bg-[#0C1024] text-white p-8 sm:p-12 text-center space-y-6 border border-amber-500/30 relative overflow-hidden shadow-2xl">
+        <div className="max-w-4xl mx-auto rounded-3xl bg-[#1C1917] text-white p-8 sm:p-12 text-center space-y-6 border border-amber-500/30 relative overflow-hidden shadow-2xl">
           <div className="absolute inset-0 bg-[radial-gradient(#C9953C_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
-
+          
           <div className="space-y-2 relative z-10">
             <IKBrandMark size="lg" glow className="mx-auto mb-2" />
             <h2 className="text-2xl sm:text-4xl font-serif-editorial font-bold text-white leading-tight">
@@ -799,7 +799,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
           <div className="pt-2 relative z-10">
             <button
               onClick={() => onOpenAuth('register')}
-              className="px-8 py-3.5 rounded-full bg-[#35156B] hover:bg-[#4B1F78] text-amber-300 font-bold text-xs shadow-lg transition-all border border-amber-500/30 cursor-pointer inline-flex items-center gap-2"
+              className="px-8 py-3.5 rounded-full bg-[#1C1917] hover:bg-[#292524] text-amber-300 font-bold text-xs shadow-lg transition-all border border-amber-500/40 cursor-pointer inline-flex items-center gap-2"
             >
               <span>Start Your Journey Free</span>
               <ArrowRight className="w-4 h-4" />
@@ -811,11 +811,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
       {/* ========================================== */}
       {/* 9. DARK PREMIUM FOOTER                     */}
       {/* ========================================== */}
-      <footer className="bg-[#0C1024] text-white border-t border-slate-800 pt-12 pb-8 px-4 sm:px-8">
+      <footer className="bg-[#1C1917] text-white border-t border-stone-800 pt-12 pb-8 px-4 sm:px-8">
         <div className="max-w-7xl mx-auto space-y-10">
-
+          
           <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-
+            
             {/* Column 1: Brand & Tagline */}
             <div className="md:col-span-2 space-y-4">
               <BrandLogo
@@ -869,7 +869,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                         setIsSubscribed(true);
                       }
                     }}
-                    className="flex items-center gap-1 bg-[#121027] p-1.5 rounded-xl border border-slate-800"
+                    className="flex items-center gap-1 bg-[#262320] p-1.5 rounded-xl border border-stone-700"
                   >
                     <input
                       type="email"
@@ -881,7 +881,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenAuth }) => {
                     />
                     <button
                       type="submit"
-                      className="p-2 bg-[#35156B] text-amber-300 rounded-lg hover:bg-[#4B1F78] cursor-pointer"
+                      className="p-2 bg-amber-700 text-white rounded-lg hover:bg-amber-800 cursor-pointer"
                       aria-label="Subscribe"
                     >
                       <ArrowRight className="w-3.5 h-3.5" />

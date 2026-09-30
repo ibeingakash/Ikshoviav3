@@ -6,6 +6,8 @@ export interface QuestionListParams {
   subjectId?: string;
   topicId?: string;
   conceptId?: string;
+  questionType?: string;
+  type?: string;
   isPyq?: boolean;
   isPublished?: boolean;
   status?: string;
@@ -21,6 +23,8 @@ export interface PYQListParams {
   subjectId?: string;
   topicId?: string;
   conceptId?: string;
+  questionType?: string;
+  type?: string;
   exam?: string;
   pyqYear?: number;
   limit?: number;
@@ -31,8 +35,13 @@ const SUBJECT_ID_TO_ENUMS: Record<string, string[]> = {
   sub_polity: ['POLITY', 'INDIAN POLITY', 'POLITY & GOVERNANCE'],
   sub_economy: ['ECONOMY', 'INDIAN ECONOMY', 'ECONOMICS', 'BANKING'],
   sub_history: ['HISTORY', 'INDIAN HISTORY', 'ANCIENT HISTORY', 'MODERN HISTORY', 'ART & CULTURE'],
-  sub_geography: ['GEOGRAPHY', 'ENVIRONMENT', 'ECOLOGY', 'INDIAN GEOGRAPHY'],
+  sub_geography: ['GEOGRAPHY', 'INDIAN GEOGRAPHY'],
+  sub_environment: ['ENVIRONMENT', 'ECOLOGY'],
   sub_ca: ['CURRENT_AFFAIRS', 'CURRENT AFFAIRS', 'SCIENCE_TECH', 'SCIENCE & TECHNOLOGY', 'GOVERNANCE'],
+  sub_csat: ['CSAT', 'COMPREHENSION', 'QUANT', 'REASONING', 'QUANTITATIVE_APTITUDE'],
+  sub_security_ir: ['SECURITY', 'INTERNAL_SECURITY', 'INTERNATIONAL_RELATIONS', 'IR'],
+  sub_ethics: ['ETHICS', 'ETHICS_INTEGRITY'],
+  sub_bihar: ['BIHAR_SPECIAL', 'BIHAR'],
 };
 
 const ENUM_TO_SUBJECT_ID: Record<string, string> = {
@@ -95,7 +104,7 @@ export class QuestionRepository {
              correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
              exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
              verified_status, is_published, status, created_at
-      FROM public.questions
+      FROM public.questions 
       WHERE id = $1
     `, [id]);
     if (res.rows.length > 0) {
@@ -103,7 +112,7 @@ export class QuestionRepository {
     }
 
     const dqRes = await pool.query(`
-      SELECT
+      SELECT 
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,
@@ -400,6 +409,8 @@ export class QuestionRepository {
       if (params.subjectId && q.subjectId !== params.subjectId) return false;
       if (params.topicId && q.topicId !== params.topicId) return false;
       if (params.conceptId && q.conceptId !== params.conceptId) return false;
+      if (params.questionType && q.questionType !== params.questionType && (q.type !== params.questionType)) return false;
+      if (params.type && q.type !== params.type) return false;
       if (params.isPyq !== undefined && Boolean(q.isPyq) !== params.isPyq) return false;
       if (params.isPublished !== undefined && q.isPublished !== params.isPublished) return false;
       if (params.status && q.status !== params.status) return false;
@@ -430,6 +441,15 @@ export class QuestionRepository {
       if (params.conceptId) {
         whereConditions.push(`concept_id = $${idx++}`);
         values.push(params.conceptId);
+      }
+      if (params.questionType) {
+        whereConditions.push(`(question_type = $${idx} OR type = $${idx})`);
+        values.push(params.questionType);
+        idx++;
+      }
+      if (params.type) {
+        whereConditions.push(`type = $${idx++}`);
+        values.push(params.type);
       }
       if (params.isPyq !== undefined) {
         whereConditions.push(`is_pyq = $${idx++}`);
@@ -469,8 +489,8 @@ export class QuestionRepository {
                correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
                exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
                verified_status, is_published, status, created_at
-        FROM public.questions
-        ${whereClause}
+        FROM public.questions 
+        ${whereClause} 
         ORDER BY created_at DESC
       `, values);
       const dbQuestions = res.rows.map(r => this.mapRowToQuestion(r));
@@ -492,9 +512,16 @@ export class QuestionRepository {
     let idx = 1;
 
     if (params.subjectId) {
-      const enumList = SUBJECT_ID_TO_ENUMS[params.subjectId] || [params.subjectId.toUpperCase()];
-      whereConditions.push(`dq.subject = ANY($${idx++})`);
-      values.push(enumList);
+      if (params.subjectId === 'sub_csat') {
+        const csatEnums = SUBJECT_ID_TO_ENUMS['sub_csat'] || ['CSAT'];
+        whereConditions.push(`(dq.subject = ANY($${idx++}) OR dq.paper ILIKE '%csat%')`);
+        values.push(csatEnums);
+      } else {
+        const enumList = SUBJECT_ID_TO_ENUMS[params.subjectId] || [params.subjectId.toUpperCase()];
+        whereConditions.push(`dq.subject = ANY($${idx++})`);
+        values.push(enumList);
+        whereConditions.push(`(dq.paper IS NULL OR dq.paper NOT ILIKE '%csat%')`);
+      }
     }
     if (params.topicId) {
       whereConditions.push(`dq.topic ILIKE $${idx++}`);
@@ -504,6 +531,10 @@ export class QuestionRepository {
       whereConditions.push(`(dq.topic ILIKE $${idx} OR dq.tags::text ILIKE $${idx})`);
       values.push(`%${params.conceptId}%`);
       idx++;
+    }
+    if (params.questionType) {
+      whereConditions.push(`dq.question_type = $${idx++}`);
+      values.push(params.questionType);
     }
     if (params.isPyq !== undefined) {
       whereConditions.push(`dq.is_pyq = $${idx++}`);
@@ -526,7 +557,7 @@ export class QuestionRepository {
 
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
     const query = `
-      SELECT
+      SELECT 
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,
@@ -597,8 +628,8 @@ export class QuestionRepository {
                correct_answer, explanation, explanation_en, explanation_hi, available_languages, difficulty,
                exam_tag, pyq_year, exam, paper, question_number, is_pyq, source_type, source,
                verified_status, is_published, status, created_at
-        FROM public.questions
-        ${whereClause}
+        FROM public.questions 
+        ${whereClause} 
         ORDER BY pyq_year DESC NULLS LAST, created_at DESC
       `, values);
       const dbPYQs = res.rows.map(r => this.mapRowToQuestion(r));
@@ -645,7 +676,7 @@ export class QuestionRepository {
 
     const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
     const query = `
-      SELECT
+      SELECT 
         dq.*,
         dr.title as resource_title,
         dr.url as resource_url,
@@ -713,20 +744,47 @@ export class QuestionRepository {
       ? row.available_languages
       : (typeof row.available_languages === 'string' ? JSON.parse(row.available_languages) : undefined);
 
-    const matchData = row.match_data && typeof row.match_data === 'object' && (row.match_data.leftColumn || row.match_data.listI)
-      ? row.match_data
-      : (typeof row.match_data === 'string' ? JSON.parse(row.match_data) : undefined);
-    const matchData_hi = row.match_data_hi && typeof row.match_data_hi === 'object'
-      ? row.match_data_hi
-      : (typeof row.match_data_hi === 'string' ? JSON.parse(row.match_data_hi) : undefined);
-    const statements = Array.isArray(row.statements)
-      ? row.statements
-      : (typeof row.statements === 'string' ? JSON.parse(row.statements) : undefined);
-    const statements_hi = Array.isArray(row.statements_hi)
-      ? row.statements_hi
-      : (typeof row.statements_hi === 'string' ? JSON.parse(row.statements_hi) : undefined);
+    let matchData: any = undefined;
+    if (row.match_data) {
+      try {
+        const parsed = typeof row.match_data === 'string' ? JSON.parse(row.match_data) : row.match_data;
+        if (parsed && typeof parsed === 'object' && (parsed.leftColumn?.length || parsed.listI?.length)) {
+          matchData = parsed;
+        }
+      } catch {}
+    }
 
-    const questionType = row.question_type || (matchData ? 'MATCH_FOLLOWING' : row.type);
+    let matchData_hi: any = undefined;
+    if (row.match_data_hi) {
+      try {
+        const parsedHi = typeof row.match_data_hi === 'string' ? JSON.parse(row.match_data_hi) : row.match_data_hi;
+        if (parsedHi && typeof parsedHi === 'object' && (parsedHi.leftColumn?.length || parsedHi.listI?.length)) {
+          matchData_hi = parsedHi;
+        }
+      } catch {}
+    }
+
+    let statements: any[] | undefined = undefined;
+    if (row.statements) {
+      try {
+        const parsedStmt = typeof row.statements === 'string' ? JSON.parse(row.statements) : row.statements;
+        if (Array.isArray(parsedStmt) && parsedStmt.length > 0) {
+          statements = parsedStmt;
+        }
+      } catch {}
+    }
+
+    let statements_hi: any[] | undefined = undefined;
+    if (row.statements_hi) {
+      try {
+        const parsedStmtHi = typeof row.statements_hi === 'string' ? JSON.parse(row.statements_hi) : row.statements_hi;
+        if (Array.isArray(parsedStmtHi) && parsedStmtHi.length > 0) {
+          statements_hi = parsedStmtHi;
+        }
+      } catch {}
+    }
+
+    const questionType = row.question_type || (matchData ? 'MATCH_FOLLOWING' : (statements ? 'STATEMENT_BASED' : (row.type === 'MATCH_FOLLOWING' ? 'MATCH_FOLLOWING' : 'SINGLE_CHOICE')));
 
     return {
       id: row.id,

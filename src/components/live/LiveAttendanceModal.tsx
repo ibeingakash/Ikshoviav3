@@ -81,7 +81,7 @@ export const LiveAttendanceModal: React.FC<LiveAttendanceModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="relative w-full max-w-4xl bg-[#0F1424] border border-stone-800 text-stone-100 rounded-2xl shadow-2xl overflow-hidden my-6">
-
+        
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-stone-800 bg-[#141A2E]">
           <div className="flex items-center gap-3">

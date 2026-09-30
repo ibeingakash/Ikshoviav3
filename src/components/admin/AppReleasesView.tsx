@@ -28,10 +28,10 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { AppRelease, AppVersionResponse } from '../../types/index.js';
-import { useLearner } from '../../context/LearnerContext.js';
+import { useAuth } from '../../context/AuthContext.js';
 
 export const AppReleasesView: React.FC = () => {
-  const { user } = useLearner();
+  const { user } = useAuth();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [releases, setReleases] = useState<AppRelease[]>([]);
