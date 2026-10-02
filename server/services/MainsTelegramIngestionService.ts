@@ -6,6 +6,8 @@ import {
   TelegramSource,
   TelegramImportRecord,
   TelegramIngestionStats,
+  TelegramRuntimeStatusResponse,
+  TelegramRuntimeStatus,
   TelegramSourceType,
   TelegramRetentionPolicy,
   TelegramImportStatus,
@@ -31,6 +33,14 @@ export class MainsTelegramIngestionService {
     } catch (err: any) {
       console.warn('[TelegramIngestion] Storage dir creation error:', err.message);
     }
+  }
+
+  // Safe server-side Telegram bot token reader (Section 2)
+  getBotToken(): string | null {
+    const raw = process.env.TELEGRAM_DATASET_BOT_TOKEN;
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 
   // ------------------------------------------------------------------
@@ -293,7 +303,7 @@ export class MainsTelegramIngestionService {
 
     // 4. Download file from Telegram Bot API if token is configured, or load buffer
     let fileBuffer: Buffer | null = null;
-    const botToken = process.env.TELEGRAM_DATASET_BOT_TOKEN;
+    const botToken = this.getBotToken();
 
     if (botToken && fileId) {
       fileBuffer = await this.downloadTelegramFile(fileId, botToken);
@@ -1115,8 +1125,161 @@ export class MainsTelegramIngestionService {
     };
   }
 
+  // ------------------------------------------------------------------
+  // 7b. SAFE RUNTIME TELEMETRY & DIAGNOSTICS (SECTIONS 6, 8, 10, 13)
+  // ------------------------------------------------------------------
+  async checkRuntimeStatus(): Promise<TelegramRuntimeStatusResponse> {
+    const authSourcesRes = await pool.query(
+      `SELECT COUNT(*) FROM public.mains_telegram_sources WHERE authorized = true AND enabled = true`
+    );
+    const authorizedSources = Number(authSourcesRes.rows[0]?.count || 0);
+
+    const botToken = this.getBotToken();
+    if (!botToken) {
+      return {
+        configured: false,
+        telegramApiReachable: false,
+        webhookConfigured: false,
+        runtime: 'CONFIGURATION_MISSING',
+        authorizedSources,
+        environment_loaded_by_running_process: false,
+        reason: 'TELEGRAM_DATASET_BOT_TOKEN environment variable is not configured in running process environment'
+      };
+    }
+
+    const environment_loaded_by_running_process = true;
+    let telegramApiReachable = false;
+    let webhookConfigured = false;
+    let webhookUrl: string | undefined = undefined;
+    let pendingUpdateCount: number = 0;
+    let reason: string | undefined = undefined;
+    let runtime: TelegramRuntimeStatus = 'BLOCKED_CONFIGURATION';
+
+    try {
+      // 1. Verify Bot API connectivity with getMe
+      const meController = new AbortController();
+      const meTimeout = setTimeout(() => meController.abort(), 6000);
+      const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, {
+        signal: meController.signal
+      });
+      clearTimeout(meTimeout);
+      const meData = await meRes.json().catch(() => ({}));
+
+      if (meRes.ok && meData.ok) {
+        telegramApiReachable = true;
+      } else {
+        telegramApiReachable = false;
+        runtime = 'BLOCKED_CONFIGURATION';
+        reason = meData.description || 'Telegram Bot API authentication rejected the configured token';
+        return {
+          configured: true,
+          telegramApiReachable: false,
+          webhookConfigured: false,
+          runtime: 'BLOCKED_CONFIGURATION',
+          authorizedSources,
+          environment_loaded_by_running_process,
+          reason
+        };
+      }
+
+      // 2. Check getWebhookInfo
+      const whController = new AbortController();
+      const whTimeout = setTimeout(() => whController.abort(), 6000);
+      const whRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`, {
+        signal: whController.signal
+      });
+      clearTimeout(whTimeout);
+      const whData = await whRes.json().catch(() => ({}));
+
+      if (whRes.ok && whData.ok && whData.result) {
+        const rawUrl = whData.result.url || '';
+        webhookConfigured = Boolean(rawUrl && rawUrl.trim().length > 0);
+        webhookUrl = rawUrl || undefined;
+        pendingUpdateCount = Number(whData.result.pending_update_count || 0);
+
+        if (whData.result.last_error_message) {
+          reason = whData.result.last_error_message;
+          runtime = 'WEBHOOK_ERROR';
+        } else if (webhookConfigured) {
+          runtime = 'READY';
+        } else {
+          runtime = 'WEBHOOK_PENDING';
+        }
+      } else {
+        runtime = 'WEBHOOK_PENDING';
+      }
+    } catch (err: any) {
+      telegramApiReachable = false;
+      runtime = 'BLOCKED_CONFIGURATION';
+      reason = 'Network timeout or unreachable Telegram Bot API endpoint';
+    }
+
+    return {
+      configured: true,
+      telegramApiReachable,
+      webhookConfigured,
+      runtime,
+      authorizedSources,
+      environment_loaded_by_running_process,
+      reason,
+      webhookUrl,
+      pendingUpdateCount
+    };
+  }
+
+  // ------------------------------------------------------------------
+  // 7c. IDEMPOTENT WEBHOOK REGISTRATION (SECTION 7)
+  // ------------------------------------------------------------------
+  async registerWebhook(overrideDomain?: string): Promise<{ success: boolean; webhookUrl: string; message: string }> {
+    const botToken = this.getBotToken();
+    if (!botToken) {
+      throw new Error('Cannot register Telegram webhook: TELEGRAM_DATASET_BOT_TOKEN is not configured');
+    }
+
+    let domain = '';
+    if (overrideDomain && typeof overrideDomain === 'string' && overrideDomain.startsWith('https://')) {
+      domain = overrideDomain.trim().replace(/\/$/, '');
+    } else {
+      domain = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://ikshovia.onrender.com').replace(/\/$/, '');
+    }
+
+    const webhookUrl = `${domain}/api/telegram/mains-dataset-bot/webhook`;
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET ||
+      crypto.createHmac('sha256', PII_SALT).update('telegram_dataset_bot_webhook').digest('hex').substring(0, 48);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const resp = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: webhookUrl,
+        allowed_updates: ['message', 'channel_post'],
+        secret_token: webhookSecret,
+        drop_pending_updates: false
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) {
+      throw new Error(`Telegram setWebhook failed: ${data.description || 'Unknown error'}`);
+    }
+
+    await this.emitEvent('TELEGRAM_WEBHOOK_REGISTERED', 'WEBHOOK', 'SYSTEM', 'ADMIN', {
+      webhookUrl
+    });
+
+    return {
+      success: true,
+      webhookUrl,
+      message: 'Telegram webhook registered successfully'
+    };
+  }
+
   async getStats(): Promise<TelegramIngestionStats> {
-    const botConfigured = Boolean(process.env.TELEGRAM_DATASET_BOT_TOKEN);
+    const runtimeStatus = await this.checkRuntimeStatus();
 
     const statsRes = await pool.query(`
       SELECT 
@@ -1137,12 +1300,11 @@ export class MainsTelegramIngestionService {
     const r = statsRes.rows[0] || {};
     const totalImports = Number(r.total_imports || 0);
 
-    // Section 32: If credentials or authorized source not configured, report BLOCKED_CONFIGURATION
-    const telegramRuntime = (botConfigured && totalImports > 0) ? 'VERIFIED' : 'BLOCKED_CONFIGURATION';
-
     return {
-      telegramRuntime,
-      botConfigured,
+      telegramRuntime: runtimeStatus.runtime,
+      botConfigured: runtimeStatus.configured,
+      webhookConfigured: runtimeStatus.webhookConfigured,
+      telegramApiReachable: runtimeStatus.telegramApiReachable,
       authorizedSourcesCount: Number(r.authorized_sources || 0),
       totalImportedFiles: totalImports,
       successfulExtractions: Number(r.successful_extractions || 0),

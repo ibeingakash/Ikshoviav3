@@ -996,9 +996,32 @@ export interface TelegramImportRecord {
   metadata?: any;
 }
 
+export type TelegramRuntimeStatus =
+  | 'READY'
+  | 'VERIFIED'
+  | 'WEBHOOK_PENDING'
+  | 'CONFIGURED_WEBHOOK_PENDING'
+  | 'CONFIGURATION_MISSING'
+  | 'WEBHOOK_ERROR'
+  | 'BLOCKED_CONFIGURATION';
+
+export interface TelegramRuntimeStatusResponse {
+  configured: boolean;
+  telegramApiReachable: boolean;
+  webhookConfigured: boolean;
+  runtime: TelegramRuntimeStatus;
+  authorizedSources: number;
+  environment_loaded_by_running_process: boolean;
+  reason?: string;
+  webhookUrl?: string;
+  pendingUpdateCount?: number;
+}
+
 export interface TelegramIngestionStats {
-  telegramRuntime: 'VERIFIED' | 'BLOCKED_CONFIGURATION';
+  telegramRuntime: TelegramRuntimeStatus;
   botConfigured: boolean;
+  webhookConfigured?: boolean;
+  telegramApiReachable?: boolean;
   authorizedSourcesCount: number;
   totalImportedFiles: number;
   successfulExtractions: number;

@@ -5441,6 +5441,28 @@ export const api = {
       throw new Error(err.error || 'Failed to load Telegram stats');
     }
     return res.json();
+  },
+
+  getAdminMainsTelegramRuntimeStatus: async () => {
+    const res = await apiFetch('/api/admin/mains/telegram/runtime-status', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load Telegram runtime status');
+    }
+    return res.json();
+  },
+
+  registerAdminMainsTelegramWebhook: async (domain?: string) => {
+    const res = await apiFetch('/api/admin/mains/telegram/register-webhook', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to register Telegram webhook');
+    }
+    return res.json();
   }
 };
 

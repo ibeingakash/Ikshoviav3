@@ -1859,16 +1859,60 @@ export function createMainsIntelligenceRouter(
   // POST /api/admin/mains/telegram/webhook (and open webhook receiver for Telegram platform)
   const handleTelegramWebhook = async (req: express.Request, res: express.Response) => {
     try {
+      // Validate optional secret token if configured
+      const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
+      const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+      if (configuredSecret && secretHeader && secretHeader !== configuredSecret) {
+        return res.status(401).json({ error: 'Unauthorized webhook request' });
+      }
+
       const clientIp = req.ip || req.socket.remoteAddress;
       const result = await mainsTelegramIngestionService.processWebhookUpdate(req.body, clientIp);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      // Telegram acknowledges with 200 so handled error doesn't cause infinite webhook retry
+      res.status(200).json({ ok: false, error: err.message });
     }
   };
   router.post('/api/admin/mains/telegram/webhook', handleTelegramWebhook);
   router.post('/admin/mains/telegram/webhook', handleTelegramWebhook);
   router.post('/api/telegram/mains-dataset-bot/webhook', handleTelegramWebhook);
+
+  // POST /api/admin/mains/telegram/register-webhook (Admin explicit action)
+  const handleRegisterTelegramWebhook = async (req: express.Request, res: express.Response) => {
+    try {
+      const { domain } = req.body || {};
+      const result = await mainsTelegramIngestionService.registerWebhook(domain);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+  router.post('/api/admin/mains/telegram/register-webhook', requireAdmin, handleRegisterTelegramWebhook);
+  router.post('/admin/mains/telegram/register-webhook', requireAdmin, handleRegisterTelegramWebhook);
+
+  // GET /api/admin/mains/telegram/runtime-status (Safe runtime diagnostic endpoint)
+  const handleGetTelegramRuntimeStatus = async (req: express.Request, res: express.Response) => {
+    try {
+      const status = await mainsTelegramIngestionService.checkRuntimeStatus();
+      res.json({
+        configured: status.configured,
+        telegramApiReachable: status.telegramApiReachable,
+        webhookConfigured: status.webhookConfigured,
+        runtime: status.runtime,
+        authorizedSources: status.authorizedSources,
+        environment_loaded_by_running_process: status.environment_loaded_by_running_process,
+        reason: status.reason,
+        webhookUrl: status.webhookUrl,
+        pendingUpdateCount: status.pendingUpdateCount
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+  router.get('/api/admin/mains/telegram/runtime-status', requireAdmin, handleGetTelegramRuntimeStatus);
+  router.get('/admin/mains/telegram/runtime-status', requireAdmin, handleGetTelegramRuntimeStatus);
 
   // GET /api/admin/mains/telegram/imports
   const handleGetTelegramImports = async (req: express.Request, res: express.Response) => {
