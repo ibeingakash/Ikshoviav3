@@ -4112,5 +4112,1335 @@ export const api = {
     }
     return res.json();
   },
+
+  // ----------------------------------------------------
+  // Phase 4.1: Mains Evaluation Intelligence & Training
+  // ----------------------------------------------------
+  getMainsSubmissionEvaluation: async (submissionId: string) => {
+    const res = await apiFetch(`/api/mains/evaluation/${submissionId}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load submission evaluation');
+    }
+    return res.json();
+  },
+
+  submitMainsFacultyReview: async (submissionId: string, payload: any) => {
+    const res = await apiFetch(`/api/mains/evaluation/${submissionId}/review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit faculty review');
+    }
+    return res.json();
+  },
+
+  claimMainsReview: async (submissionId: string) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/claim-review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const error: any = new Error(err.error || 'Failed to claim review lock');
+      error.status = res.status;
+      error.lockedBy = err.lockedBy;
+      error.lockedAt = err.lockedAt;
+      throw error;
+    }
+    return res.json();
+  },
+
+  releaseMainsReview: async (submissionId: string) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/release-review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to release review lock');
+    }
+    return res.json();
+  },
+
+  runMainsHandwrittenOcr: async (submissionId: string) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/run-ocr`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to run OCR on handwritten submission');
+    }
+    return res.json();
+  },
+
+  correctMainsOcrText: async (submissionId: string, correctedText: string) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/correct-ocr`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ correctedText }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update corrected OCR text');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsPendingReviews: async (limit = 50, offset = 0, status = 'PENDING') => {
+    const res = await apiFetch(`/api/teacher/mains/pending-reviews?limit=${limit}&offset=${offset}&status=${status}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load pending reviews');
+    }
+    return res.json();
+  },
+
+  setTeacherMainsEligibility: async (payload: {
+    reviewId?: string;
+    submissionId?: string;
+    eligibility: string;
+    exclusionReason?: string;
+  }) => {
+    const res = await apiFetch('/api/teacher/mains/eligibility', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update eligibility');
+    }
+    return res.json();
+  },
+
+  getAdminMainsMetrics: async () => {
+    const res = await apiFetch('/api/admin/mains/metrics', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load mains admin metrics');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDisagreementAnalysis: async () => {
+    const res = await apiFetch('/api/admin/mains/disagreement-analysis', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load disagreement analysis');
+    }
+    return res.json();
+  },
+
+  buildMainsDataset: async (payload: { versionName: string; description?: string; trainSplitRatio?: number; valSplitRatio?: number }) => {
+    const res = await apiFetch('/api/admin/mains/datasets/build', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to build dataset');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDatasets: async () => {
+    const res = await apiFetch('/api/admin/mains/datasets', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load datasets');
+    }
+    return res.json();
+  },
+
+  freezeMainsDataset: async (datasetId: string) => {
+    const res = await apiFetch(`/api/admin/mains/datasets/${datasetId}/freeze`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to freeze dataset');
+    }
+    return res.json();
+  },
+
+  buildMainsBenchmark: async (payload: { name: string; version: string }) => {
+    const res = await apiFetch('/api/admin/mains/benchmarks/build', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to build benchmark');
+    }
+    return res.json();
+  },
+
+  getAdminMainsBenchmarks: async () => {
+    const res = await apiFetch('/api/admin/mains/benchmarks', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load benchmarks');
+    }
+    return res.json();
+  },
+
+  getAdminMainsModels: async () => {
+    const res = await apiFetch('/api/admin/mains/models', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load models');
+    }
+    return res.json();
+  },
+
+  registerMainsModel: async (payload: any) => {
+    const res = await apiFetch('/api/admin/mains/models/register', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to register model');
+    }
+    return res.json();
+  },
+
+  promoteMainsModel: async (modelId: string, status: 'SHADOW' | 'PRODUCTION') => {
+    const res = await apiFetch(`/api/admin/mains/models/${modelId}/promote`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to promote model');
+    }
+    return res.json();
+  },
+
+  retireMainsModel: async (modelId: string) => {
+    const res = await apiFetch(`/api/admin/mains/models/${modelId}/retire`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to retire model');
+    }
+    return res.json();
+  },
+
+  evaluateMainsModel: async (modelId: string, benchmarkId: string) => {
+    const res = await apiFetch(`/api/admin/mains/models/${modelId}/evaluate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ benchmarkId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to evaluate model');
+    }
+    return res.json();
+  },
+
+  createMainsTrainingJob: async (payload: any) => {
+    const res = await apiFetch('/api/admin/mains/training-jobs', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create training job');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTrainingJobs: async () => {
+    const res = await apiFetch('/api/admin/mains/training-jobs', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load training jobs');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1C: DATASET COLLECTION & FACULTY CALIBRATION
+  // ----------------------------------------------------
+
+  getMainsCoverageAnalysis: async () => {
+    const res = await apiFetch('/api/mains/coverage/analysis', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load coverage analysis');
+    }
+    return res.json();
+  },
+
+  getMainsCoveragePracticeQuestions: async (params?: { limit?: number; paper?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    const res = await apiFetch(`/api/mains/coverage/practice-questions?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load coverage practice questions');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsCalibrationCases: async (params?: { limit?: number; paper?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    const res = await apiFetch(`/api/teacher/mains/calibration-cases?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load calibration cases');
+    }
+    return res.json();
+  },
+
+  submitMainsDoubleReview: async (submissionId: string, payload: {
+    marks: number;
+    maxMarks?: number;
+    dimensions: Record<string, number>;
+    feedback: string;
+    verdict?: string;
+  }) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/double-review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit double review');
+    }
+    return res.json();
+  },
+
+  adjudicateMainsDoubleReview: async (submissionId: string, payload: {
+    score: number;
+    dimensions: Record<string, number>;
+    feedback: string;
+    notes?: string;
+  }) => {
+    const res = await apiFetch(`/api/admin/mains/${submissionId}/adjudicate`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to adjudicate double review');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDatasetGrowth: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset-growth', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset growth dashboard');
+    }
+    return res.json();
+  },
+
+  getAdminMainsCoverageMatrix: async () => {
+    const res = await apiFetch('/api/admin/mains/coverage-matrix', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load coverage matrix');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTrainingGate: async () => {
+    const res = await apiFetch('/api/admin/mains/training-gate', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load training gate status');
+    }
+    return res.json();
+  },
+
+  runAdminMainsReadinessAudit: async () => {
+    const res = await apiFetch('/api/admin/mains/readiness-audit', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to run readiness audit');
+    }
+    return res.json();
+  },
+
+  recordMainsDatasetEvent: async (payload: { eventType: string; submissionId: string; metadata?: any }) => {
+    const res = await apiFetch('/api/mains/dataset-events', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to record dataset event');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1D: REAL MAINS DATASET ACQUISITION ENGINE
+  // ----------------------------------------------------
+
+  getAdminMainsAcquisitionPriorities: async (params?: { limit?: number; paper?: string; subject?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    if (params?.subject) query.set('subject', params.subject);
+    const res = await apiFetch(`/api/admin/mains/dataset/acquisition?${query.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load acquisition priorities');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDetailedCoverage: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset/coverage', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load detailed coverage matrix');
+    }
+    return res.json();
+  },
+
+  getAdminMainsAcquisitionFunnel: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset/funnel', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load acquisition funnel');
+    }
+    return res.json();
+  },
+
+  getAdminMainsLearnerDiversity: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset/diversity', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load learner diversity metrics');
+    }
+    return res.json();
+  },
+
+  createAdminMainsDatasetSnapshot: async (payload: { versionName: string; description?: string }) => {
+    const res = await apiFetch('/api/admin/mains/dataset/snapshots', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create dataset snapshot');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDatasetSnapshots: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset/snapshots', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset snapshots');
+    }
+    return res.json();
+  },
+
+  freezeAdminMainsDatasetSnapshot: async (snapshotId: string) => {
+    const res = await apiFetch(`/api/admin/mains/dataset/snapshots/${snapshotId}/freeze`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to freeze dataset snapshot');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsReviewAssignments: async (status?: string) => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await apiFetch(`/api/teacher/mains/review-assignments${query}`, {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load review assignments');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsWorkloadConfig: async () => {
+    const res = await apiFetch('/api/teacher/mains/workload-config', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load workload configuration');
+    }
+    return res.json();
+  },
+
+  updateTeacherMainsWorkloadConfig: async (payload: any) => {
+    const res = await apiFetch('/api/teacher/mains/workload-config', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update workload configuration');
+    }
+    return res.json();
+  },
+
+  assignMainsReview: async (submissionId: string, reviewerId: string, reviewerName?: string) => {
+    const res = await apiFetch(`/api/teacher/mains/${submissionId}/assign`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ reviewerId, reviewerName }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to assign review');
+    }
+    return res.json();
+  },
+
+  autoDistributeMainsReviews: async () => {
+    const res = await apiFetch('/api/teacher/mains/auto-distribute', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to auto-distribute reviews');
+    }
+    return res.json();
+  },
+
+  getLearnerMainsCoveragePracticeHub: async () => {
+    const res = await apiFetch('/api/mains/practice/coverage', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load coverage practice hub');
+    }
+    return res.json();
+  },
+
+  getLearnerMainsCoveragePracticeTrack: async (gapId: string) => {
+    const res = await apiFetch(`/api/mains/practice/coverage/${gapId}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load practice track');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1E: DATASET QUALITY CONTROL & RELEASE CANDIDATE
+  // ----------------------------------------------------
+
+  getAdminMainsQualityScorecard: async () => {
+    const res = await apiFetch('/api/admin/mains/quality/scorecard', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset quality scorecard');
+    }
+    return res.json();
+  },
+
+  getAdminMainsQualityBalanceReports: async () => {
+    const res = await apiFetch('/api/admin/mains/quality/balance-reports', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load quality balance reports');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsCalibrationSummary: async () => {
+    const res = await apiFetch('/api/teacher/mains/calibration/summary', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load faculty calibration summary');
+    }
+    return res.json();
+  },
+
+  getTeacherMainsCalibrationConsistency: async () => {
+    const res = await apiFetch('/api/teacher/mains/calibration/consistency', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load faculty consistency list');
+    }
+    return res.json();
+  },
+
+  getAdminMainsAiDisagreementAnalytics: async () => {
+    const res = await apiFetch('/api/admin/mains/calibration/disagreement', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load AI disagreement analytics');
+    }
+    return res.json();
+  },
+
+  getAdminMainsQuarantine: async (params?: { status?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    const res = await apiFetch(`/api/admin/mains/quarantine?${query.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load quarantine list');
+    }
+    return res.json();
+  },
+
+  quarantineMainsSubmission: async (payload: { submissionId: string; quarantineReason: string; notes?: string }) => {
+    const res = await apiFetch('/api/admin/mains/quarantine', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to quarantine submission');
+    }
+    return res.json();
+  },
+
+  resolveMainsQuarantine: async (id: string, payload: { resolutionStatus: string; outcome?: string; notes?: string }) => {
+    const res = await apiFetch(`/api/admin/mains/quarantine/${id}/resolve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to resolve quarantine record');
+    }
+    return res.json();
+  },
+
+  autoScanMainsQuarantine: async () => {
+    const res = await apiFetch('/api/admin/mains/quarantine/auto-scan', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to run auto-quarantine scan');
+    }
+    return res.json();
+  },
+
+  getAdminMainsReleaseCandidates: async () => {
+    const res = await apiFetch('/api/admin/mains/release-candidates', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load release candidates');
+    }
+    return res.json();
+  },
+
+  createAdminMainsReleaseCandidate: async (payload: { datasetVersion: string }) => {
+    const res = await apiFetch('/api/admin/mains/release-candidates', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create release candidate');
+    }
+    return res.json();
+  },
+
+  getAdminMainsReleaseCandidate: async (id: string) => {
+    const res = await apiFetch(`/api/admin/mains/release-candidates/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load release candidate');
+    }
+    return res.json();
+  },
+
+  freezeAdminMainsReleaseCandidate: async (id: string) => {
+    const res = await apiFetch(`/api/admin/mains/release-candidates/${id}/freeze`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to freeze release candidate');
+    }
+    return res.json();
+  },
+
+  getAdminMainsReleaseCandidateManifest: async (id: string) => {
+    const res = await apiFetch(`/api/admin/mains/release-candidates/${id}/manifest`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load release candidate manifest');
+    }
+    return res.json();
+  },
+
+  recordAdminMainsQualityRun: async () => {
+    const res = await apiFetch('/api/admin/mains/quality/run', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to record quality run');
+    }
+    return res.json();
+  },
+
+  getAdminMainsQualityRuns: async (limit?: number) => {
+    const query = limit ? `?limit=${limit}` : '';
+    const res = await apiFetch(`/api/admin/mains/quality/runs${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load quality runs');
+    }
+    return res.json();
+  },
+
+  getAdminMainsCandidateEvals: async (params?: { limit?: number; paper?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    const res = await apiFetch(`/api/admin/mains/quality/candidate-evals?${query.toString()}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load candidate evaluations');
+    }
+    return res.json();
+  },
+
+  getAdminMainsCandidateEval: async (submissionId: string) => {
+    const res = await apiFetch(`/api/admin/mains/quality/candidate-eval/${submissionId}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load candidate evaluation');
+    }
+    return res.json();
+  },
+
+  recordAdminMainsCalibrationLog: async () => {
+    const res = await apiFetch('/api/admin/mains/calibration/log', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to record calibration log');
+    }
+    return res.json();
+  },
+
+  getAdminMainsCalibrationLogs: async (limit?: number) => {
+    const query = limit ? `?limit=${limit}` : '';
+    const res = await apiFetch(`/api/admin/mains/calibration/logs${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load calibration logs');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1F: MAINS DATASET OPERATIONS & CALIBRATION LOOP
+  // ----------------------------------------------------
+  getAdminMainsOperationsOverview: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/overview', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset operations overview');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsReviews: async (params?: {
+    status?: string;
+    paper?: string;
+    reviewerId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.paper) query.set('paper', params.paper);
+    if (params?.reviewerId) query.set('reviewerId', params.reviewerId);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/reviews${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load operations review queue');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsWorkload: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/workload', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load faculty workload summary');
+    }
+    return res.json();
+  },
+
+  getMainsOperationsCalibrationCases: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/calibration-cases', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load calibration cases');
+    }
+    return res.json();
+  },
+
+  submitMainsOperationsCalibrationAttempt: async (payload: {
+    submissionId: string;
+    assignedMarks: number;
+    rubricScores: Record<string, number>;
+    feedback?: string;
+  }) => {
+    const res = await apiFetch('/api/admin/mains/operations/calibration-attempt', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit calibration attempt');
+    }
+    return res.json();
+  },
+
+  getMainsOperationsCalibrationPerformance: async (facultyId?: string) => {
+    const query = facultyId ? `?facultyId=${encodeURIComponent(facultyId)}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/calibration-performance${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load calibration performance');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsGrowth: async (timeRange?: 'TODAY' | '7_DAYS' | '30_DAYS' | 'ALL_TIME') => {
+    const query = timeRange ? `?timeRange=${timeRange}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/growth${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset growth data');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsGrowthTrends: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/growth-trends', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset growth trends');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsWeeklyReport: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/weekly-report', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load weekly dataset health report');
+    }
+    return res.json();
+  },
+
+  revalidateMainsReleaseCandidate: async (rcId: string) => {
+    const res = await apiFetch(`/api/admin/mains/operations/release-candidates/${rcId}/revalidate`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to revalidate release candidate');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsDoubleReviews: async (status?: string) => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/double-reviews${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load double review operations');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsAdjudicationQueue: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/adjudication-queue', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load adjudication queue');
+    }
+    return res.json();
+  },
+
+  submitMainsOperationsAdjudication: async (payload: {
+    submissionId: string;
+    score: number;
+    dimensions: Record<string, number>;
+    feedback: string;
+    notes?: string;
+  }) => {
+    const res = await apiFetch('/api/admin/mains/operations/adjudicate', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit adjudication');
+    }
+    return res.json();
+  },
+
+  getMainsOperationsOcrQueue: async (params?: {
+    status?: string;
+    minConfidence?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.minConfidence) query.set('minConfidence', String(params.minConfidence));
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/ocr-queue${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load OCR queue');
+    }
+    return res.json();
+  },
+
+  verifyMainsOperationsOcr: async (payload: {
+    submissionId: string;
+    correctedText: string;
+  }) => {
+    const res = await apiFetch('/api/admin/mains/operations/ocr-verify', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to verify OCR text');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsTrainingGate: async (candidateId?: string) => {
+    const query = candidateId ? `?candidateId=${encodeURIComponent(candidateId)}` : '';
+    const res = await apiFetch(`/api/admin/mains/operations/training-gate${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to evaluate training safety gate');
+    }
+    return res.json();
+  },
+
+  getAdminMainsOperationsThresholds: async () => {
+    const res = await apiFetch('/api/admin/mains/operations/thresholds', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load operations thresholds');
+    }
+    return res.json();
+  },
+
+  updateAdminMainsOperationsThresholds: async (thresholds: any) => {
+    const res = await apiFetch('/api/admin/mains/operations/thresholds', {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(thresholds)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update operations thresholds');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1G: TRAINING READINESS & GO/NO-GO AUDIT
+  // ----------------------------------------------------
+  getAdminMainsTrainingReadiness: async () => {
+    const res = await apiFetch('/api/admin/mains/training-readiness', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to execute training readiness audit');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTrainingReadinessHistory: async (limit?: number) => {
+    const query = limit ? `?limit=${limit}` : '';
+    const res = await apiFetch(`/api/admin/mains/training-readiness/history${query}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load training readiness history');
+    }
+    return res.json();
+  },
+
+  // ----------------------------------------------------
+  // PHASE 4.1H: DATASET REMEDIATION & ACQUISITION
+  // ----------------------------------------------------
+  getAdminMainsDatasetRemediation: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset-remediation', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset remediation overview');
+    }
+    return res.json();
+  },
+
+  executeAdminMainsDatasetRemediation: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset-remediation/execute', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to execute dataset remediation');
+    }
+    return res.json();
+  },
+
+  getAdminMainsDatasetRemediationSnapshots: async () => {
+    const res = await apiFetch('/api/admin/mains/dataset-remediation/snapshots', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load remediation snapshots');
+    }
+    return res.json();
+  },
+
+  getMainsTargetedPracticeHub: async () => {
+    const res = await apiFetch('/api/mains/targeted-practice-hub', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load targeted practice hub');
+    }
+    return res.json();
+  },
+
+  // PHASE 4.1I: REAL DATASET GROWTH & CONTROLLED COLLECTION
+  getMainsDatasetGrowthOverview: async () => {
+    const res = await apiFetch('/api/mains/dataset-growth/overview', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load dataset growth overview');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthQuestions: async (params?: { limit?: number; paper?: string; subject?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    if (params?.subject) query.set('subject', params.subject);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/mains/dataset-growth/targeted-questions${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load targeted questions');
+    }
+    return res.json();
+  },
+
+  saveMainsDatasetGrowthDraft: async (data: {
+    questionId: string;
+    answerText: string;
+    submissionType?: string;
+    attachmentUrl?: string;
+  }) => {
+    const res = await apiFetch('/api/mains/dataset-growth/draft', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to save draft');
+    }
+    return res.json();
+  },
+
+  submitMainsDatasetGrowthAnswer: async (data: {
+    questionId: string;
+    answerText: string;
+    submissionType?: string;
+    attachmentUrl?: string;
+    ocrExtractedText?: string;
+    ocrConfidence?: number;
+  }) => {
+    const res = await apiFetch('/api/mains/dataset-growth/submit-answer', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to submit answer');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthLearnerSubmissions: async () => {
+    const res = await apiFetch('/api/mains/dataset-growth/learner-submissions', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load learner submissions');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthFacultyQueue: async (params?: { limit?: number; paper?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.paper) query.set('paper', params.paper);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/mains/dataset-growth/faculty-queue${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load faculty acquisition queue');
+    }
+    return res.json();
+  },
+
+  submitMainsDatasetGrowthFacultyReview: async (data: {
+    submissionId: string;
+    facultyMarks: number;
+    facultyVerdict: 'ACCEPTED' | 'EDITED' | 'REJECTED' | 'INDEPENDENT';
+    facultyFeedback: string;
+    facultyStrengths?: string[];
+    facultyWeaknesses?: string[];
+    facultyActionableImprovement?: string;
+    facultyDimensions?: Record<string, number>;
+  }) => {
+    const res = await apiFetch('/api/mains/dataset-growth/faculty-review', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to record faculty review');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthCoverageMatrices: async () => {
+    const res = await apiFetch('/api/mains/dataset-growth/coverage-matrices', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load coverage matrices');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthBenchmarks: async () => {
+    const res = await apiFetch('/api/mains/dataset-growth/benchmarks', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load benchmark collection');
+    }
+    return res.json();
+  },
+
+  getMainsDatasetGrowthCampaigns: async () => {
+    const res = await apiFetch('/api/mains/dataset-growth/campaigns', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load campaigns');
+    }
+    return res.json();
+  },
+
+  createMainsDatasetGrowthCampaign: async (data: {
+    name: string;
+    description?: string;
+    targetAnswers?: number;
+    targetFacultyReviews?: number;
+    targetSubjects?: number;
+    targetBenchmarkItems?: number;
+    coveragePriorities?: string[];
+  }) => {
+    const res = await apiFetch('/api/mains/dataset-growth/campaigns', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create campaign');
+    }
+    return res.json();
+  },
+
+  // PHASE 4.1J: TELEGRAM MAINS COPY INGESTION CLIENT APIS
+  getAdminMainsTelegramSources: async () => {
+    const res = await apiFetch('/api/admin/mains/telegram/sources', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load Telegram sources');
+    }
+    return res.json();
+  },
+
+  registerAdminMainsTelegramSource: async (data: {
+    sourceType: string;
+    telegramChatId: string;
+    telegramChatType?: string;
+    displayName: string;
+    authorized: boolean;
+    enabled?: boolean;
+    authorizationBasis?: string;
+    retentionPolicy?: string;
+  }) => {
+    const res = await apiFetch('/api/admin/mains/telegram/sources', {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to register Telegram source');
+    }
+    return res.json();
+  },
+
+  updateAdminMainsTelegramSource: async (id: string, data: any) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/sources/${id}`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update Telegram source');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTelegramImports: async (params?: { status?: string; sourceId?: string; limit?: number; offset?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.sourceId) query.set('sourceId', params.sourceId);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await apiFetch(`/api/admin/mains/telegram/imports${qs}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load Telegram imports');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTelegramImportById: async (id: string) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/imports/${id}`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load Telegram import record');
+    }
+    return res.json();
+  },
+
+  retryAdminMainsTelegramImport: async (id: string) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/imports/${id}/retry`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to retry Telegram import');
+    }
+    return res.json();
+  },
+
+  validateAdminMainsTelegramGroundTruth: async (id: string, data: {
+    facultyMarks: number;
+    facultyMaxMarks?: number;
+    facultyVerdict: string;
+    facultyFeedback: string;
+    facultyRubric?: Record<string, number>;
+  }) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/imports/${id}/validate-ground-truth`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to validate ground truth');
+    }
+    return res.json();
+  },
+
+  excludeAdminMainsTelegramImport: async (id: string, reason?: string) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/imports/${id}/exclude`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to exclude import');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTelegramStats: async () => {
+    const res = await apiFetch('/api/admin/mains/telegram/stats', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load Telegram stats');
+    }
+    return res.json();
+  }
 };
 

@@ -111,7 +111,7 @@ export const UnifiedExamEngineView: React.FC<UnifiedExamEngineViewProps> = ({
   const [mainsSubmissions, setMainsSubmissions] = useState<MainsSubmissionItem[]>([]);
   const [teacherEvaluations, setTeacherEvaluations] = useState<any[]>([]);
   const [selectedMainsQ, setSelectedMainsQ] = useState<MainsQuestionItem | null>(null);
-  const [mainsTab, setMainsTab] = useState<'QUESTIONS' | 'SUBMISSIONS' | 'TEACHER_FEEDBACK'>('QUESTIONS');
+  const [mainsTab, setMainsTab] = useState<'QUESTIONS' | 'SUBMISSIONS' | 'TEACHER_FEEDBACK' | 'COVERAGE_PRACTICE'>('QUESTIONS');
   const [answerFormat, setAnswerFormat] = useState<'TYPED' | 'HANDWRITTEN'>('TYPED');
   const [answerText, setAnswerText] = useState<string>('');
   const [handwrittenFile, setHandwrittenFile] = useState<File | null>(null);
@@ -125,6 +125,9 @@ export const UnifiedExamEngineView: React.FC<UnifiedExamEngineViewProps> = ({
   const [revisionChecklist, setRevisionChecklist] = useState<Record<string, boolean>>({});
   const [mainsSearch, setMainsSearch] = useState<string>('');
   const [mainsTimerSeconds, setMainsTimerSeconds] = useState<number>(0);
+  const [coverageHubData, setCoverageHubData] = useState<any>(null);
+  const [loadingCoverageHub, setLoadingCoverageHub] = useState<boolean>(false);
+  const [selectedHubPaperFilter, setSelectedHubPaperFilter] = useState<string>('ALL');
 
   // ----------------------------------------------------------------
   // INTERVIEW STATE
@@ -182,6 +185,7 @@ export const UnifiedExamEngineView: React.FC<UnifiedExamEngineViewProps> = ({
       loadMainsQuestions();
       loadMainsSubmissions();
       loadTeacherEvaluations();
+      loadCoveragePracticeHub();
     }
   }, [activeStage, targetExam, selectedPaper, mainsSearch]);
 
@@ -219,6 +223,49 @@ export const UnifiedExamEngineView: React.FC<UnifiedExamEngineViewProps> = ({
     } catch (err) {
       console.warn('Failed to load teacher evaluations:', err);
     }
+  };
+
+  const loadCoveragePracticeHub = async () => {
+    setLoadingCoverageHub(true);
+    try {
+      const hub = await api.getLearnerMainsCoveragePracticeHub();
+      setCoverageHubData(hub);
+    } catch (err) {
+      console.warn('Failed to load coverage practice hub:', err);
+    } finally {
+      setLoadingCoverageHub(false);
+    }
+  };
+
+  const handleStartCoveragePractice = (qItem: any) => {
+    const mappedQ: MainsQuestionItem = {
+      id: qItem.questionId,
+      subjectId: qItem.subject || 'sub_general',
+      topicId: qItem.topic || 'top_general',
+      conceptId: qItem.concept || 'con_general',
+      type: 'DESCRIPTIVE',
+      stage: 'MAINS',
+      exam: targetExam.includes('BPSC') ? 'BPSC' : 'UPSC CSE',
+      paper: qItem.paper || 'GS2',
+      marks: Number(qItem.marks || 10),
+      wordLimit: Number(qItem.wordLimit || 150),
+      difficulty: 'MEDIUM',
+      origin: qItem.provenance === 'IKSHOVIA_CREATED' ? 'IKSHOVIA_CREATED' : 'OFFICIAL_COMMISSION',
+      source: qItem.provenance === 'IKSHOVIA_CREATED' ? 'IKSHOVIA_CREATED' : 'CANONICAL_UPSC',
+      isPyq: qItem.provenance !== 'IKSHOVIA_CREATED',
+      question: qItem.question,
+      explanation: `Targeted syllabus practice: ${qItem.priorityReason || 'Master key syllabus dimensions'}. Recommended directive focus: ${qItem.directive}.`
+    };
+
+    setMainsQuestions(prev => {
+      if (!prev.find(p => p.id === mappedQ.id)) {
+        return [mappedQ, ...prev];
+      }
+      return prev;
+    });
+
+    handleSelectMainsQuestion(mappedQ);
+    setMainsTab('QUESTIONS');
   };
 
   // Interview Load
@@ -1313,8 +1360,221 @@ export const UnifiedExamEngineView: React.FC<UnifiedExamEngineViewProps> = ({
               >
                 Teacher Evaluations ({teacherEvaluations.length})
               </button>
+              <button
+                onClick={() => {
+                  setMainsTab('COVERAGE_PRACTICE');
+                  loadCoveragePracticeHub();
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition flex items-center gap-1.5 ${
+                  mainsTab === 'COVERAGE_PRACTICE' ? 'bg-amber-600 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                }`}
+              >
+                <Target className="w-3.5 h-3.5" />
+                Targeted Syllabus Hub
+              </button>
             </div>
           </div>
+
+          {/* TARGETED SYLLABUS PRACTICE HUB TAB (PHASE 4.1D) */}
+          {mainsTab === 'COVERAGE_PRACTICE' && (
+            <div className="space-y-6">
+              {/* Hub Hero Banner */}
+              <div className="p-6 rounded-2xl bg-gradient-to-r from-amber-700 via-amber-800 to-amber-900 text-white shadow-md relative overflow-hidden">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1.5 max-w-2xl">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-400/30 text-[11px] font-semibold">
+                      <Compass className="w-3.5 h-3.5" />
+                      <span>Curated Mains Syllabus Mastery</span>
+                    </div>
+                    <h3 className="text-xl font-bold tracking-tight">
+                      Targeted Mains Syllabus Practice Hub
+                    </h3>
+                    <p className="text-xs text-amber-100/90 leading-relaxed">
+                      Practice underrepresented high-yield syllabus areas, master diverse question directives (Explain, Discuss, Analyze, Evaluate), and receive authentic evaluation.
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadCoveragePracticeHub}
+                    disabled={loadingCoverageHub}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-semibold backdrop-blur-xs transition border border-white/20 self-start md:self-auto cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingCoverageHub ? 'animate-spin' : ''}`} />
+                    Refresh Hub
+                  </button>
+                </div>
+              </div>
+
+              {/* Loading State */}
+              {loadingCoverageHub ? (
+                <div className="py-16 text-center text-stone-500 text-sm bg-white rounded-2xl border border-stone-200 shadow-xs">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto text-amber-600 mb-2" />
+                  Loading syllabus coverage practice tracks...
+                </div>
+              ) : (
+                <>
+                  {/* Featured Practice Tracks */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-sm text-stone-900 flex items-center gap-2">
+                        <Target className="w-4 h-4 text-amber-600" />
+                        <span>Featured Syllabus Practice Tracks</span>
+                      </h4>
+                      <span className="text-xs text-stone-500">Targeted exam directives & blueprints</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {coverageHubData?.featuredPracticeTracks?.map((track: any) => (
+                        <div
+                          key={track.id}
+                          className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs hover:border-amber-400 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                        >
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-amber-50 text-amber-800 border border-amber-200">
+                                {track.paper} • {track.marks} Marks
+                              </span>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-stone-100 text-stone-700">
+                                {track.directive}
+                              </span>
+                            </div>
+                            <h5 className="font-bold text-sm text-stone-900 line-clamp-1">{track.title}</h5>
+                            <p className="text-xs text-stone-600 leading-relaxed line-clamp-2">
+                              {track.description}
+                            </p>
+                            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-100 text-[11px] text-stone-700 space-y-1">
+                              <div className="font-semibold text-stone-800 flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                <span>Prep Value:</span>
+                              </div>
+                              <p className="text-stone-600 italic">{track.targetBenefit}</p>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-stone-100 flex items-center justify-between">
+                            <span className="text-[11px] text-stone-400 font-mono">
+                              {track.availableQuestionsCount} curated questions
+                            </span>
+                            {track.sampleQuestion ? (
+                              <button
+                                onClick={() => handleStartCoveragePractice(track.sampleQuestion)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                              >
+                                <span>Practice Now</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-xs text-stone-400 italic">Track in session</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Priority Questions Section */}
+                  <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-xs space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
+                      <div>
+                        <h4 className="font-bold text-sm text-stone-900 flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-amber-600" />
+                          <span>Underrepresented Syllabus Practice Questions</span>
+                        </h4>
+                        <p className="text-xs text-stone-500 mt-0.5">
+                          Questions strategically selected from zero or low-coverage syllabus areas to round out your answer writing.
+                        </p>
+                      </div>
+
+                      {/* Paper Filter Chips */}
+                      <div className="flex items-center gap-1 overflow-x-auto">
+                        {['ALL', 'GS1', 'GS2', 'GS3', 'GS4', 'ESSAY'].map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setSelectedHubPaperFilter(p)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                              selectedHubPaperFilter === p
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Questions List */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(coverageHubData?.allPriorities || [])
+                        .filter((p: any) => selectedHubPaperFilter === 'ALL' || p.paper === selectedHubPaperFilter)
+                        .map((qItem: any) => (
+                          <div
+                            key={qItem.questionId}
+                            className="p-5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-white hover:border-amber-400 transition-all shadow-xs flex flex-col justify-between space-y-3"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-amber-100 text-amber-900">
+                                    {qItem.paper}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-stone-200 text-stone-700">
+                                    {qItem.directive}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded font-mono text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {qItem.marks}M • {qItem.wordLimit}w
+                                  </span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                  qItem.provenance === 'IKSHOVIA_CREATED'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                }`}>
+                                  {qItem.provenance === 'IKSHOVIA_CREATED' ? 'IKSHOVIA STANDARD' : 'CANONICAL UPSC'}
+                                </span>
+                              </div>
+
+                              <p className="text-xs font-medium text-stone-900 leading-snug line-clamp-3">
+                                {qItem.question}
+                              </p>
+
+                              <div className="text-[11px] text-stone-500 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-stone-700">{qItem.subject}</span>
+                                <span>•</span>
+                                <span>{qItem.topic}</span>
+                              </div>
+
+                              <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-200/60 text-[10px] text-amber-900 font-medium">
+                                <span className="font-bold">Targeted Gap: </span>
+                                {qItem.priorityReason}
+                              </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
+                              <span className="text-[10px] text-stone-400 font-mono">
+                                Path: {qItem.recommendedPracticePath}
+                              </span>
+                              <button
+                                onClick={() => handleStartCoveragePractice(qItem)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                              >
+                                <PenTool className="w-3 h-3" />
+                                <span>Write Answer</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+
+                    {(!coverageHubData?.allPriorities || coverageHubData.allPriorities.length === 0) && (
+                      <div className="py-12 text-center text-stone-400 text-xs">
+                        No targeted practice questions found for current filter.
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* TEACHER EVALUATIONS TAB */}
           {mainsTab === 'TEACHER_FEEDBACK' && (

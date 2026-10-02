@@ -17,11 +17,13 @@ import {
   BarChart2,
   FolderArchive,
   Smartphone,
+  Brain,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { api } from '../../lib/api.js';
 import { AdminResourceStudioView } from './AdminResourceStudioView.js';
 import { AppReleasesView } from './AppReleasesView.js';
+import { MainsEvaluationIntelligenceDashboard } from './MainsEvaluationIntelligenceDashboard.js';
 
 export const AdminView: React.FC = () => {
   const { activeSection, setActiveSection } = useLearner();
@@ -148,6 +150,7 @@ export const AdminView: React.FC = () => {
 
   const adminTabs: { id: NavigationSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'admin-dashboard', label: 'Overview', icon: Shield },
+    { id: 'admin-mains-intelligence', label: 'Mains Model Intelligence', icon: Brain },
     { id: 'admin-app-releases', label: 'App Releases & APK', icon: Smartphone },
     { id: 'admin-resources', label: 'Resource Studio (Google Drive)', icon: FolderArchive },
     { id: 'admin-users', label: 'User Directory', icon: Users },
@@ -575,6 +578,28 @@ export const AdminView: React.FC = () => {
       {/* SECTION: APP RELEASES & APK DISTRIBUTION */}
       {(activeSection === 'admin-app-releases' || (activeSection as string) === 'admin-releases') && (
         <AppReleasesView />
+      )}
+      {/* SECTION: MAINS COPY CHECKING INTELLIGENCE & MODEL TRAINING */}
+      {(activeSection === 'admin-mains-intelligence' ||
+        activeSection === 'admin-mains-readiness' ||
+        activeSection === 'admin-mains-remediation' ||
+        activeSection === 'admin-mains-growth' ||
+        activeSection === 'admin-mains-telegram') && (
+        <MainsEvaluationIntelligenceDashboard
+          initialTab={
+            activeSection === 'admin-mains-telegram' ? 'TELEGRAM_IMPORT' :
+            activeSection === 'admin-mains-growth' ? 'GROWTH_HUB' :
+            activeSection === 'admin-mains-remediation' ? 'REMEDIATION' :
+            activeSection === 'admin-mains-readiness' ? 'READINESS' : 'OVERVIEW'
+          }
+          onTabChange={(tab) => {
+            if (tab === 'TELEGRAM_IMPORT') setActiveSection('admin-mains-telegram');
+            else if (tab === 'GROWTH_HUB') setActiveSection('admin-mains-growth');
+            else if (tab === 'REMEDIATION') setActiveSection('admin-mains-remediation');
+            else if (tab === 'READINESS') setActiveSection('admin-mains-readiness');
+            else if (tab === 'OVERVIEW') setActiveSection('admin-mains-intelligence');
+          }}
+        />
       )}
       {/* SECTION: RESOURCE STUDIO (GOOGLE DRIVE) */}
       {activeSection === 'admin-resources' && (

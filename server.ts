@@ -32,6 +32,7 @@ import { teacherRepository } from './server/repositories/TeacherRepository.js';
 import { createLiveClassRouter } from './server/routes/liveClassRoutes.js';
 import { createYptRouter } from './server/routes/yptRoutes.js';
 import { createExamEngineRouter } from './server/routes/examEngineRoutes.js';
+import { createMainsIntelligenceRouter } from './server/routes/mainsIntelligenceRoutes.js';
 import { createStudyPlannerRouter } from './server/routes/studyPlannerRoutes.js';
 import { setupLiveClassWebSocket } from './server/liveClassSocket.js';
 import { OFFICIAL_SUBJECTS, OFFICIAL_TOPICS, OFFICIAL_CONCEPTS } from './server/db/syllabusData.js';
@@ -489,6 +490,9 @@ async function startServer() {
 
   // Mount Unified Prelims + Mains + Interview Exam Engine Router
   app.use('/api', createExamEngineRouter(requireAuth));
+
+  // Mount Mains Copy Checking Intelligence — Proprietary Model Pipeline (Phase 4.1)
+  app.use('/api', createMainsIntelligenceRouter(requireAuth, requireTeacher, requireAdmin));
 
   // Mount Personalized Study Planner & Smart Revision Engine Router
   app.use('/api/study-planner', createStudyPlannerRouter(requireAuth));

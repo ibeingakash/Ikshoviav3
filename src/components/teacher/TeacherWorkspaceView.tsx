@@ -22,6 +22,7 @@ import { TeacherResourcesView } from './TeacherResourcesView.js';
 import { TeacherLiveClassesView } from './TeacherLiveClassesView.js';
 import { TeacherAnnouncementsView } from './TeacherAnnouncementsView.js';
 import { TeacherAnalyticsView } from './TeacherAnalyticsView.js';
+import { MainsFacultyReviewQueueView } from './MainsFacultyReviewQueueView.js';
 
 export type TeacherTab =
   | 'dashboard'
@@ -29,6 +30,7 @@ export type TeacherTab =
   | 'students'
   | 'assignments'
   | 'evaluations'
+  | 'mains-ground-truth'
   | 'quizzes'
   | 'resources'
   | 'live'
@@ -51,6 +53,7 @@ export const TeacherWorkspaceView: React.FC<TeacherWorkspaceViewProps> = ({
     { id: 'students', label: 'Assigned Students', icon: Users },
     { id: 'assignments', label: 'Assignments', icon: ClipboardCheck },
     { id: 'evaluations', label: 'Answer Evaluations', icon: Award },
+    { id: 'mains-ground-truth', label: 'Mains Ground Truth', icon: ClipboardCheck },
     { id: 'quizzes', label: 'Quizzes & Tests', icon: FileQuestion },
     { id: 'resources', label: 'Handouts & Notes', icon: FolderArchive },
     { id: 'live', label: 'Live Classes', icon: Video },
@@ -152,6 +155,9 @@ export const TeacherWorkspaceView: React.FC<TeacherWorkspaceViewProps> = ({
         )}
         {activeTab === 'evaluations' && (
           <TeacherEvaluationsView initialAssignmentId={targetAssignmentId} />
+        )}
+        {activeTab === 'mains-ground-truth' && (
+          <MainsFacultyReviewQueueView />
         )}
         {activeTab === 'quizzes' && <TeacherQuizzesView />}
         {activeTab === 'resources' && <TeacherResourcesView />}

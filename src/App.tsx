@@ -51,6 +51,7 @@ import { LiveClassesHubView } from './components/live/LiveClassesHubView.js';
 import { GlobalCallManager } from './components/live/GlobalCallManager.js';
 import { YptView } from './components/ypt/YptView.js';
 import { AppReleasesView } from './components/admin/AppReleasesView.js';
+import { MainsEvaluationIntelligenceDashboard } from './components/admin/MainsEvaluationIntelligenceDashboard.js';
 import { AndroidUpdateGateway } from './components/common/AndroidUpdateGateway.js';
 import { TeacherWorkspaceView, TeacherTab } from './components/teacher/TeacherWorkspaceView.js';
 import { LearnerClassesAndAssignmentsView } from './components/teacher/LearnerClassesAndAssignmentsView.js';
@@ -378,6 +379,28 @@ const MainContent: React.FC = () => {
           <TestSeriesMarketplaceView
             initialSeriesId={activeTestSeriesId || undefined}
             onStartMockTest={handleStartMockTestFromSeries}
+          />
+        );
+      case 'admin-mains-intelligence':
+      case 'admin-mains-readiness':
+      case 'admin-mains-remediation':
+      case 'admin-mains-growth':
+      case 'admin-mains-telegram':
+        return (
+          <MainsEvaluationIntelligenceDashboard
+            initialTab={
+              activeSection === 'admin-mains-telegram' ? 'TELEGRAM_IMPORT' :
+              activeSection === 'admin-mains-growth' ? 'GROWTH_HUB' :
+              activeSection === 'admin-mains-remediation' ? 'REMEDIATION' :
+              activeSection === 'admin-mains-readiness' ? 'READINESS' : 'OVERVIEW'
+            }
+            onTabChange={(tab) => {
+              if (tab === 'TELEGRAM_IMPORT') setActiveSection('admin-mains-telegram');
+              else if (tab === 'GROWTH_HUB') setActiveSection('admin-mains-growth');
+              else if (tab === 'REMEDIATION') setActiveSection('admin-mains-remediation');
+              else if (tab === 'READINESS') setActiveSection('admin-mains-readiness');
+              else if (tab === 'OVERVIEW') setActiveSection('admin-mains-intelligence');
+            }}
           />
         );
       case 'superadmin-console':

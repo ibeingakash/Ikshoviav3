@@ -55,6 +55,11 @@ export type NavigationSection =
   | 'admin-import-logs'
   | 'admin-resources'
   | 'admin-app-releases'
+  | 'admin-mains-intelligence'
+  | 'admin-mains-readiness'
+  | 'admin-mains-remediation'
+  | 'admin-mains-growth'
+  | 'admin-mains-telegram'
   | 'admin-releases'
   | 'admin-settings'
   | 'courses-catalog'
@@ -89,6 +94,46 @@ export type NavigationSection =
 
 export type AppTheme = 'futuristic-glass' | 'upsc-parchment' | 'bpsc-navy';
 
+export function getSectionFromPath(pathname: string, userRole?: string): NavigationSection | null {
+  if (!pathname) return null;
+  const p = pathname.toLowerCase().replace(/\/$/, '');
+  const isAdminOrSuper = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+
+  if (p === '/admin/mains-intelligence/telegram-ingestion' || p === '/admin/mains-intelligence/telegram') {
+    return isAdminOrSuper ? 'admin-mains-telegram' : null;
+  }
+  if (p === '/admin/mains-intelligence/growth' || p === '/admin/mains-intelligence/dataset-growth') {
+    return isAdminOrSuper ? 'admin-mains-growth' : null;
+  }
+  if (p === '/admin/mains-intelligence/remediation' || p === '/admin/mains-intelligence/dataset-remediation') {
+    return isAdminOrSuper ? 'admin-mains-remediation' : null;
+  }
+  if (p === '/admin/mains-intelligence/readiness' || p === '/admin/mains-intelligence/training-readiness') {
+    return isAdminOrSuper ? 'admin-mains-readiness' : null;
+  }
+  if (p === '/admin/mains-intelligence' || p === '/admin/mains-evaluation-intelligence') {
+    return isAdminOrSuper ? 'admin-mains-intelligence' : null;
+  }
+  return null;
+}
+
+export function getPathFromSection(sec: NavigationSection): string | null {
+  switch (sec) {
+    case 'admin-mains-telegram':
+      return '/admin/mains-intelligence/telegram-ingestion';
+    case 'admin-mains-growth':
+      return '/admin/mains-intelligence/growth';
+    case 'admin-mains-remediation':
+      return '/admin/mains-intelligence/remediation';
+    case 'admin-mains-readiness':
+      return '/admin/mains-intelligence/readiness';
+    case 'admin-mains-intelligence':
+      return '/admin/mains-intelligence';
+    default:
+      return null;
+  }
+}
+
 interface LearnerContextType {
   activeSection: NavigationSection;
   setActiveSection: (sec: NavigationSection) => void;
@@ -122,6 +167,10 @@ const LearnerContext = createContext<LearnerContextType | undefined>(undefined);
 export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const initialSection: NavigationSection = (() => {
+    if (typeof window !== 'undefined') {
+      const fromUrl = getSectionFromPath(window.location.pathname, user?.role);
+      if (fromUrl) return fromUrl;
+    }
     if (user?.role === 'SUPER_ADMIN') return 'super-admin-dashboard';
     if (user?.role === 'ADMIN') return 'admin-dashboard';
     return 'dashboard';
@@ -212,8 +261,11 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       if (isNewLoginOrSwitch) {
         prevAuthUserRef.current = { id: user.id, role: user.role };
-        // Route directly to the role-appropriate initial screen
-        if (user.role === 'SUPER_ADMIN') {
+        // Check if user refreshed on or directly navigated to a deep link URL
+        const urlSection = typeof window !== 'undefined' ? getSectionFromPath(window.location.pathname, user.role) : null;
+        if (urlSection) {
+          setActiveSectionState(urlSection);
+        } else if (user.role === 'SUPER_ADMIN') {
           setActiveSection('super-admin-dashboard');
         } else if (user.role === 'ADMIN') {
           setActiveSection('admin-dashboard');
@@ -241,6 +293,19 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user?.id, user?.role]);
 
+  // Synchronize browser history on popstate (back/forward)
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window === 'undefined') return;
+      const matched = getSectionFromPath(window.location.pathname, user?.role);
+      if (matched) {
+        setActiveSectionState(matched);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user?.role]);
+
   // Handle Ctrl+K shortcut for global search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -263,6 +328,17 @@ export const LearnerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       return nextSection;
     });
+
+    if (typeof window !== 'undefined') {
+      const targetPath = getPathFromSection(nextSection);
+      if (targetPath) {
+        if (window.location.pathname.toLowerCase().replace(/\/$/, '') !== targetPath) {
+          window.history.pushState(null, '', targetPath);
+        }
+      } else if (window.location.pathname.startsWith('/admin/mains-intelligence')) {
+        window.history.pushState(null, '', '/');
+      }
+    }
   };
 
   const navigateBack = (): boolean => {

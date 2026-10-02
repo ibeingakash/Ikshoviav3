@@ -38,6 +38,10 @@ import {
   Video,
   Flame,
   Compass,
+  Brain,
+  Send,
+  Target,
+  ShieldCheck,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -57,6 +61,7 @@ export const Sidebar: React.FC = () => {
   const [learningOpen, setLearningOpen] = useState<boolean>(true);
   const [adminOpen, setAdminOpen] = useState<boolean>(true);
   const [teacherOpen, setTeacherOpen] = useState<boolean>(true);
+  const [mainsIntelligenceOpen, setMainsIntelligenceOpen] = useState<boolean>(true);
 
   // Top General / Core Items
   const coreNavItems: NavItem[] = [
@@ -128,6 +133,13 @@ export const Sidebar: React.FC = () => {
     { id: 'teacher-analytics', label: 'Cohort Analytics', icon: BarChart3 },
   ];
 
+  const isMainsActive =
+    activeSection === 'admin-mains-intelligence' ||
+    activeSection === 'admin-mains-readiness' ||
+    activeSection === 'admin-mains-remediation' ||
+    activeSection === 'admin-mains-growth' ||
+    activeSection === 'admin-mains-telegram';
+
   const isSectionActive = (itemId: NavigationSection, label: string) => {
     if (activeSection === itemId) return true;
     if (itemId === 'teacher-dashboard' && activeSection === 'teacher-dashboard') return true;
@@ -141,6 +153,11 @@ export const Sidebar: React.FC = () => {
     if (label.includes('Bookmarks') && (activeSection === 'revision' || activeSection === 'bookmarks')) return true;
     if (itemId === 'short-notes' && (activeSection === 'short-notes')) return true;
     if (itemId === 'admin-short-notes' && (activeSection === 'admin-short-notes')) return true;
+    if (itemId === 'admin-mains-intelligence' && (activeSection === 'admin-mains-intelligence')) return true;
+    if (itemId === 'admin-mains-readiness' && (activeSection === 'admin-mains-readiness')) return true;
+    if (itemId === 'admin-mains-remediation' && (activeSection === 'admin-mains-remediation')) return true;
+    if (itemId === 'admin-mains-growth' && (activeSection === 'admin-mains-growth')) return true;
+    if (itemId === 'admin-mains-telegram' && (activeSection === 'admin-mains-telegram')) return true;
     if (itemId === 'admin-app-releases' && (activeSection === 'admin-app-releases' || activeSection === 'admin-releases')) return true;
     if ((itemId === 'admin-resources' || label.includes('Resource Studio')) && (activeSection === 'admin-resources' || activeSection === 'admin-resource-studio')) return true;
     if (itemId === 'notes' && activeSection === 'notes') return true;
@@ -308,7 +325,116 @@ export const Sidebar: React.FC = () => {
 
             {adminOpen && (
               <div className="space-y-0.5 mt-1">
-                {adminNavItems.map(item => {
+                {/* Admin Overview (first item) */}
+                {adminNavItems.slice(0, 1).map(item => {
+                  const Icon = item.icon;
+                  const isActive = isSectionActive(item.id, item.label);
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveSection(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-stone-900 text-white font-bold shadow-2xs'
+                          : 'hover:bg-stone-100 text-stone-600 hover:text-stone-900 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-stone-400'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                            isActive ? 'bg-amber-400 text-stone-950' : 'bg-stone-200 text-stone-700'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* MAINS EVALUATION INTELLIGENCE (PHASE 4.1J HIERARCHICAL ENTRY) */}
+                <div className="my-1">
+                  <button
+                    onClick={() => {
+                      setMainsIntelligenceOpen(prev => !prev);
+                      if (!isMainsActive) {
+                        setActiveSection('admin-mains-intelligence');
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                      isMainsActive
+                        ? 'bg-amber-950 text-amber-100 font-bold shadow-2xs'
+                        : 'hover:bg-amber-50/70 text-stone-700 hover:text-stone-900 font-semibold'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Brain className={`w-3.5 h-3.5 shrink-0 ${isMainsActive ? 'text-amber-400' : 'text-amber-700'}`} />
+                      <span className="truncate">Mains Evaluation Intelligence</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span
+                        className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                          isMainsActive ? 'bg-amber-400 text-stone-950' : 'bg-amber-100 text-amber-900'
+                        }`}
+                      >
+                        4.1J
+                      </span>
+                      {mainsIntelligenceOpen ? (
+                        <ChevronDown className={`w-3.5 h-3.5 ${isMainsActive ? 'text-amber-300' : 'text-stone-400'}`} />
+                      ) : (
+                        <ChevronRight className={`w-3.5 h-3.5 ${isMainsActive ? 'text-amber-300' : 'text-stone-400'}`} />
+                      )}
+                    </div>
+                  </button>
+
+                  {mainsIntelligenceOpen && (
+                    <div className="ml-3 pl-2.5 my-1 space-y-0.5 border-l-2 border-amber-300/80">
+                      {[
+                        { id: 'admin-mains-intelligence' as NavigationSection, label: 'Overview', icon: BarChart3, badge: 'KPIs' },
+                        { id: 'admin-mains-readiness' as NavigationSection, label: 'Training Readiness', icon: ShieldAlert, badge: '4.1G' },
+                        { id: 'admin-mains-remediation' as NavigationSection, label: 'Dataset Remediation', icon: ShieldCheck, badge: '4.1H' },
+                        { id: 'admin-mains-growth' as NavigationSection, label: 'Dataset Growth', icon: Target, badge: '4.1I' },
+                        { id: 'admin-mains-telegram' as NavigationSection, label: 'Telegram Ingestion', icon: Send, badge: '4.1J' },
+                      ].map(sub => {
+                        const SubIcon = sub.icon;
+                        const isSubActive = activeSection === sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            onClick={() => setActiveSection(sub.id)}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer ${
+                              isSubActive
+                                ? 'bg-amber-100 text-amber-950 font-bold border border-amber-300/80 shadow-2xs'
+                                : 'hover:bg-amber-50/60 text-stone-600 hover:text-stone-900 font-medium'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <SubIcon className={`w-3.5 h-3.5 shrink-0 ${isSubActive ? 'text-amber-800' : 'text-stone-400'}`} />
+                              <span className="truncate">{sub.label}</span>
+                            </div>
+                            {sub.badge && (
+                              <span
+                                className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
+                                  isSubActive ? 'bg-amber-300 text-amber-950' : 'bg-stone-100 text-stone-600'
+                                }`}
+                              >
+                                {sub.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Remaining Admin Navigation Items */}
+                {adminNavItems.slice(1).map(item => {
                   const Icon = item.icon;
                   const isActive = isSectionActive(item.id, item.label);
 

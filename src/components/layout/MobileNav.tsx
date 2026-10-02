@@ -19,6 +19,8 @@ import {
   Layers,
   Key,
   CreditCard,
+  Brain,
+  Send,
 } from 'lucide-react';
 import { useLearner, NavigationSection } from '../../context/LearnerContext.js';
 import { useAuth } from '../../context/AuthContext.js';
@@ -48,6 +50,8 @@ export const MobileNav: React.FC = () => {
       title: 'ADMINISTRATION',
       items: [
         { id: 'admin-dashboard', label: 'Admin Overview', icon: Shield },
+        { id: 'admin-mains-intelligence', label: 'Mains Evaluation Intelligence', icon: Brain, badge: '4.1J' },
+        { id: 'admin-mains-telegram', label: 'Telegram Ingestion', icon: Send, badge: '4.1J' },
         { id: 'admin-courses', label: 'Courses & Pricing', icon: Package, badge: 'Catalog' },
         { id: 'admin-test-series', label: 'Test Series Studio', icon: Layers, badge: 'Packs' },
         { id: 'admin-commercial', label: 'Commercial Hub', icon: TrendingUp, badge: 'Finance' },
