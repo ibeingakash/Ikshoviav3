@@ -59,7 +59,11 @@ async function runVerification() {
       }
     };
     const unauthProcess = await mainsTelegramIngestionService.processWebhookUpdate(unauthUpdate);
-    record(2, 'Unauthorized source rejected', !isUnauth.authorized && unauthProcess.status === 'REJECTED_UNAUTHORIZED_SOURCE');
+    const unauthRejected = !isUnauth.authorized && (
+      unauthProcess.status === 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION' ||
+      unauthProcess.status === 'REJECTED_UNAUTHORIZED_SOURCE'
+    );
+    record(2, 'Unauthorized source rejected', unauthRejected);
 
     // 3. PDF accepted
     const pdfUpdate = {

@@ -1878,12 +1878,13 @@ export function createMainsIntelligenceRouter(
   router.post('/api/admin/mains/telegram/webhook', handleTelegramWebhook);
   router.post('/admin/mains/telegram/webhook', handleTelegramWebhook);
   router.post('/api/telegram/mains-dataset-bot/webhook', handleTelegramWebhook);
+  router.post('/telegram/mains-dataset-bot/webhook', handleTelegramWebhook);
 
   // POST /api/admin/mains/telegram/register-webhook (Admin explicit action)
   const handleRegisterTelegramWebhook = async (req: express.Request, res: express.Response) => {
     try {
-      const { domain } = req.body || {};
-      const result = await mainsTelegramIngestionService.registerWebhook(domain);
+      const { domain, dropPendingUpdates } = req.body || {};
+      const result = await mainsTelegramIngestionService.registerWebhook(domain, Boolean(dropPendingUpdates));
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1891,6 +1892,57 @@ export function createMainsIntelligenceRouter(
   };
   router.post('/api/admin/mains/telegram/register-webhook', requireAdmin, handleRegisterTelegramWebhook);
   router.post('/admin/mains/telegram/register-webhook', requireAdmin, handleRegisterTelegramWebhook);
+
+  // GET /api/admin/mains/telegram/pending-sources (Admin discovery of unauthorized groups needing review)
+  const handleGetTelegramPendingSources = async (req: express.Request, res: express.Response) => {
+    try {
+      const pending = await mainsTelegramIngestionService.getPendingSources();
+      res.json(pending);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+  router.get('/api/admin/mains/telegram/pending-sources', requireAdmin, handleGetTelegramPendingSources);
+  router.get('/admin/mains/telegram/pending-sources', requireAdmin, handleGetTelegramPendingSources);
+
+  // POST /api/admin/mains/telegram/pending-sources/:chatId/authorize
+  const handleAuthorizeTelegramPendingSource = async (req: express.Request, res: express.Response) => {
+    try {
+      const chatId = req.params.chatId;
+      const { displayName, authorizationBasis, retentionPolicy } = req.body || {};
+      const actorId = (req as any).user?.id || 'admin_user';
+      const actorRole = (req as any).user?.role || 'ADMIN';
+
+      const source = await mainsTelegramIngestionService.authorizePendingSource(chatId, {
+        displayName,
+        authorizationBasis,
+        retentionPolicy,
+        actorId,
+        actorRole
+      });
+      res.json(source);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+  router.post('/api/admin/mains/telegram/pending-sources/:chatId/authorize', requireAdmin, handleAuthorizeTelegramPendingSource);
+  router.post('/admin/mains/telegram/pending-sources/:chatId/authorize', requireAdmin, handleAuthorizeTelegramPendingSource);
+
+  // POST /api/admin/mains/telegram/pending-sources/:chatId/reject
+  const handleRejectTelegramPendingSource = async (req: express.Request, res: express.Response) => {
+    try {
+      const chatId = req.params.chatId;
+      const actorId = (req as any).user?.id || 'admin_user';
+      const actorRole = (req as any).user?.role || 'ADMIN';
+
+      await mainsTelegramIngestionService.rejectPendingSource(chatId, actorId, actorRole);
+      res.json({ success: true, chatId, status: 'REJECTED' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+  router.post('/api/admin/mains/telegram/pending-sources/:chatId/reject', requireAdmin, handleRejectTelegramPendingSource);
+  router.post('/admin/mains/telegram/pending-sources/:chatId/reject', requireAdmin, handleRejectTelegramPendingSource);
 
   // GET /api/admin/mains/telegram/runtime-status (Safe runtime diagnostic endpoint)
   const handleGetTelegramRuntimeStatus = async (req: express.Request, res: express.Response) => {
@@ -1905,7 +1957,10 @@ export function createMainsIntelligenceRouter(
         environment_loaded_by_running_process: status.environment_loaded_by_running_process,
         reason: status.reason,
         webhookUrl: status.webhookUrl,
-        pendingUpdateCount: status.pendingUpdateCount
+        pendingUpdateCount: status.pendingUpdateCount,
+        lastErrorDate: status.lastErrorDate,
+        lastErrorReason: status.lastErrorReason,
+        webhookReachable: status.webhookReachable
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

@@ -5452,15 +5452,53 @@ export const api = {
     return res.json();
   },
 
-  registerAdminMainsTelegramWebhook: async (domain?: string) => {
+  registerAdminMainsTelegramWebhook: async (domain?: string, dropPendingUpdates: boolean = false) => {
     const res = await apiFetch('/api/admin/mains/telegram/register-webhook', {
       method: 'POST',
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain })
+      body: JSON.stringify({ domain, dropPendingUpdates })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to register Telegram webhook');
+    }
+    return res.json();
+  },
+
+  getAdminMainsTelegramPendingSources: async () => {
+    const res = await apiFetch('/api/admin/mains/telegram/pending-sources', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to load pending Telegram sources');
+    }
+    return res.json();
+  },
+
+  authorizeAdminMainsTelegramPendingSource: async (chatId: string, data?: {
+    displayName?: string;
+    authorizationBasis?: string;
+    retentionPolicy?: string;
+  }) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/pending-sources/${chatId}/authorize`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to authorize pending Telegram source');
+    }
+    return res.json();
+  },
+
+  rejectAdminMainsTelegramPendingSource: async (chatId: string) => {
+    const res = await apiFetch(`/api/admin/mains/telegram/pending-sources/${chatId}/reject`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to reject pending Telegram source');
     }
     return res.json();
   }

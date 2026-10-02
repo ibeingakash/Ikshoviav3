@@ -100,7 +100,10 @@ async function runRuntimeDiagnostic() {
       text: 'Unauthorized attempt'
     }
   });
-  const unauthOk = !unauthCheck.authorized && unauthUpdateResult.status === 'REJECTED_UNAUTHORIZED_SOURCE';
+  const unauthOk = !unauthCheck.authorized && (
+    unauthUpdateResult.status === 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION' ||
+    unauthUpdateResult.status === 'REJECTED_UNAUTHORIZED_SOURCE'
+  );
   record(7, 'Unauthorized Telegram chat remains strictly rejected', unauthOk);
 
   // 8. No dataset records are changed (Zero mutation guarantee)

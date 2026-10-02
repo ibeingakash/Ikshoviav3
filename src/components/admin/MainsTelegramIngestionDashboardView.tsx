@@ -77,6 +77,16 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
   const [runtimeStatus, setRuntimeStatus] = useState<any>(null);
   const [registeringWebhook, setRegisteringWebhook] = useState<boolean>(false);
 
+  // Pending Sources Discovery & Authorization states
+  const [pendingSources, setPendingSources] = useState<any[]>([]);
+  const [sourceSubTab, setSourceSubTab] = useState<'AUTHORIZED' | 'PENDING'>('AUTHORIZED');
+  const [showAuthorizePendingModal, setShowAuthorizePendingModal] = useState<boolean>(false);
+  const [selectedPendingSource, setSelectedPendingSource] = useState<any | null>(null);
+  const [pendingDisplayName, setPendingDisplayName] = useState<string>('');
+  const [pendingAuthBasis, setPendingAuthBasis] = useState<string>('ACADEMIC_FACULTY_CONSENT');
+  const [pendingRetention, setPendingRetention] = useState<string>('PERSIST_ORIGINAL');
+  const [pendingActionLoading, setPendingActionLoading] = useState<boolean>(false);
+
   useEffect(() => {
     loadAll();
   }, [statusFilter]);
@@ -85,10 +95,11 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [statsData, runtimeData, sourcesData, importsData] = await Promise.all([
+      const [statsData, runtimeData, sourcesData, pendingSourcesData, importsData] = await Promise.all([
         api.getAdminMainsTelegramStats().catch(() => null),
         api.getAdminMainsTelegramRuntimeStatus().catch(() => null),
         api.getAdminMainsTelegramSources().catch(() => []),
+        api.getAdminMainsTelegramPendingSources().catch(() => []),
         api.getAdminMainsTelegramImports({
           status: statusFilter === 'ALL' ? undefined : statusFilter,
           limit: 100
@@ -98,6 +109,7 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
       setStats(statsData);
       setRuntimeStatus(runtimeData);
       setSources(sourcesData || []);
+      setPendingSources(pendingSourcesData || []);
       setImports(importsData?.items || []);
       setTotalCount(importsData?.totalCount || 0);
     } catch (err: any) {
@@ -123,6 +135,51 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
   const showNotification = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => setSuccessMsg(null), 5000);
+  };
+
+  // 1. Source Management & Pending Authorization Handlers
+  const handleOpenAuthorizePending = (pend: any) => {
+    setSelectedPendingSource(pend);
+    setPendingDisplayName(`Faculty Group ${pend.telegramChatId}`);
+    setPendingAuthBasis('ACADEMIC_FACULTY_CONSENT');
+    setPendingRetention('PERSIST_ORIGINAL');
+    setShowAuthorizePendingModal(true);
+  };
+
+  const handleConfirmAuthorizePending = async () => {
+    if (!selectedPendingSource) return;
+    setPendingActionLoading(true);
+    try {
+      await api.authorizeAdminMainsTelegramPendingSource(selectedPendingSource.telegramChatId, {
+        displayName: pendingDisplayName.trim() || `Faculty Group ${selectedPendingSource.telegramChatId}`,
+        authorizationBasis: pendingAuthBasis,
+        retentionPolicy: pendingRetention
+      });
+      setShowAuthorizePendingModal(false);
+      setSelectedPendingSource(null);
+      showNotification(`Source ${selectedPendingSource.telegramChatId} successfully authorized as ingestion source.`);
+      await loadAll();
+    } catch (err: any) {
+      alert(err.message || 'Failed to authorize pending source');
+    } finally {
+      setPendingActionLoading(false);
+    }
+  };
+
+  const handleRejectPending = async (chatId: string) => {
+    if (!confirm(`Are you sure you want to reject source ${chatId}? It will remain blocked from ingesting dataset copies.`)) {
+      return;
+    }
+    setPendingActionLoading(true);
+    try {
+      await api.rejectAdminMainsTelegramPendingSource(chatId);
+      showNotification(`Source ${chatId} rejected.`);
+      await loadAll();
+    } catch (err: any) {
+      alert(err.message || 'Failed to reject pending source');
+    } finally {
+      setPendingActionLoading(false);
+    }
   };
 
   // 1. Source Management
@@ -246,15 +303,19 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
               Refresh
             </button>
 
-            {/* Register Webhook Button (Section 7) */}
-            {(runtimeStatus?.configured || stats?.botConfigured) && !runtimeStatus?.webhookConfigured && (
+            {/* Register / Repair Webhook Button (Section 7) */}
+            {(runtimeStatus?.configured || stats?.botConfigured) && (!runtimeStatus?.webhookConfigured || runtimeStatus?.runtime === 'WEBHOOK_ERROR') && (
               <button
                 onClick={handleRegisterWebhook}
                 disabled={registeringWebhook}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-sky-700 hover:bg-sky-600 text-white rounded-lg transition-colors shadow-xs cursor-pointer"
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-colors shadow-xs cursor-pointer ${
+                  runtimeStatus?.runtime === 'WEBHOOK_ERROR'
+                    ? 'bg-rose-700 hover:bg-rose-600 text-white'
+                    : 'bg-sky-700 hover:bg-sky-600 text-white'
+                }`}
               >
                 <Send className={`w-3.5 h-3.5 ${registeringWebhook ? 'animate-spin' : ''}`} />
-                {registeringWebhook ? 'Registering...' : 'Register Webhook'}
+                {registeringWebhook ? 'Registering...' : (runtimeStatus?.runtime === 'WEBHOOK_ERROR' ? 'Repair Webhook' : 'Register Webhook')}
               </button>
             )}
 
@@ -348,7 +409,7 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
       <div className="border-b border-stone-200 overflow-x-auto bg-white rounded-xl shadow-xs px-2">
         <div className="flex items-center gap-1 min-w-max py-1.5">
           {[
-            { key: 'SOURCES', label: `A. Sources (${sources.length})`, icon: Users },
+            { key: 'SOURCES', label: `A. Sources (${sources.length}${pendingSources.length > 0 ? ` • ${pendingSources.length} Pending` : ''})`, icon: Users },
             { key: 'CONNECTION', label: 'B. Connection Status', icon: Radio },
             { key: 'QUEUE', label: `C. Import Queue (${totalCount})`, icon: Clock },
             { key: 'OCR', label: 'E. OCR & Confidence', icon: Eye },
@@ -384,73 +445,176 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
       {/* ---------------------------------------------------- */}
       {activeSection === 'SOURCES' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-white border border-stone-200">
-            <div>
-              <h2 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-                <Users className="w-4 h-4 text-sky-700" />
-                Authorized Telegram Ingestion Sources
-              </h2>
-              <p className="text-xs text-stone-500">
-                Only explicitly authorized private groups and channels can ingest answer copies. Public scraping is strictly forbidden.
-              </p>
-            </div>
-
+          {/* Sub-Navigation between Authorized and Pending Authorization */}
+          <div className="flex items-center gap-2 border-b border-stone-200 pb-2">
             <button
-              onClick={() => setShowAddSourceModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-900 hover:bg-sky-950 rounded-lg transition-colors shadow-xs"
+              onClick={() => setSourceSubTab('AUTHORIZED')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+                sourceSubTab === 'AUTHORIZED'
+                  ? 'bg-sky-900 text-white'
+                  : 'text-stone-600 hover:bg-stone-100'
+              }`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              Authorize New Source
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Authorized Sources ({sources.length})
+            </button>
+            <button
+              onClick={() => setSourceSubTab('PENDING')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+                sourceSubTab === 'PENDING'
+                  ? 'bg-amber-800 text-white'
+                  : pendingSources.length > 0
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'text-stone-600 hover:bg-stone-100'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Pending Authorization ({pendingSources.length})
+              {pendingSources.length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
             </button>
           </div>
 
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-200">
-            {sources.length === 0 ? (
-              <div className="p-8 text-center text-xs text-stone-500 space-y-2">
-                <Users className="w-6 h-6 text-stone-400 mx-auto" />
-                <p>No Telegram sources authorized yet. Click "Authorize New Source" to whitelist an approved group.</p>
-              </div>
-            ) : (
-              sources.map(src => (
-                <div key={src.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-stone-900">{src.displayName}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
-                        src.authorized ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'
-                      }`}>
-                        {src.authorized ? 'AUTHORIZED' : 'DISABLED'}
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-stone-100 text-stone-700 border border-stone-200">
-                        {src.sourceType}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-stone-500">
-                      Telegram Chat ID: <strong className="font-mono text-stone-800">{src.telegramChatId}</strong> • Basis: <span className="font-mono">{src.authorizationBasis || 'INSTITUTIONAL_PARTNER'}</span>
-                    </p>
-
-                    <div className="text-[11px] text-stone-400 font-mono pt-1">
-                      Retention: <strong>{src.retentionPolicy}</strong> • Registered by {src.createdBy}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleToggleSourceAuth(src)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                        src.authorized
-                          ? 'border-stone-300 text-stone-700 hover:bg-stone-100'
-                          : 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                      }`}
-                    >
-                      {src.authorized ? 'Revoke Authorization' : 'Authorize Source'}
-                    </button>
-                  </div>
+          {sourceSubTab === 'AUTHORIZED' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-white border border-stone-200">
+                <div>
+                  <h2 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-sky-700" />
+                    Authorized Telegram Ingestion Sources
+                  </h2>
+                  <p className="text-xs text-stone-500">
+                    Only explicitly authorized private groups and channels can ingest answer copies. Public scraping is strictly forbidden.
+                  </p>
                 </div>
-              ))
-            )}
-          </div>
+
+                <button
+                  onClick={() => setShowAddSourceModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-900 hover:bg-sky-950 rounded-lg transition-colors shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Authorize New Source
+                </button>
+              </div>
+
+              <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-200">
+                {sources.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-stone-500 space-y-2">
+                    <Users className="w-6 h-6 text-stone-400 mx-auto" />
+                    <p>No Telegram sources authorized yet. Click "Authorize New Source" or approve a pending group below.</p>
+                  </div>
+                ) : (
+                  sources.map(src => (
+                    <div key={src.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-stone-900">{src.displayName}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                            src.authorized ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-rose-50 text-rose-800 border-rose-300'
+                          }`}>
+                            {src.authorized ? 'AUTHORIZED' : 'DISABLED'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-stone-100 text-stone-700 border border-stone-200">
+                            {src.sourceType}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-stone-500">
+                          Telegram Chat ID: <strong className="font-mono text-stone-800">{src.telegramChatId}</strong> • Basis: <span className="font-mono">{src.authorizationBasis || 'INSTITUTIONAL_PARTNER'}</span>
+                        </p>
+
+                        <div className="text-[11px] text-stone-400 font-mono pt-1">
+                          Retention: <strong>{src.retentionPolicy}</strong> • Registered by {src.createdBy}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleToggleSourceAuth(src)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                            src.authorized
+                              ? 'border-stone-300 text-stone-700 hover:bg-stone-100'
+                              : 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                          }`}
+                        >
+                          {src.authorized ? 'Revoke Authorization' : 'Authorize Source'}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {sourceSubTab === 'PENDING' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <h3 className="font-bold text-amber-900 flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-700" />
+                    Pending Discovered Ingestion Sources
+                  </h3>
+                  <p className="text-amber-800 mt-0.5">
+                    Private groups or channels that reached the Telegram bot. To preserve dataset purity, ingestion is blocked until an Administrator reviews and explicitly authorizes the chat ID.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-200">
+                {pendingSources.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-stone-500 space-y-2">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto" />
+                    <p>No pending authorization requests. Any new messages from unauthorized chats will be safely recorded here.</p>
+                  </div>
+                ) : (
+                  pendingSources.map(pend => (
+                    <div key={pend.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-sm text-stone-900">Chat ID: {pend.telegramChatId}</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-100 text-amber-800 border border-amber-300 font-bold uppercase">
+                            {pend.status}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-stone-100 text-stone-700 border border-stone-200">
+                            {pend.telegramChatType}
+                          </span>
+                        </div>
+                        <div className="text-xs text-stone-500 flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+                          <span>First Seen: <strong className="font-mono text-stone-700">{new Date(pend.firstSeen).toLocaleString()}</strong></span>
+                          <span>Last Seen: <strong className="font-mono text-stone-700">{new Date(pend.lastSeen).toLocaleString()}</strong></span>
+                          <span>Event Count: <strong className="font-mono text-stone-700">{pend.eventCount}</strong></span>
+                        </div>
+                        <div className="text-[11px] text-stone-400 font-mono pt-0.5">
+                          PII Safeguard: No usernames, messages, or media were stored during pending event recording.
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleOpenAuthorizePending(pend)}
+                          disabled={pendingActionLoading}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg border border-emerald-600 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Authorize
+                        </button>
+                        <button
+                          onClick={() => handleRejectPending(pend.telegramChatId)}
+                          disabled={pendingActionLoading}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -459,6 +623,31 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
       {/* ---------------------------------------------------- */}
       {activeSection === 'CONNECTION' && (
         <div className="space-y-4">
+          {runtimeStatus?.runtime === 'WEBHOOK_ERROR' && (
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Webhook Error Detected</span>
+                </div>
+                <button
+                  onClick={handleRegisterWebhook}
+                  disabled={registeringWebhook}
+                  className="px-3 py-1 font-bold bg-rose-700 hover:bg-rose-600 text-white rounded-md shadow-xs cursor-pointer flex items-center gap-1"
+                >
+                  <Send className="w-3 h-3" />
+                  {registeringWebhook ? 'Repairing...' : 'Repair & Re-register Webhook'}
+                </button>
+              </div>
+              <p className="text-stone-700">
+                Reason reported by Telegram Bot API: <strong className="font-mono text-rose-800">{runtimeStatus?.reason || runtimeStatus?.lastErrorReason || 'Unknown error'}</strong>
+              </p>
+              <p className="text-[11px] text-stone-500">
+                Clicking "Repair & Re-register Webhook" reinstalls the webhook configuration with the production domain and resets the error counter on Telegram Bot API.
+              </p>
+            </div>
+          )}
+
           <div className="p-5 rounded-xl border border-stone-200 bg-white shadow-xs space-y-4">
             <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
               <Radio className="w-4 h-4 text-sky-700" />
@@ -488,15 +677,15 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
 
               <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-stone-800 block">Webhook Status & Endpoint</span>
-                  {(runtimeStatus?.configured || stats?.botConfigured) && !runtimeStatus?.webhookConfigured && (
+                  <span className="font-bold text-stone-800 block">Webhook Status & Diagnostic</span>
+                  {(runtimeStatus?.configured || stats?.botConfigured) && (
                     <button
                       onClick={handleRegisterWebhook}
                       disabled={registeringWebhook}
                       className="px-2.5 py-1 text-[11px] font-bold bg-sky-700 hover:bg-sky-600 text-white rounded-md transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
                     >
                       <Send className="w-3 h-3" />
-                      {registeringWebhook ? 'Registering...' : 'Register Webhook'}
+                      {registeringWebhook ? 'Registering...' : (runtimeStatus?.runtime === 'WEBHOOK_ERROR' ? 'Repair Webhook' : 'Sync Webhook')}
                     </button>
                   )}
                 </div>
@@ -504,13 +693,23 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
                   Official Telegram Bot API webhook receiver. Validates authorized source chats, file types, and size limits.
                 </p>
                 <div className="pt-2 border-t border-stone-200 space-y-1.5 font-mono text-[11px]">
-                  <div>Webhook Status: <span className={runtimeStatus?.webhookConfigured ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
-                    {runtimeStatus?.webhookConfigured ? 'REGISTERED & ACTIVE' : 'PENDING REGISTRATION'}
+                  <div>Webhook Status: <span className={
+                    runtimeStatus?.runtime === 'READY'
+                      ? 'text-emerald-700 font-bold'
+                      : runtimeStatus?.runtime === 'WEBHOOK_ERROR'
+                      ? 'text-rose-700 font-bold'
+                      : 'text-amber-700 font-bold'
+                  }>
+                    {runtimeStatus?.runtime === 'READY' ? 'ACTIVE & HEALTHY' : runtimeStatus?.runtime || 'PENDING REGISTRATION'}
+                  </span></div>
+                  <div>Webhook Reachable: <span className={runtimeStatus?.webhookReachable ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
+                    {runtimeStatus?.webhookReachable ? 'YES' : 'NO'}
                   </span></div>
                   <div>Registered URL: <strong className="text-sky-900 break-all">{runtimeStatus?.webhookUrl || 'Not yet registered'}</strong></div>
                   <div>Public Receiver: <strong className="text-sky-900">/api/telegram/mains-dataset-bot/webhook</strong></div>
                   <div>Pending Updates: <strong>{runtimeStatus?.pendingUpdateCount ?? 0}</strong></div>
-                  <div>Supported Payloads: <strong>PDF, JPG, JPEG, PNG</strong></div>
+                  <div>Last Error Date: <span>{runtimeStatus?.lastErrorDate ? new Date(runtimeStatus.lastErrorDate).toLocaleString() : 'None'}</span></div>
+                  <div>Last Error Reason: <span className={runtimeStatus?.lastErrorReason ? 'text-rose-700 font-bold' : 'text-stone-600'}>{runtimeStatus?.lastErrorReason || 'None'}</span></div>
                 </div>
               </div>
             </div>
@@ -1184,6 +1383,109 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-lg"
               >
                 Confirm Exclusion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ---------------------------------------------------- */}
+      {/* AUTHORIZE PENDING SOURCE MODAL                       */}
+      {/* ---------------------------------------------------- */}
+      {showAuthorizePendingModal && selectedPendingSource && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-sky-950 flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-600" />
+              Authorize Discovered Source
+            </h3>
+            <p className="text-xs text-stone-500">
+              Grant authorization to incoming private Telegram chat. Once authorized, documents sent in this chat will be ingested and processed into candidate datasets.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Telegram Chat ID (Verified):</label>
+                <input
+                  type="text"
+                  value={selectedPendingSource.telegramChatId}
+                  disabled
+                  className="w-full p-2.5 text-xs font-mono bg-stone-100 border border-stone-300 rounded-lg text-stone-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Chat Type:</label>
+                <input
+                  type="text"
+                  value={selectedPendingSource.telegramChatType}
+                  disabled
+                  className="w-full p-2.5 text-xs font-mono bg-stone-100 border border-stone-300 rounded-lg text-stone-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Display Name:</label>
+                <input
+                  type="text"
+                  value={pendingDisplayName}
+                  onChange={e => setPendingDisplayName(e.target.value)}
+                  placeholder="e.g. GS2 Faculty Review Group"
+                  className="w-full p-2.5 text-xs border border-stone-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Source Type:</label>
+                <input
+                  type="text"
+                  value="PRIVATE_GROUP"
+                  disabled
+                  className="w-full p-2.5 text-xs font-mono bg-stone-100 border border-stone-300 rounded-lg text-stone-600"
+                />
+                <span className="text-[10px] text-stone-500">Public Telegram scraping remains strictly forbidden.</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Authorization Basis:</label>
+                <select
+                  value={pendingAuthBasis}
+                  onChange={e => setPendingAuthBasis(e.target.value)}
+                  className="w-full p-2.5 text-xs border border-stone-300 rounded-lg"
+                >
+                  <option value="ACADEMIC_FACULTY_CONSENT">ACADEMIC_FACULTY_CONSENT (Verified Faculty Consent)</option>
+                  <option value="INSTITUTIONAL_PARTNER">INSTITUTIONAL_PARTNER (Formal Coaching/Academy License)</option>
+                  <option value="EVALUATOR_DONATION">EVALUATOR_DONATION (Direct Evaluator Submission)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-stone-800 block mb-1">Retention Policy:</label>
+                <select
+                  value={pendingRetention}
+                  onChange={e => setPendingRetention(e.target.value)}
+                  className="w-full p-2.5 text-xs border border-stone-300 rounded-lg"
+                >
+                  <option value="PERSIST_ORIGINAL">PERSIST_ORIGINAL (Retain raw PDF for audit compliance)</option>
+                  <option value="REDACTED_ONLY">REDACTED_ONLY (Delete raw PDF post-sanitization)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowAuthorizePendingModal(false)}
+                disabled={pendingActionLoading}
+                className="px-3.5 py-2 text-xs font-semibold text-stone-600 hover:bg-stone-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmAuthorizePending}
+                disabled={pendingActionLoading}
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {pendingActionLoading ? 'Authorizing...' : 'Authorize Source'}
               </button>
             </div>
           </div>

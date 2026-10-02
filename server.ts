@@ -492,7 +492,7 @@ async function startServer() {
   app.use('/api', createExamEngineRouter(requireAuth));
 
   // Mount Mains Copy Checking Intelligence — Proprietary Model Pipeline (Phase 4.1)
-  app.use('/api', createMainsIntelligenceRouter(requireAuth, requireTeacher, requireAdmin));
+  app.use(['/api', '/'], createMainsIntelligenceRouter(requireAuth, requireTeacher, requireAdmin));
 
   // Mount Personalized Study Planner & Smart Revision Engine Router
   app.use('/api/study-planner', createStudyPlannerRouter(requireAuth));

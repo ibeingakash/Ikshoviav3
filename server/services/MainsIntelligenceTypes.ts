@@ -1015,6 +1015,21 @@ export interface TelegramRuntimeStatusResponse {
   reason?: string;
   webhookUrl?: string;
   pendingUpdateCount?: number;
+  lastErrorDate?: string | null;
+  lastErrorReason?: string | null;
+  webhookReachable?: boolean;
+}
+
+export interface TelegramPendingSource {
+  id: string;
+  telegramChatId: string;
+  telegramChatType: string;
+  firstSeen: string;
+  lastSeen: string;
+  eventCount: number;
+  status: 'PENDING_AUTHORIZATION' | 'AUTHORIZED' | 'REJECTED';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TelegramIngestionStats {

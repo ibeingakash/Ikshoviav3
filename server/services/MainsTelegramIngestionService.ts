@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import pool from '../db/pool.js';
 import {
   TelegramSource,
+  TelegramPendingSource,
   TelegramImportRecord,
   TelegramIngestionStats,
   TelegramRuntimeStatusResponse,
@@ -23,6 +24,29 @@ const PII_SALT = process.env.PII_SALT || 'ikshovia_mains_pii_salt_2026';
 export class MainsTelegramIngestionService {
   constructor() {
     this.ensureStorageDir();
+    this.ensureTables().catch(err => {
+      console.warn('[TelegramIngestion] Initial ensureTables failed:', err.message);
+    });
+  }
+
+  async ensureTables(): Promise<void> {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS public.mains_telegram_pending_sources (
+          id TEXT PRIMARY KEY,
+          telegram_chat_id TEXT UNIQUE NOT NULL,
+          telegram_chat_type TEXT NOT NULL DEFAULT 'group',
+          first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          event_count INT NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'PENDING_AUTHORIZATION',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+    } catch (err: any) {
+      console.warn('[TelegramIngestion] ensureTables error:', err.message);
+    }
   }
 
   private ensureStorageDir() {
@@ -216,6 +240,104 @@ export class MainsTelegramIngestionService {
   }
 
   // ------------------------------------------------------------------
+  // 1b. PENDING SOURCES DISCOVERY & AUTHORIZATION
+  // ------------------------------------------------------------------
+  async recordPendingSource(chatId: string, chatType: string = 'group'): Promise<void> {
+    try {
+      await this.ensureTables();
+      const id = `tg_pend_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await pool.query(`
+        INSERT INTO public.mains_telegram_pending_sources (
+          id, telegram_chat_id, telegram_chat_type, first_seen, last_seen, event_count, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, NOW(), NOW(), 1, 'PENDING_AUTHORIZATION', NOW(), NOW())
+        ON CONFLICT (telegram_chat_id) DO UPDATE SET
+          last_seen = NOW(),
+          event_count = public.mains_telegram_pending_sources.event_count + 1,
+          updated_at = NOW()
+        WHERE public.mains_telegram_pending_sources.status != 'AUTHORIZED';
+      `, [id, chatId, chatType]);
+    } catch (err: any) {
+      console.warn('[TelegramIngestion] recordPendingSource error:', err.message);
+    }
+  }
+
+  async getPendingSources(): Promise<TelegramPendingSource[]> {
+    await this.ensureTables();
+    const res = await pool.query(`
+      SELECT 
+        id, telegram_chat_id, telegram_chat_type, first_seen, last_seen,
+        event_count, status, created_at, updated_at
+      FROM public.mains_telegram_pending_sources
+      WHERE status = 'PENDING_AUTHORIZATION'
+      ORDER BY last_seen DESC;
+    `);
+
+    return res.rows.map(r => ({
+      id: r.id,
+      telegramChatId: r.telegram_chat_id,
+      telegramChatType: r.telegram_chat_type,
+      firstSeen: r.first_seen,
+      lastSeen: r.last_seen,
+      eventCount: Number(r.event_count || 1),
+      status: r.status,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    }));
+  }
+
+  async authorizePendingSource(chatId: string, params: {
+    displayName?: string;
+    authorizationBasis?: string;
+    retentionPolicy?: TelegramRetentionPolicy;
+    actorId: string;
+    actorRole: string;
+  }): Promise<TelegramSource> {
+    await this.ensureTables();
+
+    // Query pending source to retain existing chat type
+    const pendRes = await pool.query(
+      `SELECT telegram_chat_type FROM public.mains_telegram_pending_sources WHERE telegram_chat_id = $1`,
+      [chatId]
+    );
+    const chatType = pendRes.rows[0]?.telegram_chat_type || 'group';
+
+    // 1. Authorize source in mains_telegram_sources
+    const source = await this.registerSource({
+      sourceType: 'PRIVATE_GROUP',
+      telegramChatId: chatId,
+      telegramChatType: chatType,
+      displayName: params.displayName || `Authorized Faculty Group (${chatId})`,
+      authorized: true,
+      enabled: true,
+      authorizationBasis: params.authorizationBasis || 'Faculty Group Administrator Authorized',
+      retentionPolicy: params.retentionPolicy || 'PERSIST_ORIGINAL',
+      actorId: params.actorId,
+      actorRole: params.actorRole
+    });
+
+    // 2. Mark pending source as AUTHORIZED
+    await pool.query(
+      `UPDATE public.mains_telegram_pending_sources SET status = 'AUTHORIZED', updated_at = NOW() WHERE telegram_chat_id = $1`,
+      [chatId]
+    );
+
+    return source;
+  }
+
+  async rejectPendingSource(chatId: string, actorId: string, actorRole: string): Promise<boolean> {
+    await this.ensureTables();
+    await pool.query(
+      `UPDATE public.mains_telegram_pending_sources SET status = 'REJECTED', updated_at = NOW() WHERE telegram_chat_id = $1`,
+      [chatId]
+    );
+    await this.emitEvent('TELEGRAM_SOURCE_REJECTED', 'PENDING', actorId, actorRole, {
+      chatId,
+      action: 'REJECTED_PENDING_SOURCE'
+    });
+    return true;
+  }
+
+  // ------------------------------------------------------------------
   // 2. WEBHOOK UPDATE PROCESSING (SECTIONS 3, 4, 5, 8 & 9)
   // ------------------------------------------------------------------
   async processWebhookUpdate(update: any, clientIp?: string): Promise<{
@@ -237,12 +359,24 @@ export class MainsTelegramIngestionService {
     // 1. Authorization check
     const authCheck = await this.isSourceAuthorized(chatId);
     if (!authCheck.authorized || !authCheck.source) {
-      await this.emitEvent('TELEGRAM_UNAUTHORIZED_SOURCE_ATTEMPT', 'UNAUTHORIZED', 'TELEGRAM', 'GATEWAY', {
+      const chatType = String(message.chat?.type || 'group');
+
+      // 1. Minimum required chat identity extracted (chat.id and chat.type)
+      // 2. Strictly DO NOT store message text, usernames, phone numbers, metadata, or media contents
+      // 3. Create PII-safe pending authorization event
+      await this.emitEvent('UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION', 'UNAUTHORIZED', 'TELEGRAM', 'GATEWAY', {
         chatId,
-        chatType: message.chat?.type,
-        clientIp
+        chatType
       });
-      return { status: 'REJECTED_UNAUTHORIZED_SOURCE', reason: `Chat ${chatId} is not an authorized ingestion source.` };
+
+      // 4. Record pending source in discovery table
+      await this.recordPendingSource(chatId, chatType);
+
+      // 5. Return HTTP 200 compatible status to prevent Telegram webhook delivery loop
+      return {
+        status: 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION',
+        reason: `Chat ${chatId} (${chatType}) is not an authorized ingestion source. Safely logged for administrator review.`
+      };
     }
 
     const source = authCheck.source;
@@ -1152,6 +1286,9 @@ export class MainsTelegramIngestionService {
     let webhookConfigured = false;
     let webhookUrl: string | undefined = undefined;
     let pendingUpdateCount: number = 0;
+    let lastErrorDate: string | null = null;
+    let lastErrorReason: string | null = null;
+    let webhookReachable = false;
     let reason: string | undefined = undefined;
     let runtime: TelegramRuntimeStatus = 'BLOCKED_CONFIGURATION';
 
@@ -1178,7 +1315,10 @@ export class MainsTelegramIngestionService {
           runtime: 'BLOCKED_CONFIGURATION',
           authorizedSources,
           environment_loaded_by_running_process,
-          reason
+          reason,
+          lastErrorDate: null,
+          lastErrorReason: null,
+          webhookReachable: false
         };
       }
 
@@ -1192,21 +1332,27 @@ export class MainsTelegramIngestionService {
       const whData = await whRes.json().catch(() => ({}));
 
       if (whRes.ok && whData.ok && whData.result) {
+        webhookReachable = true;
         const rawUrl = whData.result.url || '';
         webhookConfigured = Boolean(rawUrl && rawUrl.trim().length > 0);
         webhookUrl = rawUrl || undefined;
         pendingUpdateCount = Number(whData.result.pending_update_count || 0);
 
+        if (whData.result.last_error_date) {
+          lastErrorDate = new Date(whData.result.last_error_date * 1000).toISOString();
+        }
+
         if (whData.result.last_error_message) {
-          reason = whData.result.last_error_message;
+          lastErrorReason = String(whData.result.last_error_message);
+          reason = lastErrorReason;
           runtime = 'WEBHOOK_ERROR';
         } else if (webhookConfigured) {
           runtime = 'READY';
         } else {
-          runtime = 'WEBHOOK_PENDING';
+          runtime = 'CONFIGURED_WEBHOOK_PENDING';
         }
       } else {
-        runtime = 'WEBHOOK_PENDING';
+        runtime = 'CONFIGURED_WEBHOOK_PENDING';
       }
     } catch (err: any) {
       telegramApiReachable = false;
@@ -1223,14 +1369,17 @@ export class MainsTelegramIngestionService {
       environment_loaded_by_running_process,
       reason,
       webhookUrl,
-      pendingUpdateCount
+      pendingUpdateCount,
+      lastErrorDate,
+      lastErrorReason,
+      webhookReachable
     };
   }
 
   // ------------------------------------------------------------------
   // 7c. IDEMPOTENT WEBHOOK REGISTRATION (SECTION 7)
   // ------------------------------------------------------------------
-  async registerWebhook(overrideDomain?: string): Promise<{ success: boolean; webhookUrl: string; message: string }> {
+  async registerWebhook(overrideDomain?: string, dropPendingUpdates: boolean = false): Promise<{ success: boolean; webhookUrl: string; message: string }> {
     const botToken = this.getBotToken();
     if (!botToken) {
       throw new Error('Cannot register Telegram webhook: TELEGRAM_DATASET_BOT_TOKEN is not configured');
@@ -1256,7 +1405,7 @@ export class MainsTelegramIngestionService {
         url: webhookUrl,
         allowed_updates: ['message', 'channel_post'],
         secret_token: webhookSecret,
-        drop_pending_updates: false
+        drop_pending_updates: dropPendingUpdates
       }),
       signal: controller.signal
     });
