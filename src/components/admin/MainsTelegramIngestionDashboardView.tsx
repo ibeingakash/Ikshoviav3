@@ -623,7 +623,7 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
       {/* ---------------------------------------------------- */}
       {activeSection === 'CONNECTION' && (
         <div className="space-y-4">
-          {runtimeStatus?.runtime === 'WEBHOOK_ERROR' && (
+          {(runtimeStatus?.runtime === 'WEBHOOK_ERROR' || runtimeStatus?.runtime === 'CURRENT_WEBHOOK_ERROR') && (
             <div className="p-4 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-bold">
@@ -694,13 +694,13 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
                 </p>
                 <div className="pt-2 border-t border-stone-200 space-y-1.5 font-mono text-[11px]">
                   <div>Webhook Status: <span className={
-                    runtimeStatus?.runtime === 'READY'
+                    (runtimeStatus?.runtime === 'READY' || runtimeStatus?.runtimeState === 'READY')
                       ? 'text-emerald-700 font-bold'
-                      : runtimeStatus?.runtime === 'WEBHOOK_ERROR'
+                      : (runtimeStatus?.runtime === 'WEBHOOK_ERROR' || runtimeStatus?.runtime === 'CURRENT_WEBHOOK_ERROR')
                       ? 'text-rose-700 font-bold'
                       : 'text-amber-700 font-bold'
                   }>
-                    {runtimeStatus?.runtime === 'READY' ? 'ACTIVE & HEALTHY' : runtimeStatus?.runtime || 'PENDING REGISTRATION'}
+                    {(runtimeStatus?.runtime === 'READY' || runtimeStatus?.runtimeState === 'READY') ? 'ACTIVE & HEALTHY' : runtimeStatus?.runtime || 'PENDING REGISTRATION'}
                   </span></div>
                   <div>Webhook Reachable: <span className={runtimeStatus?.webhookReachable ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
                     {runtimeStatus?.webhookReachable ? 'YES' : 'NO'}
@@ -709,7 +709,12 @@ export const MainsTelegramIngestionDashboardView: React.FC = () => {
                   <div>Public Receiver: <strong className="text-sky-900">/api/telegram/mains-dataset-bot/webhook</strong></div>
                   <div>Pending Updates: <strong>{runtimeStatus?.pendingUpdateCount ?? 0}</strong></div>
                   <div>Last Error Date: <span>{runtimeStatus?.lastErrorDate ? new Date(runtimeStatus.lastErrorDate).toLocaleString() : 'None'}</span></div>
-                  <div>Last Error Reason: <span className={runtimeStatus?.lastErrorReason ? 'text-rose-700 font-bold' : 'text-stone-600'}>{runtimeStatus?.lastErrorReason || 'None'}</span></div>
+                  <div>Last Error Reason: <span className={runtimeStatus?.lastErrorReason ? (runtimeStatus?.runtime === 'READY' ? 'text-stone-700' : 'text-rose-700 font-bold') : 'text-stone-600'}>
+                    {runtimeStatus?.lastErrorReason ? `${runtimeStatus.lastErrorReason}${runtimeStatus.errorClassification === 'HISTORICAL_WEBHOOK_ERROR' ? ' (Historical - Resolved)' : ''}` : 'None'}
+                  </span></div>
+                  {runtimeStatus?.lastSuccessfulWebhookEventAt && (
+                    <div>Latest Successful Event: <span className="text-emerald-700 font-bold">{new Date(runtimeStatus.lastSuccessfulWebhookEventAt).toLocaleString()}</span></div>
+                  )}
                 </div>
               </div>
             </div>

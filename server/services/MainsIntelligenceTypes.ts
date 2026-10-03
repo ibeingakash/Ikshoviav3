@@ -1002,6 +1002,7 @@ export type TelegramRuntimeStatus =
   | 'WEBHOOK_PENDING'
   | 'CONFIGURED_WEBHOOK_PENDING'
   | 'CONFIGURATION_MISSING'
+  | 'CURRENT_WEBHOOK_ERROR'
   | 'WEBHOOK_ERROR'
   | 'BLOCKED_CONFIGURATION';
 
@@ -1010,6 +1011,7 @@ export interface TelegramRuntimeStatusResponse {
   telegramApiReachable: boolean;
   webhookConfigured: boolean;
   runtime: TelegramRuntimeStatus;
+  runtimeState?: TelegramRuntimeStatus;
   authorizedSources: number;
   environment_loaded_by_running_process: boolean;
   reason?: string;
@@ -1021,6 +1023,13 @@ export interface TelegramRuntimeStatusResponse {
   maxConnections?: number | null;
   allowedUpdates?: string[] | null;
   webhookReachable?: boolean;
+
+  // Phase 4.1J: Diagnostic and historical error separation
+  lastTelegramError?: string | null;
+  lastTelegramErrorAt?: string | null;
+  lastSuccessfulWebhookEventAt?: string | null;
+  webhookHealthy?: boolean;
+  errorClassification?: 'CURRENT_WEBHOOK_ERROR' | 'HISTORICAL_WEBHOOK_ERROR' | 'NONE';
 }
 
 export interface TelegramPendingSource {

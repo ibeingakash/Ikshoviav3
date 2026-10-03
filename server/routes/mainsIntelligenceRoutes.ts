@@ -1953,6 +1953,7 @@ export function createMainsIntelligenceRouter(
         telegramApiReachable: status.telegramApiReachable,
         webhookConfigured: status.webhookConfigured,
         runtime: status.runtime,
+        runtimeState: status.runtimeState || status.runtime,
         authorizedSources: status.authorizedSources,
         environment_loaded_by_running_process: status.environment_loaded_by_running_process,
         reason: status.reason,
@@ -1963,7 +1964,12 @@ export function createMainsIntelligenceRouter(
         lastErrorCode: status.lastErrorCode,
         maxConnections: status.maxConnections,
         allowedUpdates: status.allowedUpdates,
-        webhookReachable: status.webhookReachable
+        webhookReachable: status.webhookReachable,
+        lastTelegramError: status.lastTelegramError,
+        lastTelegramErrorAt: status.lastTelegramErrorAt,
+        lastSuccessfulWebhookEventAt: status.lastSuccessfulWebhookEventAt,
+        webhookHealthy: status.webhookHealthy,
+        errorClassification: status.errorClassification
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

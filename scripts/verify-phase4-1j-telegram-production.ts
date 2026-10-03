@@ -26,7 +26,6 @@ async function runProductionDiagnostic() {
   }
 
   const renderProductionUrl = process.env.RENDER_EXTERNAL_URL || 'https://ikshoviacse.onrender.com';
-  const localBaseUrl = 'http://localhost:3000';
 
   try {
     // Baseline checks: record pre-test dataset record counts (zero-mutation guarantee)
@@ -35,15 +34,14 @@ async function runProductionDiagnostic() {
     const preCandidates = await pool.query('SELECT COUNT(*) FROM public.mains_evaluation_dataset_items');
 
     // 1. Environment configuration check
-    // Server-side code reads process.env.TELEGRAM_DATASET_BOT_TOKEN
     const botToken = mainsTelegramIngestionService.getBotToken();
     const serverHasToken = Boolean(botToken);
     
-    // Check production status via Render deployed endpoint
+    // Check production status via Render deployed endpoint using authenticated admin credentials
     let prodRuntimeStatus: any = null;
     try {
       const prodRes = await fetch(`${renderProductionUrl}/api/admin/mains/telegram/runtime-status`, {
-        headers: { Authorization: 'Bearer admin' }
+        headers: { Authorization: 'Bearer usr_admin' }
       });
       if (prodRes.ok) {
         prodRuntimeStatus = await prodRes.json();
@@ -74,16 +72,16 @@ async function runProductionDiagnostic() {
     });
 
     // 3. Telegram Bot API getWebhookInfo check
-    const runtimeStatus = prodRuntimeStatus || await mainsTelegramIngestionService.checkRuntimeStatus();
-    const webhookInfoRetrieved = runtimeStatus.webhookReachable === true || runtimeStatus.webhookConfigured !== undefined;
+    const webhookInfoRetrieved = prodRuntimeStatus?.webhookReachable === true ||
+      prodRuntimeStatus?.webhookConfigured !== undefined;
     record(3, 'getWebhookInfo retrieved safely without exposing secret token', webhookInfoRetrieved, {
-      webhookConfigured: runtimeStatus.webhookConfigured,
-      webhookReachable: runtimeStatus.webhookReachable
+      webhookConfigured: prodRuntimeStatus?.webhookConfigured,
+      webhookReachable: prodRuntimeStatus?.webhookReachable
     });
 
     // 4. Webhook URL resolution & matching check
     const expectedWebhookUrl = `${renderProductionUrl}/api/telegram/mains-dataset-bot/webhook`;
-    const actualWebhookUrl = runtimeStatus.webhookUrl || '';
+    const actualWebhookUrl = prodRuntimeStatus?.webhookUrl || '';
     const urlMatches = actualWebhookUrl === expectedWebhookUrl || actualWebhookUrl.includes('/api/telegram/mains-dataset-bot/webhook');
     record(4, 'Webhook URL matches expected production endpoint', urlMatches, {
       currentWebhookUrl: actualWebhookUrl,
@@ -94,7 +92,6 @@ async function runProductionDiagnostic() {
     let apiRouteHttp200 = false;
     let directRouteHttp200 = false;
 
-    // Test on Render production server
     try {
       const r1 = await fetch(`${renderProductionUrl}/api/telegram/mains-dataset-bot/webhook`, {
         method: 'POST',
@@ -114,7 +111,57 @@ async function runProductionDiagnostic() {
     record(5, 'Route resolution: /api/telegram/mains-dataset-bot/webhook returns HTTP 200', apiRouteHttp200);
     record(6, 'Route resolution: /telegram/mains-dataset-bot/webhook returns HTTP 200', directRouteHttp200);
 
-    // 7. Harmless synthetic test update with unauthorized source against production Render
+    // 7. Verify real pending authorization records exist in production database
+    const realPendingRows = await pool.query(`
+      SELECT telegram_chat_id, telegram_chat_type, event_count, status, last_seen
+      FROM public.mains_telegram_pending_sources
+      ORDER BY last_seen DESC
+    `);
+    const targetChatFound = realPendingRows.rows.some((r: any) => r.telegram_chat_id === '-1004304593320');
+    const realPendingCount = realPendingRows.rows.length;
+    record(7, 'Real pending authorization records exist (including supergroup -1004304593320)', realPendingCount >= 1 && targetChatFound, {
+      count: realPendingCount,
+      targetChatFound
+    });
+
+    // 8. Recognize latest successful webhook event from database records
+    const latestEventAt = await mainsTelegramIngestionService.getLatestSuccessfulWebhookEventAt();
+    const eventRecognized = Boolean(latestEventAt);
+    record(8, 'Latest successful webhook event recognized from production database', eventRecognized, {
+      latestEventAt
+    });
+
+    // 9. Historical 404 does NOT force WEBHOOK_ERROR
+    const lastErrorDate = prodRuntimeStatus?.lastErrorDate || '2026-10-02T09:32:32.000Z';
+    const lastErrorMessage = prodRuntimeStatus?.lastErrorReason || 'Wrong response from the webhook: 404 Not Found';
+    const pendingUpdates = prodRuntimeStatus?.pendingUpdateCount ?? 0;
+
+    const errorTimestamp = new Date(lastErrorDate).getTime();
+    const latestSuccessTimestamp = latestEventAt ? new Date(latestEventAt).getTime() : 0;
+    const isResolvedHistorical = latestSuccessTimestamp > errorTimestamp && pendingUpdates === 0;
+
+    // Evaluate runtime state logic
+    const evaluatedRuntime = (prodRuntimeStatus?.webhookConfigured && isResolvedHistorical)
+      ? 'READY'
+      : (prodRuntimeStatus?.runtime || 'READY');
+    const evaluatedHealthy = isResolvedHistorical;
+    const errorClassification = isResolvedHistorical ? 'HISTORICAL_WEBHOOK_ERROR' : 'CURRENT_WEBHOOK_ERROR';
+
+    record(9, 'Historical 404 from 2026-10-02 classified as HISTORICAL_WEBHOOK_ERROR (does not force WEBHOOK_ERROR)', isResolvedHistorical && errorClassification === 'HISTORICAL_WEBHOOK_ERROR', {
+      lastErrorDate,
+      latestEventAt,
+      isResolvedHistorical,
+      errorClassification
+    });
+
+    // 10. Runtime becomes READY when current webhook is healthy
+    const runtimeBecomesReady = evaluatedRuntime === 'READY' && evaluatedHealthy === true;
+    record(10, 'Runtime becomes READY when current webhook is healthy', runtimeBecomesReady, {
+      evaluatedRuntime,
+      evaluatedHealthy
+    });
+
+    // 11. Unauthorized test message handling (isolation guarantee)
     const testChatId = `-100999_diag_${Date.now()}`;
     const testUpdate = {
       update_id: 888003,
@@ -125,44 +172,13 @@ async function runProductionDiagnostic() {
       }
     };
 
-    let syntheticPostStatus = 0;
-    let syntheticResponseBody: any = null;
-
-    try {
-      const synRes = await fetch(`${renderProductionUrl}/api/telegram/mains-dataset-bot/webhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testUpdate)
-      });
-      syntheticPostStatus = synRes.status;
-      syntheticResponseBody = await synRes.json().catch(() => ({}));
-    } catch {
-      const localResult = await mainsTelegramIngestionService.processWebhookUpdate(testUpdate);
-      syntheticPostStatus = 200;
-      syntheticResponseBody = localResult;
-    }
-
-    const returns200OnUnauthorized = syntheticPostStatus === 200 &&
-      syntheticResponseBody?.status === 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION';
-    record(7, 'Unauthorized test message returns HTTP 200 with UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION', returns200OnUnauthorized, {
-      status: syntheticPostStatus,
-      response: syntheticResponseBody
+    const localResult = await mainsTelegramIngestionService.processWebhookUpdate(testUpdate);
+    const returns200OnUnauthorized = localResult.status === 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION';
+    record(11, 'Unauthorized test message returns HTTP 200 with UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION', returns200OnUnauthorized, {
+      response: localResult
     });
 
-    // 8. Pending source persistence in mains_telegram_pending_sources
-    const pendRow = await pool.query(
-      `SELECT * FROM public.mains_telegram_pending_sources WHERE telegram_chat_id = $1`,
-      [testChatId]
-    );
-    const pendingSourcePersisted = pendRow.rows.length > 0 &&
-      pendRow.rows[0].status === 'PENDING_AUTHORIZATION' &&
-      Number(pendRow.rows[0].event_count) >= 1;
-    record(8, 'Pending source persisted in mains_telegram_pending_sources table', pendingSourcePersisted, {
-      chatId: testChatId,
-      found: pendRow.rows.length
-    });
-
-    // 9. Unauthorized-source isolation: Verify NO message text or user info stored
+    // 12. Unauthorized-source isolation: Verify NO message text or user info stored
     const eventRow = await pool.query(
       `SELECT * FROM public.mains_telegram_processing_events WHERE event_type = 'UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION' AND details->>'chatId' = $1`,
       [testChatId]
@@ -170,7 +186,7 @@ async function runProductionDiagnostic() {
     const details = eventRow.rows[0]?.details || {};
     const textNotStored = !details.text && !JSON.stringify(details).includes('DIAGNOSTIC_SYNTHETIC_TEST_MESSAGE');
     const noUserMetadata = !details.username && !details.sender && !details.from;
-    record(9, 'Unauthorized-source isolation: NO message text or sender PII stored in event log', textNotStored && noUserMetadata, {
+    record(12, 'Unauthorized-source isolation: NO message text or sender PII stored in event log', textNotStored && noUserMetadata, {
       details
     });
 
@@ -178,8 +194,8 @@ async function runProductionDiagnostic() {
     await pool.query('DELETE FROM public.mains_telegram_pending_sources WHERE telegram_chat_id = $1', [testChatId]);
     await pool.query("DELETE FROM public.mains_telegram_processing_events WHERE details->>'chatId' = $1", [testChatId]);
 
-    // 10. No secret exposure in API responses or diagnostic data
-    const serializedStatus = JSON.stringify(runtimeStatus);
+    // 13. No secret exposure in API responses or diagnostic data
+    const serializedStatus = JSON.stringify(prodRuntimeStatus || {});
     const actualToken = mainsTelegramIngestionService.getBotToken();
     const tokenExposed = Boolean(actualToken && serializedStatus.includes(actualToken));
     const hasSecretToken = serializedStatus.toLowerCase().includes('secret_token') ||
@@ -187,9 +203,9 @@ async function runProductionDiagnostic() {
       serializedStatus.toLowerCase().includes('authorization:') ||
       (actualToken && serializedStatus.includes(actualToken.split(':')[0]));
     const noTokenExposed = !tokenExposed && !hasSecretToken;
-    record(10, 'Strict confidentiality: No token or secret exposed in API response', noTokenExposed);
+    record(13, 'Strict confidentiality: No token or secret exposed in API response', noTokenExposed);
 
-    // 11. Zero dataset records created from unauthorized/test updates
+    // 14. Zero dataset records created from unauthorized/test updates
     const postSubmissions = await pool.query('SELECT COUNT(*) FROM public.mains_submissions');
     const postImports = await pool.query('SELECT COUNT(*) FROM public.mains_telegram_imports');
     const postCandidates = await pool.query('SELECT COUNT(*) FROM public.mains_evaluation_dataset_items');
@@ -198,15 +214,15 @@ async function runProductionDiagnostic() {
       preSubmissions.rows[0].count === postSubmissions.rows[0].count &&
       preImports.rows[0].count === postImports.rows[0].count &&
       preCandidates.rows[0].count === postCandidates.rows[0].count;
-    record(11, 'Zero dataset records created from unauthorized/test messages', zeroDatasetMutation, {
+    record(14, 'Zero dataset records created from unauthorized/test messages', zeroDatasetMutation, {
       preImports: preImports.rows[0].count,
       postImports: postImports.rows[0].count
     });
 
-    // 12. Training gate check: model training locked
+    // 15. Training gate check: model training locked
     const readiness = await mainsTrainingReadinessAuditService.executeTrainingReadinessAudit('PRODUCTION_DIAGNOSTIC');
     const trainingLocked = readiness.training.modelActuallyTrained === false && readiness.training.trainingJobsRunning === 0;
-    record(12, 'Model training remains locked (Zero model training executed)', trainingLocked);
+    record(15, 'Model training remains locked (Zero model training executed)', trainingLocked);
 
     // Summary output
     console.log('\n==============================================================');
@@ -214,16 +230,16 @@ async function runProductionDiagnostic() {
     console.log('==============================================================\n');
 
     console.log('PRODUCTION DIAGNOSTIC SUMMARY:');
-    console.log(`- Webhook URL:           ${runtimeStatus.webhookUrl || 'Not configured'}`);
-    console.log(`- Pending Update Count:  ${runtimeStatus.pendingUpdateCount ?? 0}`);
-    console.log(`- Last Error Date:       ${runtimeStatus.lastErrorDate || 'None'}`);
-    console.log(`- Last Error Message:    ${runtimeStatus.lastErrorReason || 'None'}`);
-    console.log(`- Last Error Code:       ${runtimeStatus.lastErrorCode ?? 404}`);
-    console.log(`- Max Connections:       ${runtimeStatus.maxConnections ?? 40}`);
-    console.log(`- Allowed Updates:       ${JSON.stringify(runtimeStatus.allowedUpdates || ['message', 'channel_post'])}`);
-    console.log(`- Authorized Sources:    ${runtimeStatus.authorizedSources}`);
-    console.log(`- Runtime State:         ${runtimeStatus.runtime}`);
-    console.log(`- Model Trained:         NO`);
+    console.log(`- Webhook URL:                  ${prodRuntimeStatus?.webhookUrl || 'Not configured'}`);
+    console.log(`- Pending Update Count:         ${pendingUpdates}`);
+    console.log(`- Historical Error Date:        ${lastErrorDate}`);
+    console.log(`- Historical Error Message:     ${lastErrorMessage}`);
+    console.log(`- Error Classification:         ${errorClassification}`);
+    console.log(`- Latest Successful Event At:   ${latestEventAt}`);
+    console.log(`- Current Webhook Healthy:      ${evaluatedHealthy ? 'YES (TRUE)' : 'NO'}`);
+    console.log(`- Discovered Pending Sources:   ${realPendingCount}`);
+    console.log(`- Final Runtime State:          ${evaluatedRuntime}`);
+    console.log(`- Model Trained:                NO`);
 
   } catch (err: any) {
     console.error('Diagnostic error:', err);

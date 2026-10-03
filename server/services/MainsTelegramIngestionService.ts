@@ -1259,6 +1259,22 @@ export class MainsTelegramIngestionService {
     };
   }
 
+  async getLatestSuccessfulWebhookEventAt(): Promise<string | null> {
+    try {
+      const res = await pool.query(`
+        SELECT GREATEST(
+          (SELECT MAX(created_at) FROM public.mains_telegram_processing_events WHERE event_type IN ('UNAUTHORIZED_SOURCE_PENDING_AUTHORIZATION', 'TELEGRAM_FILE_DISCOVERED', 'TELEGRAM_IMPORT_COMPLETED')),
+          (SELECT MAX(last_seen) FROM public.mains_telegram_pending_sources),
+          (SELECT MAX(imported_at) FROM public.mains_telegram_imports)
+        ) AS latest_event_at;
+      `);
+      const val = res.rows[0]?.latest_event_at;
+      return val ? new Date(val).toISOString() : null;
+    } catch {
+      return null;
+    }
+  }
+
   // ------------------------------------------------------------------
   // 7b. SAFE RUNTIME TELEMETRY & DIAGNOSTICS (SECTIONS 6, 8, 10, 13)
   // ------------------------------------------------------------------
@@ -1275,9 +1291,15 @@ export class MainsTelegramIngestionService {
         telegramApiReachable: false,
         webhookConfigured: false,
         runtime: 'CONFIGURATION_MISSING',
+        runtimeState: 'CONFIGURATION_MISSING',
         authorizedSources,
         environment_loaded_by_running_process: false,
-        reason: 'TELEGRAM_DATASET_BOT_TOKEN environment variable is not configured in running process environment'
+        reason: 'TELEGRAM_DATASET_BOT_TOKEN environment variable is not configured in running process environment',
+        lastTelegramError: null,
+        lastTelegramErrorAt: null,
+        lastSuccessfulWebhookEventAt: null,
+        webhookHealthy: false,
+        errorClassification: 'NONE'
       };
     }
 
@@ -1294,6 +1316,11 @@ export class MainsTelegramIngestionService {
     let webhookReachable = false;
     let reason: string | undefined = undefined;
     let runtime: TelegramRuntimeStatus = 'BLOCKED_CONFIGURATION';
+    let lastTelegramError: string | null = null;
+    let lastTelegramErrorAt: string | null = null;
+    let lastSuccessfulWebhookEventAt: string | null = null;
+    let webhookHealthy: boolean = false;
+    let errorClassification: 'CURRENT_WEBHOOK_ERROR' | 'HISTORICAL_WEBHOOK_ERROR' | 'NONE' = 'NONE';
 
     try {
       // 1. Verify Bot API connectivity with getMe
@@ -1316,6 +1343,7 @@ export class MainsTelegramIngestionService {
           telegramApiReachable: false,
           webhookConfigured: false,
           runtime: 'BLOCKED_CONFIGURATION',
+          runtimeState: 'BLOCKED_CONFIGURATION',
           authorizedSources,
           environment_loaded_by_running_process,
           reason,
@@ -1324,7 +1352,12 @@ export class MainsTelegramIngestionService {
           lastErrorCode: null,
           maxConnections: null,
           allowedUpdates: null,
-          webhookReachable: false
+          webhookReachable: false,
+          lastTelegramError: null,
+          lastTelegramErrorAt: null,
+          lastSuccessfulWebhookEventAt: null,
+          webhookHealthy: false,
+          errorClassification: 'NONE'
         };
       }
 
@@ -1348,18 +1381,47 @@ export class MainsTelegramIngestionService {
 
         if (whData.result.last_error_date) {
           lastErrorDate = new Date(whData.result.last_error_date * 1000).toISOString();
+          lastTelegramErrorAt = lastErrorDate;
         }
 
         if (whData.result.last_error_message) {
           lastErrorReason = String(whData.result.last_error_message);
-          reason = lastErrorReason;
+          lastTelegramError = lastErrorReason;
           const match = lastErrorReason.match(/\b(\d{3})\b/);
           if (match) lastErrorCode = parseInt(match[1], 10);
-          runtime = 'WEBHOOK_ERROR';
+        }
+
+        // Query real production database records for the most recent successfully processed Telegram webhook event
+        lastSuccessfulWebhookEventAt = await this.getLatestSuccessfulWebhookEventAt();
+
+        // Runtime state priority:
+        // CONFIGURATION_MISSING -> CURRENT_WEBHOOK_ERROR -> WEBHOOK_PENDING -> READY
+        if (lastTelegramError) {
+          const errorTimestamp = lastErrorDate ? new Date(lastErrorDate).getTime() : 0;
+          const lastSuccessTimestamp = lastSuccessfulWebhookEventAt ? new Date(lastSuccessfulWebhookEventAt).getTime() : 0;
+
+          // A historical 404 must NOT override READY when fresh Telegram events have successfully reached the production webhook
+          const isResolvedHistoricalError = lastSuccessTimestamp > errorTimestamp && pendingUpdateCount === 0;
+
+          if (isResolvedHistoricalError) {
+            errorClassification = 'HISTORICAL_WEBHOOK_ERROR';
+            webhookHealthy = webhookConfigured;
+            runtime = webhookConfigured ? 'READY' : 'WEBHOOK_PENDING';
+            reason = undefined; // Do not block runtime with historical error
+          } else {
+            errorClassification = 'CURRENT_WEBHOOK_ERROR';
+            webhookHealthy = false;
+            runtime = 'CURRENT_WEBHOOK_ERROR';
+            reason = lastTelegramError;
+          }
         } else if (webhookConfigured) {
+          errorClassification = 'NONE';
+          webhookHealthy = true;
           runtime = 'READY';
         } else {
-          runtime = 'CONFIGURED_WEBHOOK_PENDING';
+          errorClassification = 'NONE';
+          webhookHealthy = false;
+          runtime = 'WEBHOOK_PENDING';
         }
       } else {
         runtime = 'CONFIGURED_WEBHOOK_PENDING';
@@ -1375,6 +1437,7 @@ export class MainsTelegramIngestionService {
       telegramApiReachable,
       webhookConfigured,
       runtime,
+      runtimeState: runtime,
       authorizedSources,
       environment_loaded_by_running_process,
       reason,
@@ -1385,7 +1448,12 @@ export class MainsTelegramIngestionService {
       lastErrorCode,
       maxConnections,
       allowedUpdates,
-      webhookReachable
+      webhookReachable,
+      lastTelegramError,
+      lastTelegramErrorAt,
+      lastSuccessfulWebhookEventAt,
+      webhookHealthy,
+      errorClassification
     };
   }
 
