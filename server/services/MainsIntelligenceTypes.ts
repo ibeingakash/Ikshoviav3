@@ -1017,6 +1017,9 @@ export interface TelegramRuntimeStatusResponse {
   pendingUpdateCount?: number;
   lastErrorDate?: string | null;
   lastErrorReason?: string | null;
+  lastErrorCode?: number | null;
+  maxConnections?: number | null;
+  allowedUpdates?: string[] | null;
   webhookReachable?: boolean;
 }
 

@@ -1288,6 +1288,9 @@ export class MainsTelegramIngestionService {
     let pendingUpdateCount: number = 0;
     let lastErrorDate: string | null = null;
     let lastErrorReason: string | null = null;
+    let lastErrorCode: number | null = null;
+    let maxConnections: number | null = null;
+    let allowedUpdates: string[] | null = null;
     let webhookReachable = false;
     let reason: string | undefined = undefined;
     let runtime: TelegramRuntimeStatus = 'BLOCKED_CONFIGURATION';
@@ -1318,6 +1321,9 @@ export class MainsTelegramIngestionService {
           reason,
           lastErrorDate: null,
           lastErrorReason: null,
+          lastErrorCode: null,
+          maxConnections: null,
+          allowedUpdates: null,
           webhookReachable: false
         };
       }
@@ -1337,6 +1343,8 @@ export class MainsTelegramIngestionService {
         webhookConfigured = Boolean(rawUrl && rawUrl.trim().length > 0);
         webhookUrl = rawUrl || undefined;
         pendingUpdateCount = Number(whData.result.pending_update_count || 0);
+        maxConnections = whData.result.max_connections ?? null;
+        allowedUpdates = whData.result.allowed_updates ?? null;
 
         if (whData.result.last_error_date) {
           lastErrorDate = new Date(whData.result.last_error_date * 1000).toISOString();
@@ -1345,6 +1353,8 @@ export class MainsTelegramIngestionService {
         if (whData.result.last_error_message) {
           lastErrorReason = String(whData.result.last_error_message);
           reason = lastErrorReason;
+          const match = lastErrorReason.match(/\b(\d{3})\b/);
+          if (match) lastErrorCode = parseInt(match[1], 10);
           runtime = 'WEBHOOK_ERROR';
         } else if (webhookConfigured) {
           runtime = 'READY';
@@ -1372,6 +1382,9 @@ export class MainsTelegramIngestionService {
       pendingUpdateCount,
       lastErrorDate,
       lastErrorReason,
+      lastErrorCode,
+      maxConnections,
+      allowedUpdates,
       webhookReachable
     };
   }

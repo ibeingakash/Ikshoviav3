@@ -1960,6 +1960,9 @@ export function createMainsIntelligenceRouter(
         pendingUpdateCount: status.pendingUpdateCount,
         lastErrorDate: status.lastErrorDate,
         lastErrorReason: status.lastErrorReason,
+        lastErrorCode: status.lastErrorCode,
+        maxConnections: status.maxConnections,
+        allowedUpdates: status.allowedUpdates,
         webhookReachable: status.webhookReachable
       });
     } catch (err: any) {
